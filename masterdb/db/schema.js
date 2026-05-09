@@ -2,6 +2,13 @@
  * Database schema initialization and province seed data.
  * Call initSchema() once after initDB() on first boot.
  * Safe to call on subsequent boots — all statements use IF NOT EXISTS.
+ *
+ * Schema version: 2.0
+ * Changes from 1.x:
+ *   - Added locations table (province, CU code, contact info per location)
+ *   - Added employment table (employee ↔ location history)
+ *   - Added location_id to employees, tests, baselines, packets
+ *   - companies.province removed (province now lives on location)
  */
 
 import { getDB, run, query, transaction } from './sqlite.js'
@@ -55,25 +62,61 @@ CREATE TABLE IF NOT EXISTS techs (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ----------------------------------------------------------------------------
+-- Companies — umbrella entity, HQ contact info only
+-- Province lives on locations, not here
+-- ----------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS companies (
   company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
-  province      TEXT NOT NULL,
   address       TEXT,
+  city          TEXT,
   contact_name  TEXT,
   contact_phone TEXT,
   contact_email TEXT,
+  website       TEXT,
   sticky_notes  TEXT,
-  hpd_inventory TEXT DEFAULT '[]',
+  active        INTEGER NOT NULL DEFAULT 1,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ----------------------------------------------------------------------------
+-- Locations — a physical site belonging to a company
+-- Has its own province, contact info, and CU code
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS locations (
+  location_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id    INTEGER NOT NULL,
+  name          TEXT NOT NULL,
+  province      TEXT NOT NULL,
+  address       TEXT,
+  city          TEXT,
+  postal_code   TEXT,
+  contact_name  TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  cu_code       TEXT,
+  hpd_inventory TEXT NOT NULL DEFAULT '[]',
+  sticky_notes  TEXT,
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (province) REFERENCES provinces(province_code)
+  FOREIGN KEY (company_id) REFERENCES companies(company_id),
+  FOREIGN KEY (province)   REFERENCES provinces(province_code)
 );
+
+-- ----------------------------------------------------------------------------
+-- Employees — independent records, not permanently tied to one location
+-- location_id here is a convenience pointer to their current primary location
+-- Full history is in the employment table
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS employees (
   employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  company_id    INTEGER NOT NULL,
+  location_id   INTEGER,
   first_name    TEXT NOT NULL,
   last_name     TEXT NOT NULL,
   dob           TEXT,
@@ -81,12 +124,36 @@ CREATE TABLE IF NOT EXISTS employees (
   job_title     TEXT,
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (company_id) REFERENCES companies(company_id)
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
+
+-- ----------------------------------------------------------------------------
+-- Employment — tracks which locations an employee has worked at and when
+-- An employee can have multiple active records (e.g. two concurrent employers)
+-- end_date NULL means currently active at that location
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS employment (
+  employment_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id    INTEGER NOT NULL,
+  location_id    INTEGER NOT NULL,
+  job_title      TEXT,
+  start_date     TEXT,
+  end_date       TEXT,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- Baselines — tied to employee AND location
+-- Each employer/location owns their baseline for the employee (AB OHS req)
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS baselines (
   baseline_id   INTEGER PRIMARY KEY AUTOINCREMENT,
   employee_id   INTEGER NOT NULL,
+  location_id   INTEGER,
   test_date     TEXT NOT NULL,
   archived      INTEGER NOT NULL DEFAULT 0,
   left_500      REAL, left_1k  REAL, left_2k  REAL, left_3k  REAL,
@@ -94,12 +161,18 @@ CREATE TABLE IF NOT EXISTS baselines (
   right_500     REAL, right_1k REAL, right_2k REAL, right_3k REAL,
   right_4k      REAL, right_6k REAL, right_8k REAL,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+  FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
+
+-- ----------------------------------------------------------------------------
+-- Tests — snapshot includes location and province at time of test
+-- ----------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS tests (
   test_id              INTEGER PRIMARY KEY AUTOINCREMENT,
   employee_id          INTEGER NOT NULL,
+  location_id          INTEGER,
   test_date            TEXT NOT NULL,
   tech_id              TEXT,
   test_type            TEXT NOT NULL DEFAULT 'Periodic',
@@ -122,7 +195,8 @@ CREATE TABLE IF NOT EXISTS tests (
   questionnaire             TEXT,
   packet_id                 TEXT,
   created_at                TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (employee_id) REFERENCES employees(employee_id)
+  FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
 CREATE TABLE IF NOT EXISTS hpd_assessments (
@@ -138,9 +212,15 @@ CREATE TABLE IF NOT EXISTS hpd_assessments (
   FOREIGN KEY (test_id) REFERENCES tests(test_id)
 );
 
+-- ----------------------------------------------------------------------------
+-- Packets — now reference a location instead of just a company
+-- company_id kept for quick rollup queries without joining through location
+-- ----------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS packets (
   packet_id     TEXT PRIMARY KEY,
   company_id    INTEGER NOT NULL,
+  location_id   INTEGER,
   tech_id       TEXT,
   visit_date    TEXT NOT NULL,
   filename      TEXT NOT NULL,
@@ -148,18 +228,21 @@ CREATE TABLE IF NOT EXISTS packets (
   testing_duration TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (company_id) REFERENCES companies(company_id)
+  FOREIGN KEY (company_id)  REFERENCES companies(company_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
   schedule_id   INTEGER PRIMARY KEY AUTOINCREMENT,
   company_id    INTEGER NOT NULL,
+  location_id   INTEGER,
   tech_id       TEXT,
   visit_date    TEXT NOT NULL,
   notes         TEXT,
   completed     INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (company_id) REFERENCES companies(company_id)
+  FOREIGN KEY (company_id)  REFERENCES companies(company_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
 CREATE TABLE IF NOT EXISTS settings (
@@ -173,24 +256,41 @@ export async function initSchema() {
   const db = getDB()
   db.run(CREATE_TABLES)
 
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
   // Column migrations — safe to run on every boot
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
 
+  // techs
   try { db.run('ALTER TABLE techs ADD COLUMN folder_name TEXT') }  catch { /* exists */ }
-  try { db.run('ALTER TABLE techs ADD COLUMN iat_number TEXT') }   catch { /* exists */ }
+  try { db.run('ALTER TABLE techs ADD COLUMN iat_number  TEXT') }  catch { /* exists */ }
 
-  try { db.run('ALTER TABLE tests ADD COLUMN referral_given_to_worker  INTEGER NOT NULL DEFAULT 0') } catch { /* exists */ }
-  try { db.run('ALTER TABLE tests ADD COLUMN referral_sent_to_employer INTEGER NOT NULL DEFAULT 0') } catch { /* exists */ }
-  try { db.run('ALTER TABLE tests ADD COLUMN referral_sent_date TEXT') }                              catch { /* exists */ }
-  try { db.run('ALTER TABLE tests ADD COLUMN questionnaire TEXT') }                                   catch { /* exists */ }
-  try { db.run('ALTER TABLE packets ADD COLUMN testing_duration TEXT') }                              catch { /* exists */ }
+  // tests
+  try { db.run('ALTER TABLE tests ADD COLUMN location_id INTEGER REFERENCES locations(location_id)') } catch { /* exists */ }
+  try { db.run('ALTER TABLE tests ADD COLUMN referral_given_to_worker  INTEGER NOT NULL DEFAULT 0') }   catch { /* exists */ }
+  try { db.run('ALTER TABLE tests ADD COLUMN referral_sent_to_employer INTEGER NOT NULL DEFAULT 0') }   catch { /* exists */ }
+  try { db.run('ALTER TABLE tests ADD COLUMN referral_sent_date TEXT') }                                catch { /* exists */ }
+  try { db.run('ALTER TABLE tests ADD COLUMN questionnaire TEXT') }                                     catch { /* exists */ }
 
-  // Note: org profile fields use the settings key/value table — no column migration needed
+  // baselines
+  try { db.run('ALTER TABLE baselines ADD COLUMN location_id INTEGER REFERENCES locations(location_id)') } catch { /* exists */ }
 
-  // ---------------------------------------------------------------------------
+  // employees
+  try { db.run('ALTER TABLE employees ADD COLUMN location_id INTEGER REFERENCES locations(location_id)') } catch { /* exists */ }
+
+  // packets
+  try { db.run('ALTER TABLE packets ADD COLUMN location_id INTEGER REFERENCES locations(location_id)') } catch { /* exists */ }
+  try { db.run('ALTER TABLE packets ADD COLUMN testing_duration TEXT') }                                  catch { /* exists */ }
+
+  // companies — city and website may not exist on older installs
+  try { db.run('ALTER TABLE companies ADD COLUMN city    TEXT') } catch { /* exists */ }
+  try { db.run('ALTER TABLE companies ADD COLUMN website TEXT') } catch { /* exists */ }
+
+  // schedules
+  try { db.run('ALTER TABLE schedules ADD COLUMN location_id INTEGER REFERENCES locations(location_id)') } catch { /* exists */ }
+
+  // --------------------------------------------------------------------------
   // Data migrations
-  // ---------------------------------------------------------------------------
+  // --------------------------------------------------------------------------
 
   // AB Rule 5 — Standard Threshold Shift (STS)
   try {
@@ -253,9 +353,9 @@ Discuss HPD fit, type, and consistent use. Document any tinnitus complaints. Nex
 
 async function seedProvinces() {
   const provinces = [
-    { code: 'AB', name: 'Alberta',          ref: 'OHS Code Part 16, Schedule 3' },
-    { code: 'BC', name: 'British Columbia',  ref: 'WorkSafeBC Audiometric Testing Guidelines' },
-    { code: 'SK', name: 'Saskatchewan',      ref: 'OHS Regulations 1996, s.113' }
+    { code: 'AB', name: 'Alberta',         ref: 'OHS Code Part 16, Schedule 3' },
+    { code: 'BC', name: 'British Columbia', ref: 'WorkSafeBC Audiometric Testing Guidelines' },
+    { code: 'SK', name: 'Saskatchewan',     ref: 'OHS Regulations 1996, s.113' }
   ]
 
   for (const p of provinces) {
