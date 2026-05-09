@@ -14,7 +14,6 @@ import { renderPackets }      from './screens/packets.js'
 import { renderIncoming }     from './screens/incoming.js'
 import { renderRejectedPackets } from './screens/rejected-packets.js'
 import { renderImportConfirm }from './screens/import-confirm.js'
-import { renderSchedule }     from './screens/schedule.js'
 import { renderSettings }     from './screens/settings.js'
 import { renderProvinceRules }from './screens/province-rules.js'
 import { renderReports }      from './screens/reports.js'
@@ -51,7 +50,6 @@ const SCREENS = {
   incoming:          renderIncoming,
   'rejected-packets': renderRejectedPackets,
   'import-confirm':  renderImportConfirm,
-  schedule:          renderSchedule,
   settings:          renderSettings,
   'province-rules':  renderProvinceRules,
   reports:           renderReports,
@@ -64,7 +62,6 @@ const NAV_ITEMS = [
   { screen: 'companies',    label: 'Companies',     icon: '🏭' },
   { screen: 'employees',    label: 'Employees',     icon: '👷' },
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
-  { screen: 'schedule',     label: 'Schedule',      icon: '📅' },
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
   { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' }
