@@ -1,4 +1,5 @@
-import { getCompany, updateCompany, deactivateCompany, getHPDInventory, saveHPDInventory } from '../db/companies.js'
+import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
+import { getHPDInventory, saveHPDInventory } from '../db/locations.js'
 import { getEmployeesByCompany, createEmployee, updateEmployee, deleteEmployee } from '../db/employees.js'
 import { getRecentTests, getSTSFlags } from '../db/tests.js'
 
