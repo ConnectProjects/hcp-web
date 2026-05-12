@@ -177,3 +177,17 @@ export function getEmployeesByCompany(companyId) {
     ORDER BY e.last_name, e.first_name
   `, [companyId])
 }
+export function buildPacketEmployees(companyId) {
+  return query(`
+    SELECT e.*,
+      l.name AS location_name,
+      l.province,
+      c.name AS company_name
+    FROM employees e
+    JOIN locations l ON l.location_id = e.location_id
+    JOIN companies c ON c.company_id = l.company_id
+    WHERE c.company_id = ?
+      AND e.status = 'active'
+    ORDER BY e.last_name, e.first_name
+  `, [companyId])
+}
