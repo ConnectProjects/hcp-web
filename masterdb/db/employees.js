@@ -158,3 +158,22 @@ function thresholdValues(t) {
     t.right_4k  ?? null, t.right_6k ?? null, t.right_8k ?? null
   ]
 }
+
+export function getEmployeesByCompany(companyId) {
+  return query(`
+    SELECT e.*,
+      l.name AS location_name, l.province,
+      c.name AS company_name,
+      (SELECT t.classification FROM tests t
+         WHERE t.employee_id = e.employee_id
+         ORDER BY t.test_date DESC LIMIT 1) AS last_classification,
+      (SELECT t.test_date FROM tests t
+         WHERE t.employee_id = e.employee_id
+         ORDER BY t.test_date DESC LIMIT 1) AS last_test_date
+    FROM employees e
+    JOIN locations l ON l.location_id = e.location_id
+    JOIN companies c ON c.company_id = l.company_id
+    WHERE c.company_id = ?
+    ORDER BY e.last_name, e.first_name
+  `, [companyId])
+}
