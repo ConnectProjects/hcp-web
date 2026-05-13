@@ -1,21 +1,25 @@
 import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
-import { getHPDInventory, saveHPDInventory } from '../db/locations.js'
-import { getEmployeesByCompany, createEmployee, updateEmployee, deleteEmployee } from '../db/employees.js'
-import { getRecentTests, getSTSFlags } from '../db/tests.js'
+import { getLocationsByCompany, createLocation } from '../db/locations.js'
 
 export function renderCompanyDetail(container, state, navigate) {
   const companyId = state.currentCompany?.company_id
   if (!companyId) { navigate('companies'); return }
 
+  const company = getCompany(companyId)
+  if (!company)  { navigate('companies'); return }
+
+  redraw(container, state, navigate, companyId)
+}
+
+function redraw(container, state, navigate, companyId) {
   const company   = getCompany(companyId)
-  if (!company)   { navigate('companies'); return }
+  const locations = getLocationsByCompany(companyId)
 
-  const employees   = getEmployeesByCompany(companyId)
-  const recentTests = getRecentTests(companyId, 10)
-  const stsFlags    = getSTSFlags(companyId)
-  const hpdInv      = getHPDInventory(companyId)
-
-  let activeTab = state.params?.tab ?? 'employees'
+  const totalEmployees = locations.reduce((s, l) => s + (l.employee_count ?? 0), 0)
+  const lastVisit      = locations.reduce((best, l) => {
+    if (!l.last_test_date) return best
+    return (!best || l.last_test_date > best) ? l.last_test_date : best
+  }, null)
 
   container.innerHTML = `
     <div class="page">
@@ -27,7 +31,6 @@ export function renderCompanyDetail(container, state, navigate) {
         </div>
         <div class="header-actions">
           <button class="btn btn-outline btn-sm" id="btn-edit">Edit</button>
-          <button class="btn btn-primary btn-sm" id="btn-generate">Generate Packet</button>
         </div>
       </div>
 
@@ -35,16 +38,27 @@ export function renderCompanyDetail(container, state, navigate) {
         <div class="company-hero-info">
           <h1>${esc(company.name)}</h1>
           <div class="company-meta">
-            <span class="province-badge">${esc(company.province)}</span>
-            ${company.contact_name  ? `<span>📞 ${esc(company.contact_name)}</span>`  : ''}
+            ${company.city ? `<span>📍 ${esc(company.city)}</span>` : ''}
+            ${company.contact_name  ? `<span>📞 ${esc(company.contact_name)}</span>` : ''}
             ${company.contact_phone ? `<a href="tel:${esc(company.contact_phone)}">${esc(company.contact_phone)}</a>` : ''}
+            ${company.contact_email ? `<a href="mailto:${esc(company.contact_email)}">${esc(company.contact_email)}</a>` : ''}
+            ${company.website       ? `<a href="${esc(company.website)}" target="_blank">${esc(company.website)}</a>` : ''}
           </div>
           ${company.address ? `<div class="company-address">${esc(company.address)}</div>` : ''}
         </div>
         <div class="company-kpis">
-          <div class="ckpi"><span class="ckpi-n">${employees.length}</span><span>Employees</span></div>
-          <div class="ckpi"><span class="ckpi-n">${recentTests.length}</span><span>Recent Tests</span></div>
-          <div class="ckpi ${stsFlags.length > 0 ? 'ckpi--warn' : ''}"><span class="ckpi-n">${stsFlags.length}</span><span>STS Flags</span></div>
+          <div class="ckpi">
+            <span class="ckpi-n">${locations.length}</span>
+            <span>Locations</span>
+          </div>
+          <div class="ckpi">
+            <span class="ckpi-n">${totalEmployees}</span>
+            <span>Employees</span>
+          </div>
+          <div class="ckpi">
+            <span class="ckpi-n">${lastVisit ?? '—'}</span>
+            <span>Last Visit</span>
+          </div>
         </div>
       </div>
 
@@ -54,69 +68,70 @@ export function renderCompanyDetail(container, state, navigate) {
           <span>${esc(company.sticky_notes)}</span>
           <button class="btn btn-ghost btn-sm" id="btn-edit-sticky">Edit</button>
         </div>
-      ` : `<button class="btn btn-link btn-sm" id="btn-add-sticky">+ Add sticky notes</button>`}
+      ` : `<button class="btn btn-link btn-sm" id="btn-add-sticky">+ Add notes</button>`}
 
-      <div class="tab-bar">
-        <button class="tab-btn ${activeTab === 'employees' ? 'tab-btn--active' : ''}" data-tab="employees">
-          Employees (${employees.length})
-        </button>
-        <button class="tab-btn ${activeTab === 'tests' ? 'tab-btn--active' : ''}" data-tab="tests">
-          Test History
-        </button>
-        <button class="tab-btn ${activeTab === 'hpd' ? 'tab-btn--active' : ''}" data-tab="hpd">
-          HPD Inventory (${hpdInv.length})
-        </button>
+      <!-- Locations -->
+      <div class="section-header" style="margin-top:20px">
+        <h2>Locations</h2>
+        <button class="btn btn-primary btn-sm" id="btn-add-location">+ Add Location</button>
       </div>
 
-      <div id="tab-content">
-        ${renderTab(activeTab, employees, recentTests, stsFlags, hpdInv)}
-      </div>
+      ${locations.length === 0
+        ? '<p class="empty-note">No locations on file. Add one to get started.</p>'
+        : `<div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>Province</th>
+                  <th>Employees</th>
+                  <th>Last Visit</th>
+                  <th>Contact</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${locations.map(l => `
+                  <tr class="table-row table-row--clickable" data-location-id="${l.location_id}">
+                    <td class="td-primary">${esc(l.name)}</td>
+                    <td><span class="province-badge">${esc(l.province)}</span></td>
+                    <td>${l.employee_count ?? 0}</td>
+                    <td>${l.last_test_date ?? '—'}</td>
+                    <td class="td-muted">${esc(l.contact_name ?? '—')}</td>
+                    <td><button class="btn btn-sm btn-outline" data-location-id="${l.location_id}">Open →</button></td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`
+      }
     </div>
 
-    <!-- Add Employee modal -->
-    <div id="modal-emp" class="modal hidden">
+    <!-- Add Location modal -->
+    <div id="modal-loc" class="modal hidden">
       <div class="modal-backdrop"></div>
-      <div class="modal-box">
+      <div class="modal-box modal-box--wide">
         <div class="modal-header">
-          <h2 id="emp-modal-title">Add Employee</h2>
-          <button class="modal-close" id="modal-close-emp">✕</button>
+          <h2>Add Location</h2>
+          <button class="modal-close" id="modal-close-loc">✕</button>
         </div>
-        <div class="modal-body" id="emp-modal-body">
-          ${employeeForm()}
+        <div class="modal-body">
+          ${locationForm()}
         </div>
         <div class="modal-footer">
-          <button class="btn btn-sm btn-ghost hidden" id="btn-delete-emp" style="color:var(--red);margin-right:auto">Delete Employee</button>
-          <button class="btn btn-ghost"   id="btn-cancel-emp">Cancel</button>
-          <button class="btn btn-primary" id="btn-save-emp">Save Employee</button>
+          <button class="btn btn-ghost"   id="btn-cancel-loc">Cancel</button>
+          <button class="btn btn-primary" id="btn-save-loc">Save Location</button>
         </div>
       </div>
     </div>
   `
 
-  // Back / navigation
+  // Navigation
   container.querySelector('#btn-back').addEventListener('click', () => navigate('companies'))
-  container.querySelector('#btn-generate').addEventListener('click', () =>
-    navigate('generate-packet', { currentCompany: company })
-  )
+
   container.querySelector('#btn-edit').addEventListener('click', () =>
     openEditCompany(container, company, companyId, navigate)
   )
-
-  // Tabs
-  container.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTab = btn.dataset.tab
-      container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'))
-      btn.classList.add('tab-btn--active')
-      container.querySelector('#tab-content').innerHTML =
-        renderTab(activeTab, employees, recentTests, stsFlags, hpdInv)
-      wireTabHandlers(container, companyId, company, employees, hpdInv, navigate)
-    })
-  })
-
-  wireTabHandlers(container, companyId, company, employees, hpdInv, navigate)
-
-  // Sticky notes
   container.querySelector('#btn-edit-sticky')?.addEventListener('click', () =>
     openEditCompany(container, company, companyId, navigate)
   )
@@ -124,219 +139,56 @@ export function renderCompanyDetail(container, state, navigate) {
     openEditCompany(container, company, companyId, navigate)
   )
 
-  // Employee modal
-  const empModal = container.querySelector('#modal-emp')
-  container.querySelector('#modal-close-emp').addEventListener('click', () => empModal.classList.add('hidden'))
-  container.querySelector('#btn-cancel-emp').addEventListener('click',  () => empModal.classList.add('hidden'))
-  empModal.querySelector('.modal-backdrop').addEventListener('click',   () => empModal.classList.add('hidden'))
-
-  container.querySelector('#btn-save-emp').addEventListener('click', () => {
-    const fn = container.querySelector('#ef-first').value.trim()
-    const ln = container.querySelector('#ef-last').value.trim()
-    if (!fn || !ln) { alert('First and last name are required.'); return }
-    const editId = container.querySelector('#ef-emp-id')?.value
-    const data = {
-      company_id: companyId,
-      first_name: fn,
-      last_name:  ln,
-      dob:        container.querySelector('#ef-dob').value || null,
-      hire_date:  container.querySelector('#ef-hire').value || null,
-      job_title:  container.querySelector('#ef-title').value.trim() || null,
-      status:     container.querySelector('#ef-status').value
-    }
-    if (editId) updateEmployee(Number(editId), data)
-    else        createEmployee(data)
-    empModal.classList.add('hidden')
-    navigate('company-detail', { currentCompany: { company_id: companyId } })
-  })
-}
-
-function renderTab(tab, employees, recentTests, stsFlags, hpdInv) {
-  if (tab === 'employees') return renderEmployeesTab(employees, stsFlags)
-  if (tab === 'tests')     return renderTestsTab(recentTests)
-  if (tab === 'hpd')       return renderHPDTab(hpdInv)
-  return ''
-}
-
-function renderEmployeesTab(employees, stsFlags) {
-  const stsFlagIds = new Set(stsFlags.map(f => f.employee_id))
-  return `
-    <div class="tab-toolbar">
-      <button class="btn btn-primary btn-sm" id="btn-add-emp">+ Add Employee</button>
-    </div>
-    ${employees.length === 0
-      ? '<p class="empty-note">No employees on file.</p>'
-      : `<table class="data-table">
-          <thead><tr>
-            <th>Name</th><th>Job Title</th><th>Last Test</th><th>Classification</th><th></th>
-          </tr></thead>
-          <tbody>
-            ${employees.map(e => `
-              <tr class="table-row table-row--clickable" data-emp-id="${e.employee_id}"
-                  title="View ${esc(e.first_name)} ${esc(e.last_name)}'s test history">
-                <td class="td-primary">
-                  ${esc(e.last_name)}, ${esc(e.first_name)}
-                  ${stsFlagIds.has(e.employee_id) ? '<span class="sts-chip">STS</span>' : ''}
-                </td>
-                <td class="td-muted">${esc(e.job_title ?? '—')}</td>
-                <td>${e.last_test_date ?? '—'}</td>
-                <td>${classificationBadge(parseClassification(e.last_classification)?.category)}</td>
-                <td><button class="btn btn-sm btn-ghost" data-edit-emp="${e.employee_id}">Edit</button></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>`
-    }
-  `
-}
-
-function renderTestsTab(tests) {
-  return tests.length === 0
-    ? '<p class="empty-note">No test history.</p>'
-    : `<table class="data-table">
-        <thead><tr>
-          <th>Date</th><th>Employee</th><th>Type</th><th>Classification</th><th>HPD</th><th></th>
-        </tr></thead>
-        <tbody>
-          ${tests.map(t => {
-            const cls = parseClassification(t.classification)
-            return `<tr>
-              <td>${t.test_date}</td>
-              <td class="table-row--clickable" data-emp-id="${t.employee_id}" style="cursor:pointer">
-                ${esc(t.last_name)}, ${esc(t.first_name)}
-              </td>
-              <td>${esc(t.test_type)}</td>
-              <td>${cls ? classificationBadge(cls.category) : '—'}</td>
-              <td>${t.adequacy ? adequacyBadge(t.adequacy) : '—'}</td>
-              <td>
-                <button class="btn btn-link btn-sm btn-view-emp" data-emp-id="${t.employee_id}">
-                  View →
-                </button>
-              </td>
-            </tr>`
-          }).join('')}
-        </tbody>
-      </table>`
-}
-
-function renderHPDTab(inventory) {
-  return `
-    <div class="tab-toolbar">
-      <button class="btn btn-primary btn-sm" id="btn-add-hpd">+ Add HPD</button>
-    </div>
-    ${inventory.length === 0
-      ? '<p class="empty-note">No HPD inventory on file.</p>'
-      : `<table class="data-table">
-          <thead><tr><th>Make / Model</th><th>Type</th><th>Rated NRR</th><th></th></tr></thead>
-          <tbody>
-            ${inventory.map((h, i) => `
-              <tr>
-                <td>${esc(h.make_model)}</td>
-                <td>${esc(h.type ?? '—')}</td>
-                <td>${h.nrr} dB</td>
-                <td><button class="btn btn-sm btn-ghost" data-remove-hpd="${i}">Remove</button></td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>`
-    }
-    <div id="hpd-add-form" class="inline-form hidden">
-      <input id="hpd-model" type="text" placeholder="Make / Model" />
-      <input id="hpd-nrr"   type="number" min="0" max="40" placeholder="NRR" style="width:80px" />
-      <select id="hpd-type"><option value="Earplug">Earplug</option><option value="Earmuff">Earmuff</option></select>
-      <button class="btn btn-primary btn-sm" id="btn-save-hpd">Add</button>
-      <button class="btn btn-ghost btn-sm"   id="btn-cancel-hpd">Cancel</button>
-    </div>
-  `
-}
-
-function wireTabHandlers(container, companyId, company, employees, hpdInv, navigate) {
-  // Add employee
-  container.querySelector('#btn-add-emp')?.addEventListener('click', () => {
-    container.querySelector('#emp-modal-title').textContent = 'Add Employee'
-    container.querySelector('#emp-modal-body').innerHTML = employeeForm()
-    container.querySelector('#btn-delete-emp').classList.add('hidden')
-    container.querySelector('#modal-emp').classList.remove('hidden')
-  })
-
-  // Edit employee (button click — stop propagation so row click doesn't fire)
-  container.querySelectorAll('[data-edit-emp]').forEach(btn => {
-    btn.addEventListener('click', e => {
+  // Location row / button clicks
+  container.querySelectorAll('.table-row--clickable[data-location-id], .btn[data-location-id]').forEach(el => {
+    el.addEventListener('click', e => {
       e.stopPropagation()
-      const emp = employees.find(em => String(em.employee_id) === btn.dataset.editEmp)
-      if (!emp) return
-      container.querySelector('#emp-modal-title').textContent = 'Edit Employee'
-      container.querySelector('#emp-modal-body').innerHTML = employeeForm(emp)
-      container.querySelector('#btn-delete-emp').classList.remove('hidden')
-      container.querySelector('#modal-emp').classList.remove('hidden')
+      const locId = Number(el.dataset.locationId)
+      if (locId) navigate('location-detail', { currentLocation: { location_id: locId } })
     })
   })
 
-  // Delete employee
-  container.querySelector('#btn-delete-emp')?.addEventListener('click', () => {
-    const editId = container.querySelector('#ef-emp-id')?.value
-    if (!editId) return
-    const emp = employees.find(em => String(em.employee_id) === editId)
-    if (!emp) return
-    if (!confirm(`Permanently delete ${emp.first_name} ${emp.last_name}? (Historical tests will remain on file but the employee will be removed from this list)`)) return
-    
-    deleteEmployee(Number(editId))
-    container.querySelector('#modal-emp').classList.add('hidden')
-    navigate('company-detail', { currentCompany: { company_id: companyId } })
-  })
+  // Add location modal
+  const locModal = container.querySelector('#modal-loc')
+  container.querySelector('#btn-add-location').addEventListener('click',  () => locModal.classList.remove('hidden'))
+  container.querySelector('#modal-close-loc').addEventListener('click',   () => locModal.classList.add('hidden'))
+  container.querySelector('#btn-cancel-loc').addEventListener('click',    () => locModal.classList.add('hidden'))
+  locModal.querySelector('.modal-backdrop').addEventListener('click',     () => locModal.classList.add('hidden'))
 
-  // Employee row click → employee detail screen
-  container.querySelectorAll('.table-row--clickable[data-emp-id]').forEach(row => {
-    row.addEventListener('click', e => {
-      if (e.target.closest('button')) return
-      const empId = Number(row.dataset.empId)
-      const emp   = employees.find(em => em.employee_id === empId)
-      if (!emp) return
-      navigate('employee-detail', { currentEmployee: emp })
+  container.querySelector('#btn-save-loc').addEventListener('click', () => {
+    const name     = locModal.querySelector('#lf-name').value.trim()
+    const province = locModal.querySelector('#lf-province').value
+    if (!name)     { alert('Location name is required.'); return }
+    if (!province) { alert('Province is required.'); return }
+
+    const locId = createLocation({
+      company_id:    companyId,
+      name,
+      province,
+      city:          locModal.querySelector('#lf-city').value.trim()          || null,
+      address:       locModal.querySelector('#lf-address').value.trim()       || null,
+      postal_code:   locModal.querySelector('#lf-postal').value.trim()        || null,
+      contact_name:  locModal.querySelector('#lf-contact-name').value.trim()  || null,
+      contact_phone: locModal.querySelector('#lf-contact-phone').value.trim() || null,
+      contact_email: locModal.querySelector('#lf-contact-email').value.trim() || null,
+      cu_code:       locModal.querySelector('#lf-cu-code').value.trim()       || null,
+      sticky_notes:  locModal.querySelector('#lf-sticky').value.trim()        || null
     })
-  })
 
-  // Test history tab — "View →" buttons and employee name click
-  container.querySelectorAll('.btn-view-emp').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const empId = Number(btn.dataset.empId)
-      const emp   = employees.find(em => em.employee_id === empId)
-      if (emp) navigate('employee-detail', { currentEmployee: emp })
-    })
-  })
-
-  // HPD inventory
-  container.querySelector('#btn-add-hpd')?.addEventListener('click', () => {
-    container.querySelector('#hpd-add-form').classList.remove('hidden')
-  })
-  container.querySelector('#btn-cancel-hpd')?.addEventListener('click', () => {
-    container.querySelector('#hpd-add-form').classList.add('hidden')
-  })
-  container.querySelector('#btn-save-hpd')?.addEventListener('click', () => {
-    const model = container.querySelector('#hpd-model').value.trim()
-    const nrr   = parseFloat(container.querySelector('#hpd-nrr').value)
-    const type  = container.querySelector('#hpd-type').value
-    if (!model || isNaN(nrr)) { alert('Model and NRR are required.'); return }
-    hpdInv.push({ make_model: model, nrr, type })
-    saveHPDInventory(companyId, hpdInv)
-    navigate('company-detail', { currentCompany: company, params: { tab: 'hpd' } })
-  })
-
-  container.querySelectorAll('[data-remove-hpd]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = Number(btn.dataset.removeHpd)
-      hpdInv.splice(idx, 1)
-      saveHPDInventory(companyId, hpdInv)
-      navigate('company-detail', { currentCompany: company, params: { tab: 'hpd' } })
-    })
+    locModal.classList.add('hidden')
+    navigate('location-detail', { currentLocation: { location_id: locId } })
   })
 }
+
+// ---------------------------------------------------------------------------
+// Edit company modal
+// ---------------------------------------------------------------------------
 
 function openEditCompany(container, company, companyId, navigate) {
-  container.querySelector('#modal-co')?.remove()
+  container.querySelector('#modal-edit-co')?.remove()
 
   const div = document.createElement('div')
-  div.id        = 'modal-co'
+  div.id        = 'modal-edit-co'
   div.className = 'modal'
   div.innerHTML = `
     <div class="modal-backdrop"></div>
@@ -346,13 +198,13 @@ function openEditCompany(container, company, companyId, navigate) {
         <button class="modal-close" id="co-close">✕</button>
       </div>
       <div class="modal-body">
-        ${companyForm(company)}
+        ${companyEditForm(company)}
       </div>
       <div class="modal-footer">
         <button class="btn btn-sm btn-ghost" id="co-deactivate" style="color:var(--red);margin-right:auto">
           Deactivate
         </button>
-        <button class="btn btn-ghost" id="co-cancel">Cancel</button>
+        <button class="btn btn-ghost"   id="co-cancel">Cancel</button>
         <button class="btn btn-primary" id="co-save">Save Changes</button>
       </div>
     </div>
@@ -360,8 +212,8 @@ function openEditCompany(container, company, companyId, navigate) {
   container.appendChild(div)
 
   const close = () => div.remove()
-  div.querySelector('#co-close').addEventListener('click', close)
-  div.querySelector('#co-cancel').addEventListener('click', close)
+  div.querySelector('#co-close').addEventListener('click',   close)
+  div.querySelector('#co-cancel').addEventListener('click',  close)
   div.querySelector('.modal-backdrop').addEventListener('click', close)
 
   div.querySelector('#co-deactivate').addEventListener('click', () => {
@@ -373,28 +225,27 @@ function openEditCompany(container, company, companyId, navigate) {
 
   div.querySelector('#co-save').addEventListener('click', () => {
     const name = div.querySelector('#cf-name').value.trim()
-    const prov = div.querySelector('#cf-province').value
-    if (!name || !prov) { alert('Name and province are required.'); return }
+    if (!name) { alert('Company name is required.'); return }
     updateCompany(companyId, {
       name,
-      province:      prov,
-      address:       div.querySelector('#cf-address').value.trim() || null,
-      contact_name:  div.querySelector('#cf-contact-name').value.trim() || null,
+      city:          div.querySelector('#cf-city').value.trim()          || null,
+      address:       div.querySelector('#cf-address').value.trim()       || null,
+      contact_name:  div.querySelector('#cf-contact-name').value.trim()  || null,
       contact_phone: div.querySelector('#cf-contact-phone').value.trim() || null,
       contact_email: div.querySelector('#cf-contact-email').value.trim() || null,
-      sticky_notes:  div.querySelector('#cf-sticky').value.trim() || null,
-      hpd_inventory: getHPDInventory(companyId)
+      website:       div.querySelector('#cf-website').value.trim()       || null,
+      sticky_notes:  div.querySelector('#cf-sticky').value.trim()        || null
     })
     close()
     navigate('company-detail', { currentCompany: { company_id: companyId } })
   })
 }
 
-function companyForm(co = {}) {
-  const PROVS = [
-    ['AB','Alberta'], ['BC','British Columbia'], ['SK','Saskatchewan'],
-    ['MB','Manitoba'], ['ON','Ontario']
-  ]
+// ---------------------------------------------------------------------------
+// Forms
+// ---------------------------------------------------------------------------
+
+function companyEditForm(co = {}) {
   return `
     <div class="form-grid">
       <div class="form-group span-2">
@@ -402,15 +253,12 @@ function companyForm(co = {}) {
         <input id="cf-name" type="text" value="${esc(co.name ?? '')}" />
       </div>
       <div class="form-group">
-        <label>Province *</label>
-        <select id="cf-province">
-          <option value="">— select —</option>
-          ${PROVS.map(([c,l]) => `<option value="${c}" ${co.province === c ? 'selected' : ''}>${c} — ${l}</option>`).join('')}
-        </select>
+        <label>City <span class="label-hint">(HQ)</span></label>
+        <input id="cf-city" type="text" value="${esc(co.city ?? '')}" />
       </div>
       <div class="form-group">
-        <label>Address</label>
-        <input id="cf-address" type="text" value="${esc(co.address ?? '')}" placeholder="123 Main St, City" />
+        <label>Address <span class="label-hint">(HQ)</span></label>
+        <input id="cf-address" type="text" value="${esc(co.address ?? '')}" />
       </div>
       <div class="form-group">
         <label>Contact Name</label>
@@ -420,68 +268,74 @@ function companyForm(co = {}) {
         <label>Contact Phone</label>
         <input id="cf-contact-phone" type="tel" value="${esc(co.contact_phone ?? '')}" />
       </div>
-      <div class="form-group span-2">
+      <div class="form-group">
         <label>Contact Email</label>
         <input id="cf-contact-email" type="email" value="${esc(co.contact_email ?? '')}" />
       </div>
+      <div class="form-group">
+        <label>Website</label>
+        <input id="cf-website" type="text" value="${esc(co.website ?? '')}" placeholder="https://…" />
+      </div>
       <div class="form-group span-2">
-        <label>Sticky Notes <span class="label-hint">(travel with packet to tech)</span></label>
-        <textarea id="cf-sticky" rows="3">${esc(co.sticky_notes ?? '')}</textarea>
+        <label>Notes</label>
+        <textarea id="cf-sticky" rows="2">${esc(co.sticky_notes ?? '')}</textarea>
       </div>
     </div>
   `
 }
 
-function employeeForm(e = {}) {
+function locationForm(loc = {}) {
+  const PROVS = [
+    ['AB','Alberta'], ['BC','British Columbia'], ['SK','Saskatchewan'],
+    ['MB','Manitoba'], ['ON','Ontario']
+  ]
   return `
-    <input type="hidden" id="ef-emp-id" value="${e.employee_id ?? ''}" />
     <div class="form-grid">
-      <div class="form-group">
-        <label>First Name *</label>
-        <input id="ef-first" type="text" value="${esc(e.first_name ?? '')}" />
+      <div class="form-group span-2">
+        <label>Location Name *</label>
+        <input id="lf-name" type="text" value="${esc(loc.name ?? '')}" placeholder="e.g. Kal Tire #021 - Warehouse, Acheson" />
       </div>
       <div class="form-group">
-        <label>Last Name *</label>
-        <input id="ef-last" type="text" value="${esc(e.last_name ?? '')}" />
-      </div>
-      <div class="form-group">
-        <label>Date of Birth</label>
-        <input id="ef-dob" type="date" value="${e.dob ?? ''}" />
-      </div>
-      <div class="form-group">
-        <label>Hire Date</label>
-        <input id="ef-hire" type="date" value="${e.hire_date ?? ''}" />
-      </div>
-      <div class="form-group">
-        <label>Job Title</label>
-        <input id="ef-title" type="text" value="${esc(e.job_title ?? '')}" />
-      </div>
-      <div class="form-group">
-        <label>Status</label>
-        <select id="ef-status">
-          <option value="active"   ${(!e.status || e.status === 'active')   ? 'selected' : ''}>Active</option>
-          <option value="inactive" ${e.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+        <label>Province *</label>
+        <select id="lf-province">
+          <option value="">— select —</option>
+          ${PROVS.map(([c,l]) => `<option value="${c}" ${loc.province === c ? 'selected' : ''}>${c} — ${l}</option>`).join('')}
         </select>
       </div>
+      <div class="form-group">
+        <label>Classification Unit (CU) Code</label>
+        <input id="lf-cu-code" type="text" value="${esc(loc.cu_code ?? '')}" placeholder="e.g. 710006" />
+      </div>
+      <div class="form-group">
+        <label>City</label>
+        <input id="lf-city" type="text" value="${esc(loc.city ?? '')}" />
+      </div>
+      <div class="form-group">
+        <label>Address</label>
+        <input id="lf-address" type="text" value="${esc(loc.address ?? '')}" />
+      </div>
+      <div class="form-group">
+        <label>Postal Code</label>
+        <input id="lf-postal" type="text" value="${esc(loc.postal_code ?? '')}" />
+      </div>
+      <div class="form-group">
+        <label>Contact Name</label>
+        <input id="lf-contact-name" type="text" value="${esc(loc.contact_name ?? '')}" />
+      </div>
+      <div class="form-group">
+        <label>Contact Phone</label>
+        <input id="lf-contact-phone" type="tel" value="${esc(loc.contact_phone ?? '')}" />
+      </div>
+      <div class="form-group">
+        <label>Contact Email</label>
+        <input id="lf-contact-email" type="email" value="${esc(loc.contact_email ?? '')}" />
+      </div>
+      <div class="form-group span-2">
+        <label>Sticky Notes <span class="label-hint">(travel with packet to tech)</span></label>
+        <textarea id="lf-sticky" rows="2">${esc(loc.sticky_notes ?? '')}</textarea>
+      </div>
     </div>
   `
-}
-
-function classificationBadge(cat) {
-  if (!cat) return '—'
-  const cls = { N: 'n', EW: 'ew', A: 'a', NC: 'nc', EWC: 'ewc', AC: 'ac' }[cat] ?? 'n'
-  const lbl = { N: 'Normal', EW: 'Early Warning', A: 'Abnormal', NC: 'Normal Change', EWC: 'EW Change', AC: 'Abn Change' }[cat] ?? cat
-  return `<span class="class-badge class-${cls}">${lbl}</span>`
-}
-
-function adequacyBadge(a) {
-  const m = { Adequate: 'adequate', Marginal: 'marginal', Inadequate: 'inadequate' }
-  return `<span class="class-badge class-${m[a] ?? ''}">${a}</span>`
-}
-
-function parseClassification(val) {
-  if (!val) return null
-  try { return typeof val === 'string' ? JSON.parse(val) : val } catch { return null }
 }
 
 function esc(s) {
