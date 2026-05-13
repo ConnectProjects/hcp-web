@@ -458,7 +458,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
           imported++
         }
       }
-    })
+    }
 
     updatePacketStatus(packetId, 'imported')
     run('UPDATE packets SET testing_duration = ? WHERE packet_id = ?', [packet.testing_duration ?? null, packetId])
