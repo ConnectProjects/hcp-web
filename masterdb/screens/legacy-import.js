@@ -169,6 +169,10 @@ function parseExcel(buffer, filename) {
     if (REQUIRED_FIELDS.every(f => f in attempt)) { headerRowIdx = i; colIndex = attempt; break }
   }
   if (headerRowIdx === -1) return { columnsMapped: false }
+  console.log('Header at row:', headerRowIdx)
+  console.log('Col index:', colIndex)
+  console.log('First data row raw:', raw[headerRowIdx + 1])
+  console.log('Second data row raw:', raw[headerRowIdx + 2])
 
   // Parse data rows
   const rows = [], warnings = []
