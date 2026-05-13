@@ -182,6 +182,11 @@ function parseExcel(buffer, filename) {
 
     const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null
     const testDate    = parseDate(testDateRaw)
+     console.log('TEST DATE DEBUG:', {
+     row: i + 1,
+     raw: testDateRaw,
+     type: typeof testDateRaw
+    })
     if (!testDate) {
       warnings.push(`Row ${i + 1} (${firstName} ${lastName}): unreadable test date "${testDateRaw}" — skipped.`)
       continue
