@@ -1,13 +1,14 @@
-import { getCompany }           from '../db/companies.js'
-import { buildPacketEmployees } from '../db/employees.js'
+import { getLocation }           from '../db/locations.js'
+import { buildPacketEmployees }  from '../db/locations.js'
+import { getHPDInventory }       from '../db/locations.js'
 import { getTechs, createPacketRecord } from '../db/packets.js'
-import { query }                from '../db/sqlite.js'
-import { createPacket }         from '@shared/packet/schema.js'
+import { query }                 from '../db/sqlite.js'
+import { createPacket }          from '@shared/packet/schema.js'
 import { getSyncFolder, pickSyncFolder, writeJsonFile } from '@shared/fs/sync-folder.js'
 
 export function renderGeneratePacket(container, state, navigate) {
-  const company = state.currentCompany?.company_id
-    ? getCompany(state.currentCompany.company_id)
+  const location = state.currentLocation?.location_id
+    ? getLocation(state.currentLocation.location_id)
     : null
 
   const techs = getTechs()
@@ -18,7 +19,7 @@ export function renderGeneratePacket(container, state, navigate) {
       <div class="page-header">
         <div class="breadcrumb">
           <button class="btn btn-link" id="btn-back">
-            ${company ? esc(company.name) : 'Companies'}
+            ${location ? esc(location.name) : 'Companies'}
           </button>
           <span>›</span>
           <span>Generate Packet</span>
@@ -30,12 +31,12 @@ export function renderGeneratePacket(container, state, navigate) {
 
         <div class="form-grid">
           <div class="form-group span-2">
-            <label>Company</label>
-            ${company
-              ? `<div class="read-only-field">${esc(company.name)} (${esc(company.province)})</div>`
-              : `<select id="f-company">
-                  <option value="">— select company —</option>
-                  ${getCompaniesOptions()}
+            <label>Location</label>
+            ${location
+              ? `<div class="read-only-field">${esc(location.name)} · <span class="province-badge">${esc(location.province)}</span></div>`
+              : `<select id="f-location">
+                  <option value="">— select location —</option>
+                  ${getLocationsOptions()}
                 </select>`
             }
           </div>
@@ -74,52 +75,54 @@ export function renderGeneratePacket(container, state, navigate) {
   `
 
   container.querySelector('#btn-back').addEventListener('click', () =>
-    company
-      ? navigate('company-detail', { currentCompany: company })
+    location
+      ? navigate('location-detail', { currentLocation: location })
       : navigate('companies')
   )
 
-  container.querySelector('#btn-preview').addEventListener('click', () =>
-    doPreview(container, company, state)
-  )
-
-  container.querySelector('#btn-generate').addEventListener('click', () =>
-    doGenerate(container, company, state, navigate)
-  )
+  container.querySelector('#btn-preview').addEventListener('click',  () => doPreview(container, location, state))
+  container.querySelector('#btn-generate').addEventListener('click', () => doGenerate(container, location, state, navigate))
 }
 
-function getCompaniesOptions() {
-  const companies = query('SELECT company_id, name, province FROM companies WHERE active = 1 ORDER BY name')
-  return companies.map(c =>
-    `<option value="${c.company_id}">${esc(c.name)} (${esc(c.province)})</option>`
+function getLocationsOptions() {
+  const locations = query(`
+    SELECT l.location_id, l.name, l.province, c.name AS company_name
+    FROM locations l
+    JOIN companies c ON c.company_id = l.company_id
+    WHERE l.active = 1
+    ORDER BY c.name, l.name
+  `)
+  return locations.map(l =>
+    `<option value="${l.location_id}">${esc(l.company_name)} › ${esc(l.name)} (${esc(l.province)})</option>`
   ).join('')
 }
 
-function getFormValues(container, company) {
-  const companyId  = company?.company_id ?? Number(container.querySelector('#f-company')?.value)
+function getFormValues(container, location) {
+  const locationId = location?.location_id ?? Number(container.querySelector('#f-location')?.value)
   const visitDate  = container.querySelector('#f-visit-date').value
   const techSelect = container.querySelector('#f-tech')
   const techId     = techSelect?.value
-  const techInit   = techSelect?.selectedOptions?.[0]?.dataset?.initials ?? techId?.slice(0, 2).toUpperCase()
+  const techInit   = techSelect?.selectedOptions?.[0]?.dataset?.initials ?? techId?.slice(0,2).toUpperCase()
   const techFolder = techSelect?.selectedOptions?.[0]?.dataset?.folder ?? ''
-  return { companyId, visitDate, techId, techInit, techFolder }
+  return { locationId, visitDate, techId, techInit, techFolder }
 }
 
-function doPreview(container, company, state) {
-  const { companyId, visitDate, techId } = getFormValues(container, company)
+function doPreview(container, location, state) {
+  const { locationId, visitDate, techId } = getFormValues(container, location)
   const errEl = container.querySelector('#packet-error')
 
-  if (!companyId) { errEl.textContent = 'Select a company.';    errEl.classList.remove('hidden'); return }
-  if (!visitDate) { errEl.textContent = 'Select a visit date.'; errEl.classList.remove('hidden'); return }
+  if (!locationId) { errEl.textContent = 'Select a location.';  errEl.classList.remove('hidden'); return }
+  if (!visitDate)  { errEl.textContent = 'Select a visit date.'; errEl.classList.remove('hidden'); return }
   errEl.classList.add('hidden')
 
-  const co        = getCompany(companyId)
-  const employees = buildPacketEmployees(companyId)
+  const loc       = getLocation(locationId)
+  const employees = buildPacketEmployees(locationId)
 
   container.querySelector('#preview-content').innerHTML = `
     <div class="preview-card">
-      <div class="preview-row"><span>Company</span><strong>${esc(co.name)}</strong></div>
-      <div class="preview-row"><span>Province</span><strong>${esc(co.province)}</strong></div>
+      <div class="preview-row"><span>Location</span><strong>${esc(loc.name)}</strong></div>
+      <div class="preview-row"><span>Company</span><strong>${esc(loc.company_name)}</strong></div>
+      <div class="preview-row"><span>Province</span><strong>${esc(loc.province)}</strong></div>
       <div class="preview-row"><span>Visit Date</span><strong>${visitDate}</strong></div>
       <div class="preview-row"><span>Employees in packet</span><strong>${employees.length}</strong></div>
       <div class="preview-row"><span>Employees with baseline</span><strong>${employees.filter(e => e.baseline).length}</strong></div>
@@ -138,8 +141,8 @@ function doPreview(container, company, state) {
   container.querySelector('#preview-section').classList.remove('hidden')
 }
 
-async function doGenerate(container, company, state, navigate) {
-  const { companyId, visitDate, techId, techInit, techFolder } = getFormValues(container, company)
+async function doGenerate(container, location, state, navigate) {
+  const { locationId, visitDate, techId, techInit, techFolder } = getFormValues(container, location)
   const errEl = container.querySelector('#packet-error')
   const sucEl = container.querySelector('#packet-success')
   const btn   = container.querySelector('#btn-generate')
@@ -147,16 +150,18 @@ async function doGenerate(container, company, state, navigate) {
   errEl.classList.add('hidden')
   sucEl.classList.add('hidden')
 
-  if (!companyId)  { errEl.textContent = 'Select a company.';                                  errEl.classList.remove('hidden'); return }
-  if (!visitDate)  { errEl.textContent = 'Visit date required.';                                errEl.classList.remove('hidden'); return }
-  if (!techId)     { errEl.textContent = 'Select a tech.';                                      errEl.classList.remove('hidden'); return }
-  if (!techFolder) { errEl.textContent = 'Selected tech has no folder name. Set it in Settings → Technicians.'; errEl.classList.remove('hidden'); return }
+  if (!locationId)  { errEl.textContent = 'Select a location.';   errEl.classList.remove('hidden'); return }
+  if (!visitDate)   { errEl.textContent = 'Visit date required.'; errEl.classList.remove('hidden'); return }
+  if (!techId)      { errEl.textContent = 'Select a tech.';       errEl.classList.remove('hidden'); return }
+  if (!techFolder)  {
+    errEl.textContent = 'Selected tech has no folder name. Set it in Settings → Technicians.'
+    errEl.classList.remove('hidden'); return
+  }
 
   btn.disabled    = true
   btn.textContent = 'Generating…'
 
   try {
-    // Ensure sync folder access
     let folder = state.syncFolder
     if (!folder) {
       btn.textContent = 'Select sync folder…'
@@ -167,14 +172,26 @@ async function doGenerate(container, company, state, navigate) {
 
     btn.textContent = 'Saving packet…'
 
-    const co        = getCompany(companyId)
-    const employees = buildPacketEmployees(companyId)
-    const rules     = query('SELECT * FROM classification_rules WHERE province_code = ? ORDER BY priority DESC', [co.province])
-    const counsel   = query('SELECT * FROM counsel_templates WHERE province_code = ?', [co.province])
-    const hpdInv    = JSON.parse(co.hpd_inventory ?? '[]')
+    const loc       = getLocation(locationId)
+    const employees = buildPacketEmployees(locationId)
+    const rules     = query('SELECT * FROM classification_rules WHERE province_code = ? ORDER BY priority DESC', [loc.province])
+    const counsel   = query('SELECT * FROM counsel_templates    WHERE province_code = ?', [loc.province])
+    const hpdInv    = getHPDInventory(locationId)
+
+    // Build a company-compatible object for createPacket
+    const companyForPacket = {
+      company_id:    loc.company_id,
+      name:          loc.company_name,
+      province:      loc.province,
+      address:       loc.address,
+      contact_name:  loc.contact_name,
+      contact_phone: loc.contact_phone,
+      sticky_notes:  loc.sticky_notes ?? ''
+    }
 
     const packet = createPacket({
-      company:          co,
+      company:          companyForPacket,
+      location:         loc,
       employees,
       rules,
       counselTemplates: counsel,
@@ -182,12 +199,12 @@ async function doGenerate(container, company, state, navigate) {
       techId,
       techInitials:     techInit ?? 'XX',
       visitDate,
-      stickyNotes:      co.sticky_notes ?? ''
+      stickyNotes:      loc.sticky_notes ?? ''
     })
 
     const techSubfolder = `techs/${techFolder}`
     await writeJsonFile(folder, techSubfolder, packet.filename, packet)
-    createPacketRecord(packet.packet_id, companyId, techId, visitDate, packet.filename)
+    createPacketRecord(packet.packet_id, loc.company_id, locationId, techId, visitDate, packet.filename)
 
     sucEl.textContent = `✓ Packet "${packet.filename}" saved to ConnectHearing/techs/${techFolder}.`
     sucEl.classList.remove('hidden')

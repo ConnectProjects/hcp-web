@@ -14,17 +14,24 @@ export function renderEmployeeDetail(container, state, navigate) {
 
 function redraw(container, state, navigate, empId) {
   const emp = queryOne(`
-    SELECT e.*, c.name AS company_name, c.province, c.company_id
+    SELECT e.*,
+      l.name AS location_name, l.province, l.location_id,
+      l.company_id,
+      c.name AS company_name
     FROM employees e
-    JOIN companies c ON c.company_id = e.company_id
+    JOIN locations l ON l.location_id = e.location_id
+    JOIN companies c ON c.company_id  = l.company_id
     WHERE e.employee_id = ?
   `, [empId])
   if (!emp) { navigate('companies'); return }
 
+  const locationId = emp.location_id
+
   const baseline = queryOne(`
-    SELECT * FROM baselines WHERE employee_id = ? AND archived = 0
+    SELECT * FROM baselines
+    WHERE employee_id = ? AND location_id = ? AND archived = 0
     ORDER BY test_date DESC LIMIT 1
-  `, [empId])
+  `, [empId, locationId])
 
   const tests = query(`
     SELECT t.*, h.hpd_make_model, h.rated_nrr, h.derated_nrr, h.lex8hr, h.protected_exposure, h.adequacy
@@ -34,10 +41,8 @@ function redraw(container, state, navigate, empId) {
     ORDER BY t.test_date DESC
   `, [empId])
 
-  // Load org profile for referral form
   const orgProfile = loadOrgProfile()
-
-  const company = { name: emp.company_name, province: emp.province }
+  const location   = { name: emp.location_name, province: emp.province }
 
   container.innerHTML = `
     <div class="page">
@@ -46,6 +51,8 @@ function redraw(container, state, navigate, empId) {
           <button class="btn btn-link" id="btn-back-companies">Companies</button>
           <span>›</span>
           <button class="btn btn-link" id="btn-back-company">${esc(emp.company_name)}</button>
+          <span>›</span>
+          <button class="btn btn-link" id="btn-back-location">${esc(emp.location_name)}</button>
           <span>›</span>
           <span>${esc(emp.last_name)}, ${esc(emp.first_name)}</span>
         </div>
@@ -58,12 +65,18 @@ function redraw(container, state, navigate, empId) {
           <div class="company-meta">
             <span class="province-badge">${esc(emp.province)}</span>
             ${emp.job_title ? `<span>${esc(emp.job_title)}</span>` : ''}
-            ${emp.dob ? `<span>DOB: ${esc(emp.dob)}</span>` : ''}
+            ${emp.dob       ? `<span>DOB: ${esc(emp.dob)}</span>` : ''}
             <span class="badge ${emp.status === 'active' ? 'badge-success' : 'badge-neutral'}">${esc(emp.status ?? 'active')}</span>
+          </div>
+          <div class="company-meta" style="margin-top:4px;font-size:12px;color:var(--grey-500)">
+            ${esc(emp.company_name)} › ${esc(emp.location_name)}
           </div>
         </div>
         <div class="company-kpis">
-          <div class="ckpi"><span class="ckpi-n">${tests.length}</span><span>Tests</span></div>
+          <div class="ckpi">
+            <span class="ckpi-n">${tests.length}</span>
+            <span>Tests</span>
+          </div>
           <div class="ckpi ${baseline ? '' : 'ckpi--warn'}">
             <span class="ckpi-n">${baseline ? '✓' : '✗'}</span>
             <span>Baseline</span>
@@ -85,7 +98,7 @@ function redraw(container, state, navigate, empId) {
         </div>
       ` : `
         <div class="alert alert-warn" style="margin-bottom:16px">
-          No baseline on file. Periodic tests cannot be fully classified until a baseline is recorded.
+          No baseline on file for this location. Periodic tests cannot be fully classified until a baseline is recorded.
         </div>
       `}
 
@@ -96,7 +109,7 @@ function redraw(container, state, navigate, empId) {
         </div>
         ${tests.length === 0
           ? '<p class="empty-note" style="padding:16px">No test records on file.</p>'
-          : tests.map(t => renderTestCard(t, baseline, emp, company, orgProfile)).join('')
+          : tests.map(t => renderTestCard(t, baseline, emp, location, orgProfile)).join('')
         }
       </div>
     </div>
@@ -137,11 +150,15 @@ function redraw(container, state, navigate, empId) {
               <tbody>
                 <tr class="ear-right">
                   <td class="th-ear">R</td>
-                  ${[500,1,2,3,4,6,8].map(f => `<td><input type="number" class="thresh-input" data-ear="right" data-freq="${f===1?'1k':f===1000?'1k':f+'k'}" style="width:50px;text-align:center" /></td>`).join('').replace(/500k/g, '500')}
+                  ${['500','1k','2k','3k','4k','6k','8k'].map(f =>
+                    `<td><input type="number" class="thresh-input" data-ear="right" data-freq="${f}" style="width:50px;text-align:center" /></td>`
+                  ).join('')}
                 </tr>
                 <tr class="ear-left">
                   <td class="th-ear">L</td>
-                  ${[500,1,2,3,4,6,8].map(f => `<td><input type="number" class="thresh-input" data-ear="left" data-freq="${f===1?'1k':f===1000?'1k':f+'k'}" style="width:50px;text-align:center" /></td>`).join('').replace(/500k/g, '500')}
+                  ${['500','1k','2k','3k','4k','6k','8k'].map(f =>
+                    `<td><input type="number" class="thresh-input" data-ear="left" data-freq="${f}" style="width:50px;text-align:center" /></td>`
+                  ).join('')}
                 </tr>
               </tbody>
             </table>
@@ -155,12 +172,16 @@ function redraw(container, state, navigate, empId) {
     </div>
   `
 
+  // Navigation
   container.querySelector('#btn-back-companies').addEventListener('click', () => navigate('companies'))
   container.querySelector('#btn-back-company').addEventListener('click', () =>
     navigate('company-detail', { currentCompany: { company_id: emp.company_id } })
   )
+  container.querySelector('#btn-back-location').addEventListener('click', () =>
+    navigate('location-detail', { currentLocation: { location_id: locationId } })
+  )
 
-  // Wire referral buttons
+  // Referral buttons
   container.querySelectorAll('.btn-print-referral').forEach(btn => {
     btn.addEventListener('click', () => {
       const testId = Number(btn.dataset.testId)
@@ -170,7 +191,7 @@ function redraw(container, state, navigate, empId) {
       openReferralPrintWindow({
         org:            orgProfile,
         worker:         emp,
-        employer:       company,
+        employer:       location,
         test_date:      test.test_date,
         test_type:      test.test_type,
         classification: cls,
@@ -182,7 +203,7 @@ function redraw(container, state, navigate, empId) {
     })
   })
 
-  // Wire "Mark referral sent" buttons
+  // Mark referral sent
   container.querySelectorAll('.btn-mark-sent').forEach(btn => {
     btn.addEventListener('click', () => {
       const testId = Number(btn.dataset.testId)
@@ -192,21 +213,21 @@ function redraw(container, state, navigate, empId) {
     })
   })
 
-  // Wire Delete Test buttons
+  // Delete test
   container.querySelectorAll('.btn-delete-test').forEach(btn => {
     btn.addEventListener('click', () => {
       const testId = Number(btn.dataset.testId)
       const test   = tests.find(t => t.test_id === testId)
       if (!test) return
       if (!confirm(`Permanently delete the test from ${test.test_date}? This cannot be undone.`)) return
-      
       deleteTest(testId)
       redraw(container, state, navigate, empId)
     })
   })
 
-  // Manual Test Modal Handlers
+  // Manual test modal
   const testModal = container.querySelector('#modal-test')
+
   container.querySelector('#btn-manual-test').addEventListener('click', () => {
     container.querySelector('#mt-test-id').value = ''
     container.querySelector('#mt-date').value    = new Date().toISOString().slice(0,10)
@@ -220,51 +241,45 @@ function redraw(container, state, navigate, empId) {
       const testId = Number(btn.dataset.testId)
       const test   = tests.find(t => t.test_id === testId)
       if (!test) return
-
       container.querySelector('#mt-test-id').value = testId
       container.querySelector('#mt-date').value    = test.test_date
       container.querySelector('#mt-type').value    = test.test_type
       container.querySelectorAll('.thresh-input').forEach(input => {
-        const ear  = input.dataset.ear
-        const freq = input.dataset.freq
-        input.value = test[`${ear}_${freq}`] ?? ''
+        input.value = test[`${input.dataset.ear}_${input.dataset.freq}`] ?? ''
       })
       testModal.classList.remove('hidden')
     })
   })
 
-  container.querySelector('#btn-cancel-test').addEventListener('click', () => testModal.classList.add('hidden'))
+  container.querySelector('#btn-cancel-test').addEventListener('click',  () => testModal.classList.add('hidden'))
   container.querySelector('#modal-close-test').addEventListener('click', () => testModal.classList.add('hidden'))
 
   container.querySelector('#btn-save-test').addEventListener('click', () => {
     const testId = container.querySelector('#mt-test-id').value
-    const date = container.querySelector('#mt-date').value
-    const type = container.querySelector('#mt-type').value
+    const date   = container.querySelector('#mt-date').value
+    const type   = container.querySelector('#mt-type').value
     if (!date) { alert('Date is required.'); return }
 
     const thresholds = {}
     container.querySelectorAll('.thresh-input').forEach(input => {
-      const ear = input.dataset.ear
-      const freq = input.dataset.freq
-      thresholds[`${ear}_${freq}`] = input.value ? Number(input.value) : null
+      thresholds[`${input.dataset.ear}_${input.dataset.freq}`] =
+        input.value ? Number(input.value) : null
     })
 
     const data = {
       employee_id: empId,
+      location_id: locationId,
       test_date:   date,
       test_type:   type,
       province:    emp.province,
       ...thresholds
     }
 
-    if (testId) {
-      updateTest(Number(testId), data)
-    } else {
-      createTest(data)
-    }
+    if (testId) updateTest(Number(testId), data)
+    else        createTest(data)
 
     if (type === 'Baseline') {
-      createBaseline(empId, date, thresholds)
+      createBaseline(empId, locationId, date, thresholds)
     }
 
     testModal.classList.add('hidden')
@@ -276,13 +291,13 @@ function redraw(container, state, navigate, empId) {
 // Test card renderer
 // ---------------------------------------------------------------------------
 
-function renderTestCard(test, baseline, emp, company, orgProfile) {
-  const cls        = parseClassification(test.classification)
-  const cat        = cls?.category ?? null
-  const needsRef   = cat && REFERRAL_CATS.has(cat)
-  const refGiven   = !!test.referral_given_to_worker
-  const refSent    = !!test.referral_sent_to_employer
-  const sentDate   = test.referral_sent_date ?? null
+function renderTestCard(test, baseline, emp, location, orgProfile) {
+  const cls      = parseClassification(test.classification)
+  const cat      = cls?.category ?? null
+  const needsRef = cat && REFERRAL_CATS.has(cat)
+  const refGiven = !!test.referral_given_to_worker
+  const refSent  = !!test.referral_sent_to_employer
+  const sentDate = test.referral_sent_date ?? null
 
   const questionnaire = test.questionnaire ? parseJson(test.questionnaire) : null
 
@@ -294,12 +309,8 @@ function renderTestCard(test, baseline, emp, company, orgProfile) {
           <span class="test-type">${esc(test.test_type)}</span>
           ${cls ? `<span class="class-badge class-${(cat ?? 'n').toLowerCase()}">${esc(cat)}</span>` : ''}
           ${test.sts_flag ? '<span class="sts-chip">STS</span>' : ''}
-          <button class="btn btn-link btn-sm btn-edit-test" data-test-id="${test.test_id}" style="text-decoration:none">
-            Edit
-          </button>
-          <button class="btn btn-link btn-sm btn-delete-test" data-test-id="${test.test_id}" style="color:var(--red);text-decoration:none">
-            Remove Test
-          </button>
+          <button class="btn btn-link btn-sm btn-edit-test" data-test-id="${test.test_id}" style="text-decoration:none">Edit</button>
+          <button class="btn btn-link btn-sm btn-delete-test" data-test-id="${test.test_id}" style="color:var(--red);text-decoration:none">Remove</button>
         </div>
         ${needsRef ? `
           <div class="referral-status-row">
@@ -321,32 +332,17 @@ function renderTestCard(test, baseline, emp, company, orgProfile) {
         <div class="test-questionnaire">
           <div class="test-counsel-label">Pre-Test Questionnaire</div>
           <div class="q-grid">
-            <div class="q-item">
-              <span class="q-label">Noise < 2h:</span>
+            <div class="q-item"><span class="q-label">Noise &lt; 2h:</span>
               <span class="q-val">${questionnaire.pre.noise_2h === true ? `Yes (${questionnaire.pre.noise_2h_duration})` : questionnaire.pre.noise_2h === false ? 'No' : '—'}</span>
             </div>
-            <div class="q-item">
-              <span class="q-label">Wears HPD:</span>
+            <div class="q-item"><span class="q-label">Wears HPD:</span>
               <span class="q-val">${questionnaire.pre.wear_hpd === true ? 'Yes' : questionnaire.pre.wear_hpd === false ? 'No' : '—'}</span>
             </div>
             ${questionnaire.pre.wear_hpd === true ? `
-              <div class="q-item">
-                <span class="q-label">HPD Class:</span>
-                <span class="q-val">${esc(questionnaire.pre.hpd_class || '—')}</span>
-              </div>
-              <div class="q-item">
-                <span class="q-label">HPD Style:</span>
-                <span class="q-val">${esc(questionnaire.pre.hpd_style || '—')}</span>
-              </div>
+              <div class="q-item"><span class="q-label">HPD Class:</span><span class="q-val">${esc(questionnaire.pre.hpd_class || '—')}</span></div>
+              <div class="q-item"><span class="q-label">HPD Style:</span><span class="q-val">${esc(questionnaire.pre.hpd_style || '—')}</span></div>
             ` : ''}
-            ${questionnaire.pre.wear_hpd === false && questionnaire.pre.hpd_no_reason ? `
-              <div class="q-item">
-                <span class="q-label">HPD No Reason:</span>
-                <span class="q-val">${esc(questionnaire.pre.hpd_no_reason)}</span>
-              </div>
-            ` : ''}
-            <div class="q-item">
-              <span class="q-label">Employer Info:</span>
+            <div class="q-item"><span class="q-label">Employer Info:</span>
               <span class="q-val">${questionnaire.pre.employer_info ? 'Yes' : 'No'}</span>
             </div>
           </div>
@@ -385,20 +381,18 @@ function renderTestCard(test, baseline, emp, company, orgProfile) {
 // ---------------------------------------------------------------------------
 
 function buildAudiogramCard(test, baselineThresholds, showShifts) {
-  const FREQS      = [500, 1000, 2000, 3000, 4000, 6000, 8000]
-  const FREQ_LABELS= ['500', '1K', '2K', '3K', '4K', '6K', '8K']
-  const FREQ_KEYS  = {
+  const FREQ_LABELS = ['500', '1K', '2K', '3K', '4K', '6K', '8K']
+  const FREQ_KEYS = {
     left:  ['left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k'],
     right: ['right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k']
   }
 
   function row(ear) {
-    return FREQ_KEYS[ear].map((key, i) => {
+    return FREQ_KEYS[ear].map(key => {
       const val   = test[key]
       const disp  = val != null ? String(val) : '—'
       const shift = (showShifts && baselineThresholds && val != null && baselineThresholds[key] != null)
-        ? Number(val) - Number(baselineThresholds[key])
-        : null
+        ? Number(val) - Number(baselineThresholds[key]) : null
       const shiftStr = shift !== null
         ? `<span class="threshold-shift ${shift > 0 ? 'shift-worse' : 'shift-better'}">${shift > 0 ? '+' : ''}${shift}</span>`
         : ''
@@ -417,13 +411,12 @@ function buildAudiogramCard(test, baselineThresholds, showShifts) {
         </thead>
         <tbody>
           <tr class="ear-right"><td class="th-ear">R</td>${row('right')}</tr>
-          <tr class="ear-left"><td class="th-ear">L</td>${row('left')}</tr>
+          <tr class="ear-left" ><td class="th-ear">L</td>${row('left')}</tr>
           ${showShifts && baselineThresholds ? `
             <tr class="shift-row">
               <td class="th-ear td-muted" style="font-size:10px">Δ R</td>
               ${FREQ_KEYS.right.map(key => {
-                const cur  = test[key]
-                const base = baselineThresholds[key]
+                const cur = test[key]; const base = baselineThresholds[key]
                 if (cur == null || base == null) return '<td>—</td>'
                 const s = Number(cur) - Number(base)
                 return `<td class="${s > 0 ? 'shift-worse' : s < 0 ? 'shift-better' : ''}">${s > 0 ? '+' : ''}${s}</td>`
@@ -432,8 +425,7 @@ function buildAudiogramCard(test, baselineThresholds, showShifts) {
             <tr class="shift-row">
               <td class="th-ear td-muted" style="font-size:10px">Δ L</td>
               ${FREQ_KEYS.left.map(key => {
-                const cur  = test[key]
-                const base = baselineThresholds[key]
+                const cur = test[key]; const base = baselineThresholds[key]
                 if (cur == null || base == null) return '<td>—</td>'
                 const s = Number(cur) - Number(base)
                 return `<td class="${s > 0 ? 'shift-worse' : s < 0 ? 'shift-better' : ''}">${s > 0 ? '+' : ''}${s}</td>`
@@ -451,24 +443,18 @@ function buildAudiogramCard(test, baselineThresholds, showShifts) {
 // ---------------------------------------------------------------------------
 
 function loadOrgProfile() {
-  const get = (key) => queryOne(`SELECT value FROM settings WHERE key = ?`, [key])?.value ?? ''
+  const get = k => queryOne(`SELECT value FROM settings WHERE key = ?`, [k])?.value ?? ''
   return {
-    name:     get('org_name'),
-    address:  get('org_address'),
-    city:     get('org_city'),
-    province: get('org_province'),
-    postal:   get('org_postal'),
-    phone:    get('org_phone'),
-    email:    get('org_email'),
-    website:  get('org_website'),
-    logoUrl:  get('company_logo')
+    name: get('org_name'), address: get('org_address'), city: get('org_city'),
+    province: get('org_province'), postal: get('org_postal'),
+    phone: get('org_phone'), email: get('org_email'),
+    website: get('org_website'), logoUrl: get('company_logo')
   }
 }
 
 function getTechForTest(techId) {
   if (!techId) return { name: '', iat_number: '' }
-  const t = queryOne('SELECT name, iat_number FROM techs WHERE tech_id = ?', [techId])
-  return t ?? { name: '', iat_number: '' }
+  return queryOne('SELECT name, iat_number FROM techs WHERE tech_id = ?', [techId]) ?? { name: '', iat_number: '' }
 }
 
 function extractThresholds(record) {
