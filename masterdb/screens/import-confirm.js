@@ -306,22 +306,50 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
+      f      // Find or create default location for imported packets
+      let defaultLocation = queryOne(
+        `SELECT * FROM locations
+         WHERE company_id = ?
+         LIMIT 1`,
+        [resolvedCompany.company_id]
+      )
+
+      if (!defaultLocation) {
+        run(`
+          INSERT INTO locations
+          (company_id, name, province, active)
+          VALUES (?, ?, ?, 1)
+        `, [
+          resolvedCompany.company_id,
+          `${resolvedCompany.name} Main Location`,
+          resolvedCompany.province ?? province
+        ])
+
+        defaultLocation = queryOne(
+          `SELECT * FROM locations
+           WHERE company_id = ?
+           ORDER BY location_id DESC
+           LIMIT 1`,
+          [resolvedCompany.company_id]
+        )
+      }
+
       for (const emp of packet.employees) {
         if (!emp.completed_tests?.length) continue
 
-        // Find or create employee within resolved company
+        // Find or create employee within default location
         let dbEmp = queryOne(
           `SELECT employee_id FROM employees
-           WHERE company_id = ? AND first_name = ? AND last_name = ?`,
-          [resolvedCompany.company_id, emp.first_name, emp.last_name]
+           WHERE location_id = ? AND first_name = ? AND last_name = ?`,
+          [defaultLocation.location_id, emp.first_name, emp.last_name]
         )
 
         if (!dbEmp) {
           run(`INSERT INTO employees
-            (company_id, first_name, last_name, dob, hire_date, job_title, status)
+            (location_id, first_name, last_name, dob, hire_date, job_title, status)
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-              resolvedCompany.company_id,
+              defaultLocation.location_id,
               emp.first_name,
               emp.last_name,
               emp.dob        ?? null,
@@ -330,16 +358,65 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
               emp.status     ?? 'active'
             ]
           )
+
           dbEmp = queryOne(
             `SELECT employee_id FROM employees
-             WHERE company_id = ? AND first_name = ? AND last_name = ? LIMIT 1`,
-            [resolvedCompany.company_id, emp.first_name, emp.last_name]
+             WHERE location_id = ? AND first_name = ? AND last_name = ?
+             LIMIT 1`,
+            [defaultLocation.location_id, emp.first_name, emp.last_name]
           )
+
           if (!dbEmp) {
             console.warn(`Could not create employee: ${emp.last_name}, ${emp.first_name}`)
-            return
+            continue
           }
         }
+
+        for (const test of emp.completed_tests) {
+          // Prevention: Check if this specific test already exists
+          const existingTest = queryOne(
+            `SELECT test_id FROM tests
+             WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
+            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id]
+          )
+
+          if (existingTest) {
+            console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
+            continue
+          }
+
+          const testId = createTest({
+            employee_id:              dbEmp.employee_id,
+            location_id:              defaultLocation.location_id,
+            test_date:                test.test_date,
+            tech_id:                  test.tech_id ?? packet.tech?.tech_id,
+            test_type:                test.test_type ?? 'Periodic',
+            province,
+            ...(test.thresholds ?? {}),
+            classification:           test.classification,
+            counsel_text:             test.counsel_text,
+            tech_notes:               test.tech_notes,
+            questionnaire:            test.questionnaire,
+            referral_given_to_worker: test.referral_given_to_worker ?? 0,
+            packet_id:                packet.packet_id
+          })
+
+          if (test.hpd_assessment?.valid) {
+            createHPDAssessment(testId, test.hpd_assessment)
+          }
+
+          if (test.test_type === 'Baseline') {
+            createBaseline(
+              dbEmp.employee_id,
+              defaultLocation.location_id,
+              test.test_date,
+              test.thresholds ?? {}
+            )
+          }
+
+          imported++
+        }
+      }
 
         for (const test of emp.completed_tests) {
           // Prevention: Check if this specific test already exists in the database
