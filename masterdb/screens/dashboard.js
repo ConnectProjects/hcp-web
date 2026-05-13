@@ -177,8 +177,8 @@ export function renderDashboard(container, state, navigate) {
 
   container.querySelectorAll('.company-link').forEach(row => {
     row.addEventListener('click', () => {
-      const id = Number(row.dataset.companyId)
-      navigate('company-detail', { currentCompany: { company_id: id } })
+      const id = Number(row.dataset.locationId)
+      navigate('location-detail', { currentLocation: { location_id: id } })
     })
   })
 
