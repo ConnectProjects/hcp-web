@@ -77,7 +77,7 @@ const NAV_PARENT = {
   'rejected-packets': 'packets',
   'import-confirm':  'packets',
   'province-rules':  'settings',
-  'location-detail': 'companies',
+  'location-detail': 'companies'
 }
 
 function isNavActive(current, navScreen) {
