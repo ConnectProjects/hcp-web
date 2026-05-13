@@ -431,11 +431,13 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
 
     setTimeout(() => navigate('incoming'), 1800)
  } catch (e) {
-    errEl.textContent = `Import failed: ${e.message}`
-    errEl.classList.remove('hidden')
-    btn.disabled    = false
-    btn.textContent = 'Import Tests into MasterDB'
-  }
+  console.error('IMPORT ERROR:', e)
+
+  errEl.textContent = `Import failed: ${e.message}`
+  errEl.classList.remove('hidden')
+  btn.disabled = false
+  btn.textContent = 'Import Tests into MasterDB'
+}
 }
 
 function esc(s) {
