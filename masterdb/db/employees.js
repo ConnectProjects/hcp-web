@@ -140,7 +140,7 @@ export function createBaseline(employeeId, locationId, testDate, thresholds) {
 
   run(`INSERT INTO baselines
     (employee_id, location_id, test_date, ${THRESHOLD_COLS})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [employeeId, locationId, testDate, ...thresholdValues(thresholds)]
   )
   return lastInsertId()
