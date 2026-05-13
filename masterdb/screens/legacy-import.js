@@ -140,9 +140,10 @@ function parseExcel(buffer, filename) {
 
   const wb = XLSX.read(buffer, { type: 'array', raw: true })
   const sheetName = wb.SheetNames.find(n => {
-    const ws = wb.Sheets[n]
-    return ws && Object.keys(ws).length > 1
-  })
+  if (n === 'A.Template') return false
+  const ws = wb.Sheets[n]
+  return ws && Object.keys(ws).length > 5
+})
   if (!sheetName) throw new Error('No data found in any sheet.')
 
   const ws  = wb.Sheets[sheetName]
