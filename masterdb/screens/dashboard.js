@@ -18,7 +18,8 @@ export function renderDashboard(container, state, navigate) {
            t.referral_given_to_worker
     FROM tests t
     JOIN employees e ON e.employee_id = t.employee_id
-    JOIN companies c ON c.company_id  = e.company_id
+    JOIN locations l ON l.location_id = e.location_id
+    JOIN companies c ON c.company_id  = l.company_id
     WHERE t.sts_flag = 1
       AND (t.referral_sent_to_employer IS NULL OR t.referral_sent_to_employer = 0)
       AND c.active = 1
