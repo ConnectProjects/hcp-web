@@ -5,25 +5,28 @@ export function renderEmployees(container, state, navigate) {
   const filter = state.params?.filter ?? ''
 
   const ALL_EMPLOYEES_SQL = `
-    SELECT e.*, c.name AS company_name, c.province,
+    SELECT e.*,
+      l.name AS location_name, l.province,
+      c.name AS company_name,
       (SELECT t.classification FROM tests t WHERE t.employee_id = e.employee_id ORDER BY t.test_date DESC LIMIT 1) AS last_classification,
-      (SELECT t.test_date FROM tests t WHERE t.employee_id = e.employee_id ORDER BY t.test_date DESC LIMIT 1) AS last_test_date
+      (SELECT t.test_date     FROM tests t WHERE t.employee_id = e.employee_id ORDER BY t.test_date DESC LIMIT 1) AS last_test_date
     FROM employees e
-    JOIN companies c ON c.company_id = e.company_id
-    WHERE e.status = 'active' AND c.active = 1
+    JOIN locations l ON l.location_id = e.location_id
+    JOIN companies c ON c.company_id  = l.company_id
+    WHERE e.status = 'active' AND l.active = 1
     ORDER BY e.last_name, e.first_name
   `
 
   let currentFilter = filter
   let currentSearch = ''
-  let sortCol      = 'last_name'
-  let sortDir      = 1 // 1 asc, -1 desc
+  let sortCol       = 'last_name'
+  let sortDir       = 1
 
   function getDisplayed() {
     let base = currentSearch.length >= 2
       ? searchEmployees(currentSearch)
       : query(ALL_EMPLOYEES_SQL)
-    
+
     if (currentFilter) {
       base = base.filter(e => {
         const cat = parseClassification(e.last_classification)?.category
@@ -37,8 +40,6 @@ export function renderEmployees(container, state, navigate) {
     base.sort((a, b) => {
       let va = a[sortCol] ?? ''
       let vb = b[sortCol] ?? ''
-      
-      // Special handling for full name if requested, but use columns for now
       if (sortCol === 'name') {
         va = `${a.last_name}, ${a.first_name}`.toLowerCase()
         vb = `${b.last_name}, ${b.first_name}`.toLowerCase()
@@ -46,9 +47,8 @@ export function renderEmployees(container, state, navigate) {
         if (typeof va === 'string') va = va.toLowerCase()
         if (typeof vb === 'string') vb = vb.toLowerCase()
       }
-
       if (va < vb) return -1 * sortDir
-      if (va > vb) return 1 * sortDir
+      if (va > vb) return  1 * sortDir
       return 0
     })
 
@@ -73,25 +73,26 @@ export function renderEmployees(container, state, navigate) {
         <div class="header-actions">
           <select id="filter-cat" class="select-sm">
             <option value="">All classifications</option>
-            <option value="A"   ${currentFilter === 'A'   ? 'selected' : ''}>Abnormal / AC</option>
-            <option value="EW"  ${currentFilter === 'EW'  ? 'selected' : ''}>Early Warning</option>
-            <option value="N"   ${currentFilter === 'N'   ? 'selected' : ''}>Normal / NC</option>
+            <option value="A"  ${currentFilter === 'A'  ? 'selected' : ''}>Abnormal / AC</option>
+            <option value="EW" ${currentFilter === 'EW' ? 'selected' : ''}>Early Warning</option>
+            <option value="N"  ${currentFilter === 'N'  ? 'selected' : ''}>Normal / NC</option>
           </select>
         </div>
       </div>
 
       <div class="toolbar">
-        <input id="emp-search" type="search" class="search-input" placeholder="Search by name or company…" />
+        <input id="emp-search" type="search" class="search-input" placeholder="Search by name, company, or location…" />
         <span class="result-count" id="result-count">${initialDisplayed.length} employee${initialDisplayed.length !== 1 ? 's' : ''}</span>
       </div>
 
       <table class="data-table">
         <thead id="emp-thead">
           <tr>
-            <th data-col="name" class="sortable">Name ${sortCol === 'name' ? (sortDir === 1 ? '↑' : '↓') : ''}</th>
-            <th data-col="company_name" class="sortable">Company ${sortCol === 'company_name' ? (sortDir === 1 ? '↑' : '↓') : ''}</th>
-            <th data-col="province" class="sortable">Province ${sortCol === 'province' ? (sortDir === 1 ? '↑' : '↓') : ''}</th>
-            <th data-col="last_test_date" class="sortable">Last Test ${sortCol === 'last_test_date' ? (sortDir === 1 ? '↑' : '↓') : ''}</th>
+            <th data-col="name"          class="sortable">Name</th>
+            <th data-col="company_name"  class="sortable">Company</th>
+            <th data-col="location_name" class="sortable">Location</th>
+            <th data-col="province"      class="sortable">Province</th>
+            <th data-col="last_test_date" class="sortable">Last Test</th>
             <th>Classification</th>
           </tr>
         </thead>
@@ -102,21 +103,22 @@ export function renderEmployees(container, state, navigate) {
     </div>
   `
 
+  const HEADERS = {
+    name:          'Name',
+    company_name:  'Company',
+    location_name: 'Location',
+    province:      'Province',
+    last_test_date:'Last Test'
+  }
+
   container.querySelector('#emp-thead').addEventListener('click', e => {
     const th = e.target.closest('th[data-col]')
     if (!th) return
     const col = th.dataset.col
-    if (sortCol === col) {
-      sortDir *= -1
-    } else {
-      sortCol = col
-      sortDir = 1
-    }
-    // Update headers
+    sortDir = (sortCol === col) ? sortDir * -1 : 1
+    sortCol = col
     container.querySelectorAll('th[data-col]').forEach(t => {
-      const c = t.dataset.col
-      const label = c === 'name' ? 'Name' : c === 'company_name' ? 'Company' : c === 'province' ? 'Province' : 'Last Test'
-      t.textContent = `${label} ${sortCol === c ? (sortDir === 1 ? '↑' : '↓') : ''}`
+      t.textContent = `${HEADERS[t.dataset.col]} ${sortCol === t.dataset.col ? (sortDir === 1 ? '↑' : '↓') : ''}`
     })
     refresh()
   })
@@ -136,14 +138,15 @@ export function renderEmployees(container, state, navigate) {
 
 function renderRows(employees) {
   if (employees.length === 0) {
-    return '<tr><td colspan="5" class="empty-cell">No employees found.</td></tr>'
+    return '<tr><td colspan="6" class="empty-cell">No employees found.</td></tr>'
   }
   return employees.map(e => {
     const cls = parseClassification(e.last_classification)?.category
     return `
-      <tr class="table-row" data-company-id="${e.company_id}">
+      <tr class="table-row" data-emp-id="${e.employee_id}" data-location-id="${e.location_id}">
         <td class="td-primary">${esc(e.last_name)}, ${esc(e.first_name)}</td>
         <td>${esc(e.company_name)}</td>
+        <td>${esc(e.location_name)}</td>
         <td><span class="province-badge">${esc(e.province)}</span></td>
         <td>${e.last_test_date ?? '—'}</td>
         <td>${cls ? classBadge(cls) : '—'}</td>
@@ -153,9 +156,9 @@ function renderRows(employees) {
 }
 
 function attachRowHandlers(container, navigate) {
-  container.querySelectorAll('.table-row[data-company-id]').forEach(row => {
+  container.querySelectorAll('.table-row[data-emp-id]').forEach(row => {
     row.addEventListener('click', () =>
-      navigate('company-detail', { currentCompany: { company_id: Number(row.dataset.companyId) } })
+      navigate('employee-detail', { currentEmployee: { employee_id: Number(row.dataset.empId) } })
     )
   })
 }
