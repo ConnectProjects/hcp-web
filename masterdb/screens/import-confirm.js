@@ -457,7 +457,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
 
           imported++
         }
-      }
+      })
     }
 
     updatePacketStatus(packetId, 'imported')
