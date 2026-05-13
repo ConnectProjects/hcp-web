@@ -18,6 +18,7 @@ import { renderSettings }     from './screens/settings.js'
 import { renderProvinceRules }from './screens/province-rules.js'
 import { renderReports }      from './screens/reports.js'
 import { renderHelp }         from './screens/help.js'
+import { renderLocationDetail } from './screens/location-detail.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -55,6 +56,7 @@ const SCREENS = {
   reports:           renderReports,
   'legacy-import':   renderLegacyImport,
   help:              renderHelp,
+  'location-detail': renderLocationDetail,
 }
 
 const NAV_ITEMS = [
@@ -75,6 +77,7 @@ const NAV_PARENT = {
   'rejected-packets': 'packets',
   'import-confirm':  'packets',
   'province-rules':  'settings'
+  'location-detail': 'companies',
 }
 
 function isNavActive(current, navScreen) {
