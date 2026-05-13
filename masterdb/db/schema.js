@@ -295,7 +295,7 @@ export async function initSchema() {
   // employees — drop company_id NOT NULL constraint, replace with location_id
   // SQLite cannot alter column constraints so we recreate the table
   try {
-    const hasCo = queryOne(`SELECT * FROM pragma_table_info('employees') WHERE name = 'company_id'`)
+    const hasCo = query(`SELECT * FROM pragma_table_info('employees') WHERE name = 'company_id'`).length > 0
     if (hasCo) {
       db.run(`CREATE TABLE IF NOT EXISTS employees_new (
         employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
