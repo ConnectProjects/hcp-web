@@ -221,7 +221,10 @@ function parseExcel(buffer, filename) {
                        'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k']
   const missingCols = FREQ_FIELDS.filter(f => colIndex[f] == null)
 
-  return { columnsMapped: true, companyName, companyFromFile, visitDate, rows, warnings, missingCols, colIndex }
+  const locationName = companyNameFromFilename(filename)
+const province     = 'AB'
+
+return { columnsMapped: true, companyName, locationName, province, companyFromFile, visitDate, rows, warnings, missingCols, colIndex }
 }
 
 // ---------------------------------------------------------------------------
@@ -488,7 +491,7 @@ function runImport(parsed, decisions, container, navigate) {
   let result
   try {
     transaction(({ run }) => {
-      result = doImport(parsed.companyName, parsed.rows, run, decisions)
+    result = doImport(parsed.companyName, parsed.locationName, parsed.province, parsed.rows, run, decisions)
     })
   } catch (err) {
     showError(container, `Import failed: ${err.message}`)
@@ -522,9 +525,10 @@ function runImport(parsed, decisions, container, navigate) {
 // Core DB write logic
 // ---------------------------------------------------------------------------
 
-function doImport(companyName, rows, run, decisions) {
+function doImport(companyName, locationName, province, rows, run, decisions) {
   const stats = {
-    companyCreated: false, companyId: null,
+    companyCreated:  false, companyId:  null,
+    locationCreated: false, locationId: null,
     employeesCreated: 0,   employeesMatched: 0,
     testsInserted: 0,      baselinesSet: 0,
     skipped: 0
@@ -535,19 +539,36 @@ function doImport(companyName, rows, run, decisions) {
   if (company) {
     stats.companyId = company.company_id
   } else {
-    run(`INSERT INTO companies (name, province, created_at, updated_at)
-         VALUES (?, 'AB', datetime('now'), datetime('now'))`, [companyName])
+    run(`INSERT INTO companies (name, created_at, updated_at)
+         VALUES (?, datetime('now'), datetime('now'))`, [companyName])
     stats.companyId      = queryOne('SELECT last_insert_rowid() AS id').id
     stats.companyCreated = true
   }
 
   const companyId = stats.companyId
 
+  // 2. Find or create location
+  let location = queryOne(
+    'SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE',
+    [companyId, locationName]
+  )
+  if (location) {
+    stats.locationId = location.location_id
+  } else {
+    run(`INSERT INTO locations (company_id, name, province, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+        [companyId, locationName, province])
+    stats.locationId      = queryOne('SELECT last_insert_rowid() AS id').id
+    stats.locationCreated = true
+  }
+
+  const locationId = stats.locationId
+
   for (const row of rows) {
     const conflictKey = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
     const decision    = decisions[conflictKey]
 
-    // 2. Resolve employee
+    // 3. Resolve employee
     let employeeId = null
 
     if (decision?.action === 'skip') {
@@ -557,21 +578,21 @@ function doImport(companyName, rows, run, decisions) {
       employeeId = decision.employeeId
       stats.employeesMatched++
     } else if (decision?.action === 'new') {
-      run(`INSERT INTO employees (company_id, first_name, last_name, dob, job_title, status, created_at)
+      run(`INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at)
            VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
-          [companyId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
+          [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
       employeeId = queryOne('SELECT last_insert_rowid() AS id').id
       stats.employeesCreated++
     } else {
       // Normal matching — no conflict flagged
-      let employee = findEmployee(companyId, row)
+      let employee = findEmployee(locationId, row)
       if (employee) {
         employeeId = employee.employee_id
         stats.employeesMatched++
       } else {
-        run(`INSERT INTO employees (company_id, first_name, last_name, dob, job_title, status, created_at)
+        run(`INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at)
              VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
-            [companyId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
+            [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
         employeeId = queryOne('SELECT last_insert_rowid() AS id').id
         stats.employeesCreated++
       }
@@ -583,7 +604,7 @@ function doImport(companyName, rows, run, decisions) {
 
     // 4. Insert test
     run(`INSERT INTO tests (
-          employee_id, test_date, test_type, province,
+      employee_id, location_id, test_date, test_type, province,
           left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
           right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
           classification, tech_notes, created_at
@@ -608,7 +629,7 @@ function doImport(companyName, rows, run, decisions) {
     if (row.testType === 'Baseline' &&
         !queryOne('SELECT baseline_id FROM baselines WHERE employee_id = ? AND archived = 0', [employeeId])) {
       run(`INSERT INTO baselines (
-            employee_id, test_date,
+      employee_id, location_id, test_date,
             left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
             right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
             created_at
@@ -631,19 +652,19 @@ function doImport(companyName, rows, run, decisions) {
 // Employee matching
 // ---------------------------------------------------------------------------
 
-function findEmployee(companyId, row) {
+function findEmployee(locationId, row) {
   if (row.dob) {
     const m = queryOne(
       `SELECT employee_id FROM employees
-       WHERE company_id = ? AND first_name = ? COLLATE NOCASE
+       WHERE location_id = ? AND first_name = ? COLLATE NOCASE
          AND last_name = ? COLLATE NOCASE AND dob = ?`,
-      [companyId, row.firstName, row.lastName, row.dob])
+      [locationId, row.firstName, row.lastName, row.dob])
     if (m) return m
   }
   return queryOne(
     `SELECT employee_id FROM employees
-     WHERE company_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
-    [companyId, row.firstName, row.lastName])
+     WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
+    [locationId, row.firstName, row.lastName])
 }
 
 // ---------------------------------------------------------------------------
