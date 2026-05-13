@@ -178,8 +178,6 @@ function parseExcel(buffer, filename) {
     const firstName = str(r[colIndex.firstName])
     const lastName  = str(r[colIndex.lastName])
     if (!firstName && !lastName) continue
-    if (/^[A-Z\d\/\s]+$/.test(firstName) && !firstName.match(/[aeiou]/i) && firstName.length < 12) continue
-
     const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null
     const testDate    = parseDate(testDateRaw)
      console.log('TEST DATE DEBUG:', {
