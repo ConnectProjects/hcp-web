@@ -109,12 +109,12 @@ export function renderDashboard(container, state, navigate) {
             ? '<p class="empty-note">No companies due soon.</p>'
             : `<div class="overdue-list">
                 ${comingSoon.map(c => `
-                  <div class="overdue-row company-link" data-company-id="${c.company_id}" style="cursor:pointer">
-                    <div class="overdue-info">
-                      <div class="overdue-name">${esc(c.name)}</div>
-                      <div class="overdue-meta">${esc(c.province)} · ${c.last_test_date ? 'Last visit: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
-                    </div>
-                  </div>
+                <div class="overdue-row company-link" data-location-id="${c.location_id}" style="cursor:pointer">
+  <div class="overdue-info">
+    <div class="overdue-name">${esc(c.name)}</div>
+    <div class="overdue-meta">${esc(c.company_name)} · ${esc(c.province)} · ${c.last_test_date ? 'Last visit: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
+  </div>
+</div>
                 `).join('')}
               </div>`
           }
