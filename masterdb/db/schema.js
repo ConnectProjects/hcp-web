@@ -315,6 +315,33 @@ export async function initSchema() {
     db.run(`ALTER TABLE employees_new RENAME TO employees`)
   } catch (e) { console.warn('employees table migration:', e) }
 
+  // companies — drop province NOT NULL constraint
+try {
+  const hasProvince = query(`SELECT * FROM pragma_table_info('companies') WHERE name = 'province'`).length > 0
+  if (hasProvince) {
+    db.run(`CREATE TABLE IF NOT EXISTS companies_new (
+      company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      address       TEXT,
+      city          TEXT,
+      contact_name  TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      website       TEXT,
+      sticky_notes  TEXT,
+      active        INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )`)
+    db.run(`INSERT INTO companies_new
+      (company_id, name, address, city, contact_name, contact_phone, contact_email, website, sticky_notes, active, created_at, updated_at)
+      SELECT company_id, name, address, city, contact_name, contact_phone, contact_email, website, sticky_notes, active, created_at, updated_at
+      FROM companies`)
+    db.run(`DROP TABLE companies`)
+    db.run(`ALTER TABLE companies_new RENAME TO companies`)
+  }
+} catch (e) { console.warn('companies table migration:', e) }
+
   // --------------------------------------------------------------------------
   // Data migrations
   // --------------------------------------------------------------------------
