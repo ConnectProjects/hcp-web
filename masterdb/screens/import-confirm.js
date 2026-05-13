@@ -306,7 +306,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
-      f      // Find or create default location for imported packets
+      // Find or create default location for imported packets
       let defaultLocation = queryOne(
         `SELECT * FROM locations
          WHERE company_id = ?
