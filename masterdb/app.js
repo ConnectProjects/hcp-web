@@ -76,7 +76,7 @@ const NAV_PARENT = {
   'incoming':        'packets',
   'rejected-packets': 'packets',
   'import-confirm':  'packets',
-  'province-rules':  'settings'
+  'province-rules':  'settings',
   'location-detail': 'companies',
 }
 
