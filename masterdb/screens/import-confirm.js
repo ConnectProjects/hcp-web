@@ -470,7 +470,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
     btn.textContent = '✓ Imported'
 
     setTimeout(() => navigate('incoming'), 1800)
-  } catch (e) {
+ } catch (e) {
     errEl.textContent = `Import failed: ${e.message}`
     errEl.classList.remove('hidden')
     btn.disabled    = false
@@ -479,5 +479,8 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
 }
 
 function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
