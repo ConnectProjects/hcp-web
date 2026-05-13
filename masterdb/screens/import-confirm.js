@@ -418,45 +418,6 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
         }
       }
 
-        for (const test of emp.completed_tests) {
-          // Prevention: Check if this specific test already exists in the database
-          // (Same employee, date, and tech — within this or any other packet)
-          const existingTest = queryOne(
-            `SELECT test_id FROM tests 
-             WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
-            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id]
-          )
-
-          if (existingTest) {
-            console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
-            continue
-          }
-
-          const testId = createTest({
-            employee_id:              dbEmp.employee_id,
-            test_date:                test.test_date,
-            tech_id:                  test.tech_id ?? packet.tech?.tech_id,
-            test_type:                test.test_type ?? 'Periodic',
-            province,
-            ...(test.thresholds ?? {}),
-            classification:           test.classification,
-            counsel_text:             test.counsel_text,
-            tech_notes:               test.tech_notes,
-            questionnaire:            test.questionnaire,
-            referral_given_to_worker: test.referral_given_to_worker ?? 0,
-            packet_id:                packet.packet_id
-          })
-
-          if (test.hpd_assessment?.valid) {
-            createHPDAssessment(testId, test.hpd_assessment)
-          }
-
-          if (test.test_type === 'Baseline') {
-            createBaseline(dbEmp.employee_id, test.test_date, test.thresholds ?? {})
-          }
-
-          imported++
-        }
       })
     }
 
