@@ -755,12 +755,17 @@ function findEmployee(locationId, row) {
 // ---------------------------------------------------------------------------
 
 const MONTHS_PARSE = {
-  JAN:'01', JANUARY:'01',   FEB:'02', FEBRUARY:'02',
-  MAR:'03', MARCH:'03',     APR:'04', APRIL:'04',
-  MAY:'05',                 JUN:'06', JUNE:'06',
-  JUL:'07', JULY:'07',      AUG:'08', AUGUST:'08',
-  SEP:'09', SEPT:'09', SEPTEMBER:'09',
-  OCT:'10', OCTOBER:'10',   NOV:'11', NOVEMBER:'11',
+  JAN:'01', JANUARY:'01',   
+  FEB:'02', FEBRUARY:'02',
+  MAR:'03', MARCH:'03',     
+  APR:'04', APRIL:'04',
+  MAY:'05',                 
+  JUN:'06', JUNE:'06',
+  JUL:'07', JULY:'07', JUY:'07', JLY:'07', // Added JUY and JLY typos
+  AUG:'08', AUGUST:'08',
+  SEP:'09', SEPT:'09', SEPTEMBER:'09',     // Added SEPT
+  OCT:'10', OCTOBER:'10',   
+  NOV:'11', NOVEMBER:'11',
   DEC:'12', DECEMBER:'12'
 }
 
@@ -768,15 +773,42 @@ function parseDate(raw) {
   if (raw == null) return null;
   if (raw instanceof Date) return raw.toISOString().slice(0, 10);
 
-  // Clean up common Excel "noise" seen in screenshots (double dots, question marks)
+  // Clean up Excel noise (.. and ????)
   let s = String(raw).trim().replace(/\.\./g, '01').replace(/\?\?\?\?/g, '1900');
-  if (!s || s.includes('?')) return null;
+  if (!s) return null;
 
   // 1. Handle Slash format: 7/31/2025
   const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) {
     return `${slashMatch[3]}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
   }
+
+  // 2. Handle Space format: SEPT 0 1988 or JUY 16 2013
+  const upperS = s.toUpperCase();
+  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
+  if (spaceMatch) {
+    const mo = MONTHS_PARSE[spaceMatch[1]];
+    if (!mo) return null;
+    
+    // FIX: If the day is '0', change it to '01'
+    let day = spaceMatch[2];
+    if (day === '0' || day === '00') day = '01';
+    
+    return `${spaceMatch[3]}-${mo}-${day.padStart(2,'0')}`;
+  }
+
+  // 3. Handle standard ISO format: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // 4. Handle Excel Serial Numbers
+  const n = Number(raw);
+  if (!isNaN(n) && n > 1000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0, 10);
+  }
+  
+  return null;
+}
 
   // 2. Handle Space format: SEPT 5 1991 or JUNE 20 1980
   // Note: Added support for SEPT as 4 letters
