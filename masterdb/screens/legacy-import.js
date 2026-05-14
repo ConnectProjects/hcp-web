@@ -109,13 +109,15 @@ export function renderLegacyImport(container, state, navigate) {
 async function handleFiles(fileList, container, navigate) {
   const files = Array.from(fileList)
   
-  // This will store the combined data from all files
   let aggregateParsed = {
     rows: [],
     warnings: [],
+    missingCols: [], // Added this to fix the 'length' error
     companyName: null,
+    companyFromFile: true,
     columnsMapped: false,
-    locationName: 'Multiple', // Placeholder for the preview
+    locationName: 'Multiple Files',
+    visitDate: null,
     province: 'AB'
   }
 
@@ -129,12 +131,14 @@ async function handleFiles(fileList, container, navigate) {
     try {
       const parsed = parseExcel(buffer, file.name)
       
-      // Use the first valid company name we find as the main company
-      if (!aggregateParsed.companyName) aggregateParsed.companyName = parsed.companyName
+      if (!aggregateParsed.companyName) {
+        aggregateParsed.companyName = parsed.companyName
+        aggregateParsed.visitDate = parsed.visitDate
+      }
+      
       if (parsed.columnsMapped) aggregateParsed.columnsMapped = true
 
-      // Attach the specific location name from THIS file to each row
-      // This is vital for the database logic later!
+      // Combine rows and keep track of which location they belong to
       const rowsWithLocation = parsed.rows.map(r => ({ 
         ...r, 
         locationName: parsed.locationName 
@@ -142,6 +146,16 @@ async function handleFiles(fileList, container, navigate) {
       
       aggregateParsed.rows.push(...rowsWithLocation)
       aggregateParsed.warnings.push(...parsed.warnings)
+      
+      // If any file has missing columns, track them for the preview
+      if (parsed.missingCols && parsed.missingCols.length > 0) {
+        parsed.missingCols.forEach(col => {
+          if (!aggregateParsed.missingCols.includes(col)) {
+            aggregateParsed.missingCols.push(col)
+          }
+        })
+      }
+
     } catch (err) {
       aggregateParsed.warnings.push(`Error parsing ${file.name}: ${err.message}`)
     }
@@ -152,7 +166,7 @@ async function handleFiles(fileList, container, navigate) {
     return
   }
 
-  // Show the combined preview
+  // Now showPreview will have all the properties it needs (including missingCols)
   showPreview(aggregateParsed, `${files.length} files`, container, navigate)
 }
 
