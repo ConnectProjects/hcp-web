@@ -2,14 +2,7 @@
  * screens/legacy-import.js
  *
  * Imports legacy TechTool Excel packets (.xlsx) into MasterDB.
- *
- * Flow:
- *   1. Drop/browse file → parse Excel
- *   2. Preview table — shows first 10 rows, column mapping info
- *   3. Conflict review — if any employees match by name only (no DOB),
- *      user chooses: Use Existing / Create New / Skip Row
- *   4. Import — runs in a single transaction with decisions applied
- *   5. Result summary
+ * Robust version: Handles multi-file, multi-sheet, and fuzzy dates.
  */
 
 import { run as dbRun, queryOne, query, transaction } from '../db/sqlite.js'
@@ -51,8 +44,19 @@ for (const [field, aliases] of COLUMN_MAP) {
 
 const REQUIRED_FIELDS = ['firstName', 'lastName', 'testDate']
 
+const MONTHS_PARSE = {
+  JAN:'01', JANUARY:'01',   FEB:'02', FEBRUARY:'02',
+  MAR:'03', MARCH:'03',     APR:'04', APRIL:'04',
+  MAY:'05',                 JUN:'06', JUNE:'06',
+  JUL:'07', JULY:'07', JUY:'07', JLY:'07',
+  AUG:'08', AUGUST:'08',
+  SEP:'09', SEPT:'09', SEPTEMBER:'09',
+  OCT:'10', OCTOBER:'10',   NOV:'11', NOVEMBER:'11',
+  DEC:'12', DECEMBER:'12'
+}
+
 // ---------------------------------------------------------------------------
-// Render (Updated for Multi-file selection)
+// Render
 // ---------------------------------------------------------------------------
 
 export function renderLegacyImport(container, state, navigate) {
@@ -70,7 +74,6 @@ export function renderLegacyImport(container, state, navigate) {
           <div class="drop-zone__icon">📂</div>
           <div class="drop-zone__text">Drop one or more legacy .xlsx files here</div>
           <div class="drop-zone__sub">or <label class="link-btn" for="file-picker">browse</label></div>
-          <!-- Added 'multiple' attribute here -->
           <input type="file" id="file-picker" accept=".xlsx,.xls" style="display:none" multiple />
         </div>
 
@@ -90,20 +93,20 @@ export function renderLegacyImport(container, state, navigate) {
   dropZone.addEventListener('drop', e => {
     e.preventDefault()
     dropZone.classList.remove('drop-zone--over')
-    const files = e.dataTransfer.files // Grab the whole list
+    const files = e.dataTransfer.files
     if (files.length > 0) handleFiles(files, container, navigate)
   })
 
   dropZone.addEventListener('click', () => filePicker.click())
 
   filePicker.addEventListener('change', e => {
-    const files = e.target.files // Grab the whole list
+    const files = e.target.files
     if (files.length > 0) handleFiles(files, container, navigate)
   })
 }
 
 // ---------------------------------------------------------------------------
-// File handling (Updated to handle multiple files)
+// File handling
 // ---------------------------------------------------------------------------
 
 async function handleFiles(fileList, container, navigate) {
@@ -112,7 +115,7 @@ async function handleFiles(fileList, container, navigate) {
   let aggregateParsed = {
     rows: [],
     warnings: [],
-    missingCols: [], // Added this to fix the 'length' error
+    missingCols: [],
     companyName: null,
     companyFromFile: true,
     columnsMapped: false,
@@ -138,7 +141,6 @@ async function handleFiles(fileList, container, navigate) {
       
       if (parsed.columnsMapped) aggregateParsed.columnsMapped = true
 
-      // Combine rows and keep track of which location they belong to
       const rowsWithLocation = parsed.rows.map(r => ({ 
         ...r, 
         locationName: parsed.locationName 
@@ -147,7 +149,6 @@ async function handleFiles(fileList, container, navigate) {
       aggregateParsed.rows.push(...rowsWithLocation)
       aggregateParsed.warnings.push(...parsed.warnings)
       
-      // If any file has missing columns, track them for the preview
       if (parsed.missingCols && parsed.missingCols.length > 0) {
         parsed.missingCols.forEach(col => {
           if (!aggregateParsed.missingCols.includes(col)) {
@@ -166,12 +167,11 @@ async function handleFiles(fileList, container, navigate) {
     return
   }
 
-  // Now showPreview will have all the properties it needs (including missingCols)
   showPreview(aggregateParsed, `${files.length} files`, container, navigate)
 }
 
 // ---------------------------------------------------------------------------
-// Excel parsing - Multi-sheet version with Company/Location splitting
+// Excel parsing
 // ---------------------------------------------------------------------------
 
 function parseExcel(buffer, filename) {
@@ -180,7 +180,6 @@ function parseExcel(buffer, filename) {
 
   const wb = XLSX.read(buffer, { type: 'array', raw: true });
   
-  // 1. Get all data sheets, ignoring templates
   const dataSheetNames = wb.SheetNames.filter(n => {
     const name = n.toLowerCase();
     if (name.includes('template')) return false;
@@ -195,12 +194,10 @@ function parseExcel(buffer, filename) {
   let internalNameFromCell = null;
   let columnsMappedGlobally = false;
 
-  // 2. Loop through every valid sheet
   for (const sheetName of dataSheetNames) {
     const ws  = wb.Sheets[sheetName];
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
 
-    // Try to find company name in this sheet cell (e.g., "Company: Kal Tire #022")
     if (!internalNameFromCell) {
       for (let i = 0; i < Math.min(raw.length, 10); i++) {
         for (const cell of (raw[i] ?? [])) {
@@ -212,7 +209,6 @@ function parseExcel(buffer, filename) {
       }
     }
 
-    // Find header row in this sheet
     let headerRowIdx = -1, colIndex = {};
     for (let i = 0; i < raw.length; i++) {
       const attempt = buildColIndex(raw[i] ?? []);
@@ -226,7 +222,6 @@ function parseExcel(buffer, filename) {
 
     if (headerRowIdx === -1) continue;
 
-    // Parse data rows for this sheet
     for (let i = headerRowIdx + 1; i < raw.length; i++) {
       const r = raw[i];
       if (!r) continue;
@@ -265,26 +260,19 @@ function parseExcel(buffer, filename) {
     }
   }
 
-  // 3. Robust Split Logic (Handles #, Comma, and Dash)
-  // Extracts "Kal Tire", "Carrier Forest Products", or "City of Lloydminster" as the Company
   const rawFullName = internalNameFromCell || companyNameFromFilename(filename);
   let companyName = rawFullName;
   let locationName = 'Main Office';
 
-  // Try splitting by # (Kal Tire style)
   if (rawFullName.includes('#')) {
     const parts = rawFullName.split('#');
     companyName = parts[0].trim();
     locationName = '#' + parts.slice(1).join('#').trim();
-  } 
-  // Try splitting by Comma (Carrier Forest style)
-  else if (rawFullName.includes(',')) {
+  } else if (rawFullName.includes(',')) {
     const parts = rawFullName.split(',');
     companyName = parts[0].trim();
     locationName = parts.slice(1).join(',').trim();
-  }
-  // Try splitting by Dash (City of Lloydminster style)
-  else if (rawFullName.includes(' - ')) {
+  } else if (rawFullName.includes(' - ')) {
     const parts = rawFullName.split(' - ');
     companyName = parts[0].trim();
     locationName = parts.slice(1).join(' - ').trim();
@@ -302,9 +290,6 @@ function parseExcel(buffer, filename) {
     missingCols: [] 
   };
 }
-// ---------------------------------------------------------------------------
-// Build column index
-// ---------------------------------------------------------------------------
 
 function buildColIndex(row) {
   const index = {}
@@ -318,7 +303,7 @@ function buildColIndex(row) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1 — Preview
+// Preview & Conflicts
 // ---------------------------------------------------------------------------
 
 function showPreview(parsed, filename, container, navigate) {
@@ -327,17 +312,6 @@ function showPreview(parsed, filename, container, navigate) {
   container.querySelector('#drop-zone').style.display  = 'none'
   const pa = container.querySelector('#preview-area')
   pa.style.display = ''
-
-  const notices = []
-  if (missingCols.length > 0) {
-    notices.push(`<div class="alert alert-warn" style="margin-bottom:8px">
-      ⚠ Frequency columns not found (will be blank):
-      <strong>${missingCols.map(c => c.replace('_',' ').replace('k',' kHz')).join(', ')}</strong>
-    </div>`)
-  }
-  notices.push(`<div style="font-size:12px;color:var(--grey-500);margin-bottom:12px">
-    ✓ ${14 - missingCols.length}/14 frequency columns mapped
-  </div>`)
 
   const freqCols   = ['500','1k','2k','3k','4k','6k','8k']
   const earCols    = [...freqCols.map(f=>`L${f}`), ...freqCols.map(f=>`R${f}`)]
@@ -352,15 +326,12 @@ function showPreview(parsed, filename, container, navigate) {
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${esc(filename)}</div>
       <div style="color:var(--grey-500);font-size:13px">
         Company: <strong>${esc(companyName)}</strong>
-        <span style="color:var(--grey-300)">(${companyFromFile ? 'from filename' : 'from file'})</span>
-        ${visitDate ? `&nbsp;·&nbsp; Visit: <strong>${visitDate}</strong>` : ''}
-        &nbsp;·&nbsp; ${rows.length} record${rows.length !== 1 ? 's' : ''}
+        &nbsp;·&nbsp; ${rows.length} records detected
       </div>
     </div>
-    ${notices.join('')}
     ${warnings.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
-      <strong>⚠ ${warnings.length} row${warnings.length !== 1 ? 's' : ''} will be skipped</strong>
-      <ul style="margin:6px 0 0 16px;font-size:13px">
+      <strong>⚠ ${warnings.length} rows will be skipped</strong>
+      <ul style="margin:6px 0 0 16px;font-size:13px; max-height: 150px; overflow-y: auto;">
         ${warnings.map(w => `<li>${esc(w)}</li>`).join('')}
       </ul>
     </div>` : ''}
@@ -368,8 +339,7 @@ function showPreview(parsed, filename, container, navigate) {
       <table class="data-table">
         <thead>
           <tr>
-            <th>Last</th><th>First</th><th>DOB</th>
-            <th>Test Date</th><th>Type</th><th>Cat</th>
+            <th>Last</th><th>First</th><th>DOB</th><th>Test Date</th><th>Type</th>
             ${earCols.map(c => `<th style="font-size:11px">${c}</th>`).join('')}
           </tr>
         </thead>
@@ -377,16 +347,10 @@ function showPreview(parsed, filename, container, navigate) {
           ${preview.map(r => `
             <tr>
               <td>${esc(r.lastName)}</td><td>${esc(r.firstName)}</td>
-              <td>${esc(r.dobRaw)}</td><td>${esc(r.testDateRaw)}</td>
-              <td>${esc(r.testType)}</td><td>${esc(r.category)}</td>
+              <td>${esc(r.dob)}</td><td>${esc(r.testDate)}</td>
+              <td>${esc(r.testType)}</td>
               ${freqFields.map(f => `<td>${fmt(r[f])}</td>`).join('')}
             </tr>`).join('')}
-          ${rows.length > 10 ? `
-            <tr>
-              <td colspan="20" style="text-align:center;color:var(--grey-500);font-style:italic;font-size:12px">
-                … and ${rows.length - 10} more rows
-              </td>
-            </tr>` : ''}
         </tbody>
       </table>
     </div>
@@ -400,14 +364,9 @@ function showPreview(parsed, filename, container, navigate) {
   pa.querySelector('#btn-next').addEventListener('click',   () => checkConflicts(parsed, container, navigate))
 }
 
-// ---------------------------------------------------------------------------
-// Step 2 — Conflict detection (Updated for Schema 2.0 Hierarchy)
-// ---------------------------------------------------------------------------
-
 function checkConflicts(parsed, container, navigate) {
   const { companyName, rows } = parsed
-
-  const company   = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
+  const company = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
   const companyId = company?.company_id ?? null
 
   const conflicts = []
@@ -418,22 +377,17 @@ function checkConflicts(parsed, container, navigate) {
       const key = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
       if (seen.has(key)) continue
 
-      // Updated SQL: Joining employees to locations to check by company_id
       if (row.dob) {
         const dobMatch = queryOne(
-          `SELECT e.employee_id FROM employees e
-           JOIN locations l ON e.location_id = l.location_id
-           WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE
-             AND e.last_name = ? COLLATE NOCASE AND e.dob = ?`,
+          `SELECT e.employee_id FROM employees e JOIN locations l ON e.location_id = l.location_id
+           WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE AND e.dob = ?`,
           [companyId, row.firstName, row.lastName, row.dob])
         if (dobMatch) continue
       }
 
-      // Updated SQL: Joining employees to locations to check by company_id
       const nameMatches = query(
         `SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title
-         FROM employees e
-         JOIN locations l ON e.location_id = l.location_id
+         FROM employees e JOIN locations l ON e.location_id = l.location_id
          WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE`,
         [companyId, row.firstName, row.lastName])
 
@@ -446,14 +400,10 @@ function checkConflicts(parsed, container, navigate) {
 
   if (conflicts.length === 0) {
     runImport(parsed, {}, container, navigate)
-    return
+  } else {
+    showConflicts(parsed, conflicts, container, navigate)
   }
-
-  showConflicts(parsed, conflicts, container, navigate)
 }
-// ---------------------------------------------------------------------------
-// Step 2b — Conflict resolution UI
-// ---------------------------------------------------------------------------
 
 function showConflicts(parsed, conflicts, container, navigate) {
   container.querySelector('#preview-area').style.display  = 'none'
@@ -463,103 +413,49 @@ function showConflicts(parsed, conflicts, container, navigate) {
   ca.innerHTML = `
     <div style="margin-bottom:20px">
       <div style="font-size:16px;font-weight:600;margin-bottom:4px">⚠ Name Conflicts Found</div>
-      <div style="font-size:13px;color:var(--grey-500)">
-        ${conflicts.length} employee${conflicts.length !== 1 ? 's' : ''} in this file
-        match an existing name at this company but couldn't be confirmed by date of birth.
-        Please choose what to do with each one.
-      </div>
     </div>
     <div id="conflict-cards" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px"></div>
     <div style="display:flex;gap:12px;justify-content:flex-end">
-      <button class="btn btn-outline" id="btn-back-preview">← Back</button>
-      <button class="btn btn-primary" id="btn-confirm-conflicts">Continue with these choices →</button>
+      <button class="btn btn-primary" id="btn-confirm-conflicts">Continue →</button>
     </div>
   `
 
   const cards = ca.querySelector('#conflict-cards')
-
   conflicts.forEach((conflict, idx) => {
     const { row, matches } = conflict
     const card = document.createElement('div')
     card.className = 'settings-section'
     card.style.padding = '16px'
-
     card.innerHTML = `
-      <div style="font-weight:600;font-size:14px;margin-bottom:4px">
-        ${esc(row.firstName)} ${esc(row.lastName)}
-      </div>
-      <div style="font-size:12px;color:var(--grey-500);margin-bottom:12px">
-        Importing: DOB ${esc(row.dobRaw) || 'unknown'} &nbsp;·&nbsp; ${esc(row.occupation)} &nbsp;·&nbsp; Test date ${esc(row.testDateRaw)}
-      </div>
-      <div style="font-size:12px;font-weight:600;color:var(--grey-700);margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">
-        Existing records at this company:
-      </div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">
-        ${matches.map(m => `
-          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px solid var(--grey-200);border-radius:var(--radius);cursor:pointer;font-size:13px">
-            <input type="radio" name="conflict-${idx}" value="existing-${m.employee_id}" style="flex-shrink:0" />
-            <span>
-              <strong>${esc(m.first_name)} ${esc(m.last_name)}</strong>
-              &nbsp;·&nbsp; DOB: ${m.dob || 'unknown'}
-              &nbsp;·&nbsp; ${esc(m.job_title || 'No title')}
-              <span class="badge badge-neutral" style="margin-left:6px">Use existing</span>
-            </span>
-          </label>`).join('')}
-        <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px solid var(--grey-200);border-radius:var(--radius);cursor:pointer;font-size:13px">
-          <input type="radio" name="conflict-${idx}" value="new" style="flex-shrink:0" />
-          <span>Create as a <strong>new employee</strong> (different person, same name)</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1.5px solid var(--grey-200);border-radius:var(--radius);cursor:pointer;font-size:13px">
-          <input type="radio" name="conflict-${idx}" value="skip" style="flex-shrink:0" />
-          <span>Skip all rows for this person in this import</span>
-        </label>
+      <div style="font-weight:600;margin-bottom:12px">${esc(row.firstName)} ${esc(row.lastName)}</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${matches.map(m => `<label><input type="radio" name="conflict-${idx}" value="existing-${m.employee_id}" /> Match Existing (DOB: ${m.dob || '??'})</label>`).join('')}
+        <label><input type="radio" name="conflict-${idx}" value="new" /> Create New</label>
+        <label><input type="radio" name="conflict-${idx}" value="skip" /> Skip</label>
       </div>
     `
-
-    card.querySelectorAll(`input[name="conflict-${idx}"]`).forEach(radio => {
-      radio.addEventListener('change', () => {
-        card.querySelectorAll('label').forEach(l => l.style.borderColor = 'var(--grey-200)')
-        radio.closest('label').style.borderColor = 'var(--navy-mid)'
-      })
-    })
-
     cards.appendChild(card)
-  })
-
-  ca.querySelector('#btn-back-preview').addEventListener('click', () => {
-    ca.style.display = 'none'
-    container.querySelector('#preview-area').style.display = ''
   })
 
   ca.querySelector('#btn-confirm-conflicts').addEventListener('click', () => {
     const decisions = {}
-    let allAnswered = true
-
     conflicts.forEach((conflict, idx) => {
-      const key      = `${conflict.row.firstName.toUpperCase()}|${conflict.row.lastName.toUpperCase()}`
+      const key = `${conflict.row.firstName.toUpperCase()}|${conflict.row.lastName.toUpperCase()}`
       const selected = ca.querySelector(`input[name="conflict-${idx}"]:checked`)
-      if (!selected) { allAnswered = false; return }
-
-      if (selected.value.startsWith('existing-')) {
-        decisions[key] = { action: 'existing', employeeId: parseInt(selected.value.replace('existing-', '')) }
-      } else if (selected.value === 'new') {
-        decisions[key] = { action: 'new' }
-      } else {
-        decisions[key] = { action: 'skip' }
+      if (selected) {
+        if (selected.value.startsWith('existing-')) {
+          decisions[key] = { action: 'existing', employeeId: parseInt(selected.value.replace('existing-', '')) }
+        } else {
+          decisions[key] = { action: selected.value }
+        }
       }
     })
-
-    if (!allAnswered) {
-      showError(container, 'Please make a selection for every conflict before continuing.')
-      return
-    }
-
     runImport(parsed, decisions, container, navigate)
   })
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Import
+// DB Import Execution
 // ---------------------------------------------------------------------------
 
 function runImport(parsed, decisions, container, navigate) {
@@ -569,7 +465,7 @@ function runImport(parsed, decisions, container, navigate) {
   let result
   try {
     transaction(({ run }) => {
-    result = doImport(parsed.companyName, parsed.locationName, parsed.province, parsed.rows, run, decisions)
+      result = doImport(parsed.companyName, null, parsed.province, parsed.rows, run, decisions)
     })
   } catch (err) {
     showError(container, `Import failed: ${err.message}`)
@@ -579,331 +475,139 @@ function runImport(parsed, decisions, container, navigate) {
   const ra = container.querySelector('#result-area')
   ra.style.display = ''
   ra.innerHTML = `
-    <div class="alert alert-success" style="margin-bottom:16px">✓ Import complete</div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-      ${statCard('Company',        result.companyCreated ? 'Created' : 'Matched')}
-      ${statCard('Employees',      `${result.employeesCreated} new · ${result.employeesMatched} matched`)}
-      ${statCard('Tests inserted',  result.testsInserted)}
-      ${statCard('Baselines set',   result.baselinesSet)}
-      ${result.skipped > 0 ? statCard('Skipped', result.skipped) : ''}
+    <div class="alert alert-success">✓ Import complete</div>
+    <div style="display:flex;gap:12px;margin:20px 0">
+      ${statCard('Tests', result.testsInserted)}
+      ${statCard('Employees', result.employeesCreated)}
     </div>
-    <div style="display:flex;gap:12px">
-      <button class="btn btn-primary" id="btn-go-company">View Company</button>
-      <button class="btn btn-outline"  id="btn-done">Import Another</button>
-    </div>
+    <button class="btn btn-primary" id="btn-done">Done</button>
   `
-
-  ra.querySelector('#btn-go-company').addEventListener('click', () =>
-    navigate('company-detail', { currentCompany: result.companyId }))
-  ra.querySelector('#btn-done').addEventListener('click', () =>
-    navigate('legacy-import'))
+  ra.querySelector('#btn-done').addEventListener('click', () => navigate('dashboard'))
 }
 
-// ---------------------------------------------------------------------------
-// Core DB write logic - Bulk Multi-Location Version
-// ---------------------------------------------------------------------------
-
 function doImport(companyName, _, defaultProvince, rows, run, decisions) {
-  const stats = {
-    companyCreated:  false, companyId:  null,
-    employeesCreated: 0,   employeesMatched: 0,
-    testsInserted: 0,      baselinesSet: 0,
-    skipped: 0
-  }
+  const stats = { companyId: null, employeesCreated: 0, employeesMatched: 0, testsInserted: 0, skipped: 0 }
 
-  // 1. Find or create the master Company (e.g., "Kal Tire")
   let company = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
   if (company) {
     stats.companyId = company.company_id
   } else {
-    run(`INSERT INTO companies (name, created_at, updated_at)
-         VALUES (?, datetime('now'), datetime('now'))`, [companyName])
-    stats.companyId      = queryOne('SELECT last_insert_rowid() AS id').id
-    stats.companyCreated = true
+    run(`INSERT INTO companies (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))`, [companyName])
+    stats.companyId = queryOne('SELECT last_insert_rowid() AS id').id
   }
 
-  const companyId = stats.companyId
-  
-  // Create a cache for location IDs so we don't query the DB 500 times for the same site
   const locationCache = {}
 
   for (const row of rows) {
-    // 2. Determine Location for this specific row (based on the filename it came from)
     const locName = row.locationName || 'Main Office'
-    
     if (!locationCache[locName]) {
-      let location = queryOne(
-        'SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE',
-        [companyId, locName]
-      )
-      
-      if (location) {
-        locationCache[locName] = location.location_id
+      let loc = queryOne('SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE', [stats.companyId, locName])
+      if (loc) {
+        locationCache[locName] = loc.location_id
       } else {
-        // Create the location if it's new to the database
-        run(`INSERT INTO locations (company_id, name, province, created_at, updated_at)
-             VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
-            [companyId, locName, defaultProvince])
+        run(`INSERT INTO locations (company_id, name, province, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))`, [stats.companyId, locName, defaultProvince])
         locationCache[locName] = queryOne('SELECT last_insert_rowid() AS id').id
       }
     }
-
     const locationId = locationCache[locName]
+
     const conflictKey = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
-    const decision    = decisions[conflictKey]
+    const decision = decisions[conflictKey]
 
-    // 3. Resolve employee
     let employeeId = null
-
-    if (decision?.action === 'skip') {
-      stats.skipped++
-      continue
-    } else if (decision?.action === 'existing') {
-      employeeId = decision.employeeId
-      stats.employeesMatched++
-    } else {
-      // Try to find employee at THIS specific location
+    if (decision?.action === 'skip') { stats.skipped++; continue; }
+    else if (decision?.action === 'existing') { employeeId = decision.employeeId; stats.employeesMatched++; }
+    else {
       let employee = findEmployee(locationId, row)
-      if (employee) {
-        employeeId = employee.employee_id
-        stats.employeesMatched++
-      } else {
+      if (employee) { employeeId = employee.employee_id; stats.employeesMatched++; }
+      else {
         run(`INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at)
              VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
-            [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
+          [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
         employeeId = queryOne('SELECT last_insert_rowid() AS id').id
         stats.employeesCreated++
       }
     }
 
-    // 4. Skip duplicate test (Avoid importing the same test twice if file is re-uploaded)
-    if (queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?',
-                 [employeeId, row.testDate])) continue
-
-    // 5. Insert test (22 Columns to match Schema 2.0)
-    run(`INSERT INTO tests (
-          employee_id, location_id, test_date, test_type, province,
-          left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
-          right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
-          classification, tech_notes, created_at
-        ) VALUES (
-          ?, ?, ?, ?, 'AB',
-          ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, datetime('now')
-        )`,
+    if (!queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?', [employeeId, row.testDate])) {
+      run(`INSERT INTO tests (
+        employee_id, location_id, test_date, test_type, province,
+        left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+        right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
+        classification, tech_notes, created_at
+      ) VALUES (?, ?, ?, ?, 'AB', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
         [
-          employeeId, 
-          locationId, 
-          row.testDate, 
-          row.testType,
-          row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
-          row.left_4k,   row.left_6k,  row.left_8k,
-          row.right_500, row.right_1k, row.right_2k, row.right_3k,
-          row.right_4k,  row.right_6k, row.right_8k,
+          employeeId, locationId, row.testDate, row.testType,
+          row.left_500, row.left_1k, row.left_2k, row.left_3k, row.left_4k, row.left_6k, row.left_8k,
+          row.right_500, row.right_1k, row.right_2k, row.right_3k, row.right_4k, row.right_6k, row.right_8k,
           row.category || null,
           row.wearHpd ? `HPD: ${row.hpdType || row.wearHpd}` : null
         ])
-    stats.testsInserted++
-
-    // 6. Insert baseline if none exists
-    if (row.testType === 'Baseline' &&
-        !queryOne('SELECT baseline_id FROM baselines WHERE employee_id = ? AND archived = 0', [employeeId])) {
-      run(`INSERT INTO baselines (
-            employee_id, location_id, test_date,
-            left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
-            right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
-            created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-          [
-            employeeId, 
-            locationId,
-            row.testDate,
-            row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
-            row.left_4k,   row.left_6k,  row.left_8k,
-            row.right_500, row.right_1k, row.right_2k, row.right_3k,
-            row.right_4k,  row.right_6k, row.right_8k
-          ])
-      stats.baselinesSet++
+      stats.testsInserted++
     }
   }
-
   return stats
 }
 
 // ---------------------------------------------------------------------------
-// Employee matching
+// Helper Utils
 // ---------------------------------------------------------------------------
 
 function findEmployee(locationId, row) {
   if (row.dob) {
-    const m = queryOne(
-      `SELECT employee_id FROM employees
-       WHERE location_id = ? AND first_name = ? COLLATE NOCASE
-         AND last_name = ? COLLATE NOCASE AND dob = ?`,
+    return queryOne(`SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE AND dob = ?`,
       [locationId, row.firstName, row.lastName, row.dob])
-    if (m) return m
   }
-  return queryOne(
-    `SELECT employee_id FROM employees
-     WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
+  return queryOne(`SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
     [locationId, row.firstName, row.lastName])
-}
-
-// ---------------------------------------------------------------------------
-// Date parsing
-// ---------------------------------------------------------------------------
-
-const MONTHS_PARSE = {
-  JAN:'01', JANUARY:'01',   
-  FEB:'02', FEBRUARY:'02',
-  MAR:'03', MARCH:'03',     
-  APR:'04', APRIL:'04',
-  MAY:'05',                 
-  JUN:'06', JUNE:'06',
-  JUL:'07', JULY:'07', JUY:'07', JLY:'07', // Added JUY and JLY typos
-  AUG:'08', AUGUST:'08',
-  SEP:'09', SEPT:'09', SEPTEMBER:'09',     // Added SEPT
-  OCT:'10', OCTOBER:'10',   
-  NOV:'11', NOVEMBER:'11',
-  DEC:'12', DECEMBER:'12'
 }
 
 function parseDate(raw) {
   if (raw == null) return null;
   if (raw instanceof Date) return raw.toISOString().slice(0, 10);
-
-  // Clean up Excel noise (.. and ????)
   let s = String(raw).trim().replace(/\.\./g, '01').replace(/\?\?\?\?/g, '1900');
   if (!s) return null;
-
-  // 1. Handle Slash format: 7/31/2025
   const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slashMatch) {
-    return `${slashMatch[3]}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
-  }
-
-  // 2. Handle Space format: SEPT 0 1988 or JUY 16 2013
+  if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
   const upperS = s.toUpperCase();
   const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
   if (spaceMatch) {
     const mo = MONTHS_PARSE[spaceMatch[1]];
     if (!mo) return null;
-    
-    // FIX: If the day is '0', change it to '01'
-    let day = spaceMatch[2];
-    if (day === '0' || day === '00') day = '01';
-    
-    return `${spaceMatch[3]}-${mo}-${day.padStart(2,'0')}`;
+    let day = spaceMatch[2] === '0' ? '01' : spaceMatch[2].padStart(2, '0');
+    return `${spaceMatch[3]}-${mo}-${day}`;
   }
-
-  // 3. Handle standard ISO format: YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-  // 4. Handle Excel Serial Numbers
-  const n = Number(raw);
-  if (!isNaN(n) && n > 1000) {
-    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    return d.toISOString().slice(0, 10);
-  }
-  
-  return null;
+  return (/^\d{4}-\d{2}-\d{2}$/.test(s)) ? s : null;
 }
-
-  // 2. Handle Space format: SEPT 5 1991 or JUNE 20 1980
-  // Note: Added support for SEPT as 4 letters
-  const upperS = s.toUpperCase();
-  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
-  if (spaceMatch) {
-    let monthPart = spaceMatch[1];
-    if (monthPart === 'SEPT') monthPart = 'SEP'; // Normalize SEPT to SEP
-    const mo = MONTHS_PARSE[monthPart];
-    if (!mo) return null;
-    return `${spaceMatch[3]}-${mo}-${spaceMatch[2].padStart(2,'0')}`;
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-  const n = Number(raw);
-  if (!isNaN(n) && n > 1000) {
-    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    return d.toISOString().slice(0, 10);
-  }
-  
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Filename helpers
-// ---------------------------------------------------------------------------
-
-const MONTH_NAMES = new Set([
-  'january','february','march','april','may','june',
-  'july','august','september','october','november','december',
-  'jan','feb','mar','apr','jun','jul','aug','sep','sept','oct','nov','dec'
-])
 
 function companyNameFromFilename(filename) {
-  const tokens = filename.replace(/\.xlsx?$/i, '').replace(/[_\-]+/g, ' ').trim().split(/\s+/)
-  while (tokens.length > 0) {
-    const last = tokens[tokens.length - 1].toLowerCase()
-    if (MONTH_NAMES.has(last) || /^\d{4}$/.test(last) || /^\d{1,2}$/.test(last)) tokens.pop()
-    else break
-  }
-  return tokens.join(' ').trim() || filename.replace(/\.xlsx?$/i, '')
-}
-
-const MONTH_MAP = {
-  january:'01', jan:'01', february:'02', feb:'02', march:'03',    mar:'03',
-  april:'04',   apr:'04', may:'05',                june:'06',     jun:'06',
-  july:'07',    jul:'07', august:'08',   aug:'08', september:'09',sep:'09', sept:'09',
-  october:'10', oct:'10', november:'11', nov:'11', december:'12', dec:'12'
+  return filename.replace(/\.xlsx?$/i, '').replace(/[_\-]+/g, ' ').trim();
 }
 
 function visitDateFromFilename(filename) {
-  const tokens = filename.replace(/\.xlsx?$/i, '').replace(/[_\-]+/g, ' ').toLowerCase().split(/\s+/)
+  const tokens = filename.toLowerCase().split(/[\s_\-]+/);
   for (let i = 0; i < tokens.length; i++) {
-    const mo = MONTH_MAP[tokens[i]]
-    if (!mo) continue
-    if (i + 2 < tokens.length && /^\d{1,2}$/.test(tokens[i+1]) && /^\d{4}$/.test(tokens[i+2]))
-      return `${tokens[i+2]}-${mo}-${tokens[i+1].padStart(2,'0')}`
-    if (i + 1 < tokens.length && /^\d{4}$/.test(tokens[i+1]))
-      return `${tokens[i+1]}-${mo}-01`
+    const mo = MONTHS_PARSE[tokens[i].toUpperCase()];
+    if (mo && i + 2 < tokens.length && /^\d{4}$/.test(tokens[i+2])) return `${tokens[i+2]}-${mo}-${tokens[i+1].padStart(2,'0')}`;
   }
-  return null
+  return null;
 }
-
-// ---------------------------------------------------------------------------
-// Util
-// ---------------------------------------------------------------------------
 
 function normalizeTestType(raw) {
-  const s = (raw ?? '').toUpperCase().trim()
-  if (s.includes('BASE'))   return 'Baseline'
-  if (s.includes('PERIOD')) return 'Periodic'
-  if (s.includes('EXIT'))   return 'Exit'
-  if (s.includes('REFER'))  return 'Referral'
-  return raw || 'Periodic'
+  const s = (raw ?? '').toUpperCase();
+  if (s.includes('BASE')) return 'Baseline';
+  if (s.includes('EXIT')) return 'Exit';
+  return 'Periodic';
 }
 
-function str(v) { return v == null ? '' : String(v).trim() }
-function num(v) { const n = Number(v); return isNaN(n) ? null : n }
-function fmt(v) { return v == null ? '—' : String(v) }
-function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-}
-function statCard(label, value) {
-  return `<div class="ckpi">
-    <span class="ckpi-n" style="font-size:18px">${value}</span>
-    <span>${label}</span>
-  </div>`
-}
+function str(v) { return v == null ? '' : String(v).trim(); }
+function num(v) { const n = Number(v); return isNaN(n) ? null : n; }
+function fmt(v) { return v == null ? '—' : String(v); }
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function statCard(label, value) { return `<div class="ckpi"><span class="ckpi-n">${value}</span><span>${label}</span></div>`; }
 function showError(container, msg) {
-  container.querySelector('.alert-error')?.remove()
-  const div = document.createElement('div')
-  div.className = 'alert alert-error'
-  div.style.marginTop = '12px'
-  div.textContent = msg
-  container.querySelector('.form-card').appendChild(div)
+  const div = document.createElement('div');
+  div.className = 'alert alert-error';
+  div.textContent = msg;
+  container.querySelector('.form-card').appendChild(div);
 }
