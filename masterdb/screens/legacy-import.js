@@ -139,92 +139,116 @@ function parseExcel(buffer, filename) {
   if (!XLSX) throw new Error('SheetJS (XLSX) library not loaded. Add it to index.html.')
 
   const wb = XLSX.read(buffer, { type: 'array', raw: true })
-  const sheetName = wb.SheetNames.find(n => {
-  if (n === 'A.Template') return false
-  const ws = wb.Sheets[n]
-  return ws && Object.keys(ws).length > 5
-})
-  if (!sheetName) throw new Error('No data found in any sheet.')
+  
+  // 1. Identify all data sheets (filtering out templates)
+  const dataSheetNames = wb.SheetNames.filter(n => {
+    const name = n.toLowerCase();
+    // Skip if name contains "template" or is the hidden SheetJS "A.Template"
+    if (name.includes('template')) return false
+    const ws = wb.Sheets[n]
+    return ws && ws['!ref'] // Ensure sheet isn't empty
+  })
 
-  const ws  = wb.Sheets[sheetName]
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
+  if (dataSheetNames.length === 0) throw new Error('No data sheets found. Ensure sheets are not named "Template".')
 
-  // Company name from cell
-  let companyName = null, companyFromFile = false
-  for (let i = 0; i < Math.min(raw.length, 10); i++) {
-    for (const cell of (raw[i] ?? [])) {
-      if (!cell) continue
-      const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i)
-      if (m) { companyName = m[1].trim(); break }
+  let allRows = []
+  let allWarnings = []
+  let companyName = null
+  let companyFromFile = false
+  let columnsMappedGlobally = false
+
+  // 2. Loop through every valid sheet and collect data
+  for (const sheetName of dataSheetNames) {
+    const ws  = wb.Sheets[sheetName]
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
+
+    // Try to find company name in this sheet if we don't have it yet
+    if (!companyName) {
+      for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        for (const cell of (raw[i] ?? [])) {
+          if (!cell) continue
+          const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i)
+          if (m) { companyName = m[1].trim(); break }
+        }
+        if (companyName) break
+      }
     }
-    if (companyName) break
+
+    // Find header row in this specific sheet
+    let headerRowIdx = -1, colIndex = {}
+    for (let i = 0; i < raw.length; i++) {
+      const attempt = buildColIndex(raw[i] ?? [])
+      if (REQUIRED_FIELDS.every(f => f in attempt)) { 
+        headerRowIdx = i; 
+        colIndex = attempt; 
+        columnsMappedGlobally = true;
+        break; 
+      }
+    }
+
+    // Skip this sheet if no header found
+    if (headerRowIdx === -1) continue;
+
+    // Parse data rows for this sheet
+    for (let i = headerRowIdx + 1; i < raw.length; i++) {
+      const r = raw[i]
+      if (!r) continue
+      const firstName = str(r[colIndex.firstName])
+      const lastName  = str(r[colIndex.lastName])
+      if (!firstName && !lastName) continue
+
+      const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null
+      const testDate    = parseDate(testDateRaw)
+
+      if (!testDate) {
+        allWarnings.push(`Sheet "${sheetName}", Row ${i + 1} (${firstName} ${lastName}): unreadable test date — skipped.`)
+        continue
+      }
+
+      const dobRaw = colIndex.dob != null ? r[colIndex.dob] : null
+      allRows.push({
+        firstName, lastName,
+        occupation:  str(r[colIndex.occupation]),
+        dob:         parseDate(dobRaw),
+        dobRaw:      str(dobRaw),
+        testDate,    testDateRaw: str(testDateRaw),
+        wearHpd:     str(r[colIndex.wearHpd]),
+        hpdType:     str(r[colIndex.hpdType]),
+        testType:    normalizeTestType(str(r[colIndex.testType])),
+        category:    str(r[colIndex.category]),
+        left_500:  num(r[colIndex.left_500]),  left_1k:  num(r[colIndex.left_1k]),
+        left_2k:   num(r[colIndex.left_2k]),   left_3k:  num(r[colIndex.left_3k]),
+        left_4k:   num(r[colIndex.left_4k]),   left_6k:  num(r[colIndex.left_6k]),
+        left_8k:   num(r[colIndex.left_8k]),
+        right_500: num(r[colIndex.right_500]), right_1k: num(r[colIndex.right_1k]),
+        right_2k:  num(r[colIndex.right_2k]),  right_3k: num(r[colIndex.right_3k]),
+        right_4k:  num(r[colIndex.right_4k]),  right_6k: num(r[colIndex.right_6k]),
+        right_8k:  num(r[colIndex.right_8k]),
+      })
+    }
   }
-  if (!companyName) { companyName = companyNameFromFilename(filename); companyFromFile = true }
+
+  // Final fallback for company name
+  if (!companyName) { 
+    companyName = companyNameFromFilename(filename)
+    companyFromFile = true 
+  }
 
   const visitDate = visitDateFromFilename(filename)
-
-  // Find header row
-  let headerRowIdx = -1, colIndex = {}
-  for (let i = 0; i < raw.length; i++) {
-    const attempt = buildColIndex(raw[i] ?? [])
-    if (REQUIRED_FIELDS.every(f => f in attempt)) { headerRowIdx = i; colIndex = attempt; break }
-  }
-  if (headerRowIdx === -1) return { columnsMapped: false }
-  console.log('Header at row:', headerRowIdx)
-  console.log('Col index:', colIndex)
-  console.log('First data row raw:', raw[headerRowIdx + 1])
-  console.log('Second data row raw:', raw[headerRowIdx + 2])
-
-  // Parse data rows
-  const rows = [], warnings = []
-  for (let i = headerRowIdx + 1; i < raw.length; i++) {
-    const r = raw[i]
-    if (!r) continue
-    const firstName = str(r[colIndex.firstName])
-    const lastName  = str(r[colIndex.lastName])
-    if (!firstName && !lastName) continue
-    const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null
-    const testDate    = parseDate(testDateRaw)
-     console.log('TEST DATE DEBUG:', {
-     row: i + 1,
-     raw: testDateRaw,
-     type: typeof testDateRaw
-    })
-    if (!testDate) {
-      warnings.push(`Row ${i + 1} (${firstName} ${lastName}): unreadable test date "${testDateRaw}" — skipped.`)
-      continue
-    }
-
-    const dobRaw = colIndex.dob != null ? r[colIndex.dob] : null
-    rows.push({
-      firstName, lastName,
-      occupation:  str(r[colIndex.occupation]),
-      dob:         parseDate(dobRaw),
-      dobRaw:      str(dobRaw),
-      testDate,    testDateRaw: str(testDateRaw),
-      wearHpd:     str(r[colIndex.wearHpd]),
-      hpdType:     str(r[colIndex.hpdType]),
-      testType:    normalizeTestType(str(r[colIndex.testType])),
-      category:    str(r[colIndex.category]),
-      left_500:  num(r[colIndex.left_500]),  left_1k:  num(r[colIndex.left_1k]),
-      left_2k:   num(r[colIndex.left_2k]),   left_3k:  num(r[colIndex.left_3k]),
-      left_4k:   num(r[colIndex.left_4k]),   left_6k:  num(r[colIndex.left_6k]),
-      left_8k:   num(r[colIndex.left_8k]),
-      right_500: num(r[colIndex.right_500]), right_1k: num(r[colIndex.right_1k]),
-      right_2k:  num(r[colIndex.right_2k]),  right_3k: num(r[colIndex.right_3k]),
-      right_4k:  num(r[colIndex.right_4k]),  right_6k: num(r[colIndex.right_6k]),
-      right_8k:  num(r[colIndex.right_8k]),
-    })
-  }
-
-  const FREQ_FIELDS = ['left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
-                       'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k']
-  const missingCols = FREQ_FIELDS.filter(f => colIndex[f] == null)
-
   const locationName = companyNameFromFilename(filename)
-const province     = 'AB'
+  const province = 'AB'
 
-return { columnsMapped: true, companyName, locationName, province, companyFromFile, visitDate, rows, warnings, missingCols, colIndex }
+  return { 
+    columnsMapped: columnsMappedGlobally, 
+    companyName, 
+    locationName, 
+    province, 
+    companyFromFile, 
+    visitDate, 
+    rows: allRows, 
+    warnings: allWarnings, 
+    missingCols: [] // Simplified for multi-sheet
+  }
 }
 
 // ---------------------------------------------------------------------------
