@@ -604,18 +604,21 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
 
     // 4. Insert test
     run(`INSERT INTO tests (
-      employee_id, location_id, test_date, test_type, province,
+          employee_id, location_id, test_date, test_type, province,
           left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
           right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
           classification, tech_notes, created_at
         ) VALUES (
-          ?, ?, ?, 'AB',
+          ?, ?, ?, ?, 'AB',
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, datetime('now')
         )`,
         [
-          employeeId, row.testDate, row.testType,
+          employeeId, 
+          locationId,    // Added missing locationId
+          row.testDate, 
+          row.testType,  // Now maps correctly to test_type column
           row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
           row.left_4k,   row.left_6k,  row.left_8k,
           row.right_500, row.right_1k, row.right_2k, row.right_3k,
@@ -629,13 +632,15 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
     if (row.testType === 'Baseline' &&
         !queryOne('SELECT baseline_id FROM baselines WHERE employee_id = ? AND archived = 0', [employeeId])) {
       run(`INSERT INTO baselines (
-      employee_id, location_id, test_date,
+            employee_id, location_id, test_date,
             left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
             right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
             created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
           [
-            employeeId, row.testDate,
+            employeeId, 
+            locationId, // Added missing locationId
+            row.testDate,
             row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
             row.left_4k,   row.left_6k,  row.left_8k,
             row.right_500, row.right_1k, row.right_2k, row.right_3k,

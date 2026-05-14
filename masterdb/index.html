@@ -11,12 +11,12 @@
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./print.css">
 
-  <!-- MSAL.js — Microsoft Authentication Library for browser -->
-  <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
-  <!-- sql.js: SQLite compiled to WebAssembly -->
-  <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
-  <!-- SheetJS: Excel / CSV workbook generation (MIT, v0.18.5) -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- MSAL.js — Local version for reliability -->
+  <script src="vendor/msal-browser.min.js"></script>
+  <!-- Local SheetJS for offline use -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <!-- Your existing SQL.js -->
+  <script src="vendor/sql-wasm.js"></script>
 
   <script type="importmap">
   {
