@@ -143,7 +143,6 @@ function parseExcel(buffer, filename) {
   // 1. Identify all data sheets (filtering out templates)
   const dataSheetNames = wb.SheetNames.filter(n => {
     const name = n.toLowerCase();
-    // Skip if name contains "template" or is the hidden SheetJS "A.Template"
     if (name.includes('template')) return false
     const ws = wb.Sheets[n]
     return ws && ws['!ref'] // Ensure sheet isn't empty
@@ -153,8 +152,7 @@ function parseExcel(buffer, filename) {
 
   let allRows = []
   let allWarnings = []
-  let companyName = null
-  let companyFromFile = false
+  let internalNameFromCell = null
   let columnsMappedGlobally = false
 
   // 2. Loop through every valid sheet and collect data
@@ -163,14 +161,14 @@ function parseExcel(buffer, filename) {
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
 
     // Try to find company name in this sheet if we don't have it yet
-    if (!companyName) {
+    if (!internalNameFromCell) {
       for (let i = 0; i < Math.min(raw.length, 10); i++) {
         for (const cell of (raw[i] ?? [])) {
           if (!cell) continue
           const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i)
-          if (m) { companyName = m[1].trim(); break }
+          if (m) { internalNameFromCell = m[1].trim(); break }
         }
-        if (companyName) break
+        if (internalNameFromCell) break
       }
     }
 
@@ -227,6 +225,34 @@ function parseExcel(buffer, filename) {
       })
     }
   }
+
+  // 3. Split Name into Company vs Location
+  // Logic: "Kal Tire #022 Regina" -> Co: "Kal Tire", Loc: "#022 Regina"
+  const rawFullName = internalNameFromCell || companyNameFromFilename(filename)
+  let companyName = rawFullName
+  let locationName = 'Main Office'
+
+  if (rawFullName.includes('#')) {
+    const parts = rawFullName.split('#')
+    companyName = parts[0].trim()
+    locationName = '#' + parts.slice(1).join('#').trim()
+  } else if (rawFullName.toLowerCase().includes('kal tire')) {
+    companyName = 'Kal Tire'
+    locationName = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office'
+  }
+
+  return { 
+    columnsMapped: columnsMappedGlobally, 
+    companyName, 
+    locationName, 
+    province: 'AB', 
+    companyFromFile: !internalNameFromCell, 
+    visitDate: visitDateFromFilename(filename), 
+    rows: allRows, 
+    warnings: allWarnings, 
+    missingCols: [] 
+  }
+}
 
   // --- SPLIT LOGIC START ---
   // Get the full name from the filename or the internal cell
