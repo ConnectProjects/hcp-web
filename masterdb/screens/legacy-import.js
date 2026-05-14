@@ -52,7 +52,7 @@ for (const [field, aliases] of COLUMN_MAP) {
 const REQUIRED_FIELDS = ['firstName', 'lastName', 'testDate']
 
 // ---------------------------------------------------------------------------
-// Render
+// Render (Updated for Multi-file selection)
 // ---------------------------------------------------------------------------
 
 export function renderLegacyImport(container, state, navigate) {
@@ -61,16 +61,17 @@ export function renderLegacyImport(container, state, navigate) {
       <div class="page-header">
         <div>
           <h1>Import Legacy Excel</h1>
-          <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Import a TechTool legacy .xlsx packet into MasterDB</p>
+          <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Import TechTool legacy .xlsx packets into MasterDB</p>
         </div>
       </div>
 
       <div class="form-card legacy-import-wrap">
         <div class="drop-zone" id="drop-zone">
           <div class="drop-zone__icon">📂</div>
-          <div class="drop-zone__text">Drop a legacy .xlsx file here</div>
+          <div class="drop-zone__text">Drop one or more legacy .xlsx files here</div>
           <div class="drop-zone__sub">or <label class="link-btn" for="file-picker">browse</label></div>
-          <input type="file" id="file-picker" accept=".xlsx,.xls" style="display:none" />
+          <!-- Added 'multiple' attribute here -->
+          <input type="file" id="file-picker" accept=".xlsx,.xls" style="display:none" multiple />
         </div>
 
         <div id="preview-area"  style="display:none"></div>
@@ -85,49 +86,74 @@ export function renderLegacyImport(container, state, navigate) {
 
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drop-zone--over') })
   dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drop-zone--over'))
+  
   dropZone.addEventListener('drop', e => {
     e.preventDefault()
     dropZone.classList.remove('drop-zone--over')
-    const file = e.dataTransfer.files[0]
-    if (file) handleFile(file, container, navigate)
+    const files = e.dataTransfer.files // Grab the whole list
+    if (files.length > 0) handleFiles(files, container, navigate)
   })
+
   dropZone.addEventListener('click', () => filePicker.click())
+
   filePicker.addEventListener('change', e => {
-    const file = e.target.files[0]
-    if (file) handleFile(file, container, navigate)
+    const files = e.target.files // Grab the whole list
+    if (files.length > 0) handleFiles(files, container, navigate)
   })
 }
 
 // ---------------------------------------------------------------------------
-// File handling
+// File handling (Updated to handle multiple files)
 // ---------------------------------------------------------------------------
 
-async function handleFile(file, container, navigate) {
-  if (!file.name.match(/\.xlsx?$/i)) {
-    showError(container, 'Please select an Excel file (.xlsx or .xls).')
+async function handleFiles(fileList, container, navigate) {
+  const files = Array.from(fileList)
+  
+  // This will store the combined data from all files
+  let aggregateParsed = {
+    rows: [],
+    warnings: [],
+    companyName: null,
+    columnsMapped: false,
+    locationName: 'Multiple', // Placeholder for the preview
+    province: 'AB'
+  }
+
+  for (const file of files) {
+    if (!file.name.match(/\.xlsx?$/i)) {
+      aggregateParsed.warnings.push(`Skipped ${file.name}: Not an Excel file.`)
+      continue
+    }
+
+    const buffer = await file.arrayBuffer()
+    try {
+      const parsed = parseExcel(buffer, file.name)
+      
+      // Use the first valid company name we find as the main company
+      if (!aggregateParsed.companyName) aggregateParsed.companyName = parsed.companyName
+      if (parsed.columnsMapped) aggregateParsed.columnsMapped = true
+
+      // Attach the specific location name from THIS file to each row
+      // This is vital for the database logic later!
+      const rowsWithLocation = parsed.rows.map(r => ({ 
+        ...r, 
+        locationName: parsed.locationName 
+      }))
+      
+      aggregateParsed.rows.push(...rowsWithLocation)
+      aggregateParsed.warnings.push(...parsed.warnings)
+    } catch (err) {
+      aggregateParsed.warnings.push(`Error parsing ${file.name}: ${err.message}`)
+    }
+  }
+
+  if (aggregateParsed.rows.length === 0) {
+    showError(container, 'No valid data found in any of the selected files.')
     return
   }
 
-  const buffer = await file.arrayBuffer()
-  let parsed
-  try {
-    parsed = parseExcel(buffer, file.name)
-  } catch (err) {
-    showError(container, `Could not parse file: ${err.message}`)
-    return
-  }
-
-  if (!parsed.columnsMapped) {
-    showError(container, `Could not find a recognisable header row in this file. Make sure it has columns like "First name", "Surname", "Test Date", etc.`)
-    return
-  }
-
-  if (parsed.rows.length === 0) {
-    showError(container, 'Header row found but no employee data rows below it.')
-    return
-  }
-
-  showPreview(parsed, file.name, container, navigate)
+  // Show the combined preview
+  showPreview(aggregateParsed, `${files.length} files`, container, navigate)
 }
 
 // ---------------------------------------------------------------------------
@@ -550,19 +576,18 @@ function runImport(parsed, decisions, container, navigate) {
 }
 
 // ---------------------------------------------------------------------------
-// Core DB write logic
+// Core DB write logic - Bulk Multi-Location Version
 // ---------------------------------------------------------------------------
 
-function doImport(companyName, locationName, province, rows, run, decisions) {
+function doImport(companyName, _, defaultProvince, rows, run, decisions) {
   const stats = {
     companyCreated:  false, companyId:  null,
-    locationCreated: false, locationId: null,
     employeesCreated: 0,   employeesMatched: 0,
     testsInserted: 0,      baselinesSet: 0,
     skipped: 0
   }
 
-  // 1. Find or create company
+  // 1. Find or create the master Company (e.g., "Kal Tire")
   let company = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
   if (company) {
     stats.companyId = company.company_id
@@ -574,25 +599,32 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
   }
 
   const companyId = stats.companyId
-
-  // 2. Find or create location
-  let location = queryOne(
-    'SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE',
-    [companyId, locationName]
-  )
-  if (location) {
-    stats.locationId = location.location_id
-  } else {
-    run(`INSERT INTO locations (company_id, name, province, created_at, updated_at)
-         VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
-        [companyId, locationName, province])
-    stats.locationId      = queryOne('SELECT last_insert_rowid() AS id').id
-    stats.locationCreated = true
-  }
-
-  const locationId = stats.locationId
+  
+  // Create a cache for location IDs so we don't query the DB 500 times for the same site
+  const locationCache = {}
 
   for (const row of rows) {
+    // 2. Determine Location for this specific row (based on the filename it came from)
+    const locName = row.locationName || 'Main Office'
+    
+    if (!locationCache[locName]) {
+      let location = queryOne(
+        'SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE',
+        [companyId, locName]
+      )
+      
+      if (location) {
+        locationCache[locName] = location.location_id
+      } else {
+        // Create the location if it's new to the database
+        run(`INSERT INTO locations (company_id, name, province, created_at, updated_at)
+             VALUES (?, ?, ?, datetime('now'), datetime('now'))`,
+            [companyId, locName, defaultProvince])
+        locationCache[locName] = queryOne('SELECT last_insert_rowid() AS id').id
+      }
+    }
+
+    const locationId = locationCache[locName]
     const conflictKey = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
     const decision    = decisions[conflictKey]
 
@@ -605,14 +637,8 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
     } else if (decision?.action === 'existing') {
       employeeId = decision.employeeId
       stats.employeesMatched++
-    } else if (decision?.action === 'new') {
-      run(`INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at)
-           VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
-          [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
-      employeeId = queryOne('SELECT last_insert_rowid() AS id').id
-      stats.employeesCreated++
     } else {
-      // Normal matching — no conflict flagged
+      // Try to find employee at THIS specific location
       let employee = findEmployee(locationId, row)
       if (employee) {
         employeeId = employee.employee_id
@@ -626,11 +652,11 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
       }
     }
 
-    // 3. Skip duplicate test
+    // 4. Skip duplicate test (Avoid importing the same test twice if file is re-uploaded)
     if (queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?',
                  [employeeId, row.testDate])) continue
 
-    // 4. Insert test
+    // 5. Insert test (22 Columns to match Schema 2.0)
     run(`INSERT INTO tests (
           employee_id, location_id, test_date, test_type, province,
           left_500,  left_1k,  left_2k,  left_3k,  left_4k,  left_6k,  left_8k,
@@ -644,9 +670,9 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
         )`,
         [
           employeeId, 
-          locationId,    // Added missing locationId
+          locationId, 
           row.testDate, 
-          row.testType,  // Now maps correctly to test_type column
+          row.testType,
           row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
           row.left_4k,   row.left_6k,  row.left_8k,
           row.right_500, row.right_1k, row.right_2k, row.right_3k,
@@ -656,7 +682,7 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
         ])
     stats.testsInserted++
 
-    // 5. Insert baseline if none exists
+    // 6. Insert baseline if none exists
     if (row.testType === 'Baseline' &&
         !queryOne('SELECT baseline_id FROM baselines WHERE employee_id = ? AND archived = 0', [employeeId])) {
       run(`INSERT INTO baselines (
@@ -667,7 +693,7 @@ function doImport(companyName, locationName, province, rows, run, decisions) {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
           [
             employeeId, 
-            locationId, // Added missing locationId
+            locationId,
             row.testDate,
             row.left_500,  row.left_1k,  row.left_2k,  row.left_3k,
             row.left_4k,   row.left_6k,  row.left_8k,
