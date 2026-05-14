@@ -265,18 +265,29 @@ function parseExcel(buffer, filename) {
     }
   }
 
-  // 3. Logic to split "Kal Tire #022 Regina" -> Co: "Kal Tire", Loc: "#022 Regina"
+  // 3. Robust Split Logic (Handles #, Comma, and Dash)
+  // Extracts "Kal Tire", "Carrier Forest Products", or "City of Lloydminster" as the Company
   const rawFullName = internalNameFromCell || companyNameFromFilename(filename);
   let companyName = rawFullName;
   let locationName = 'Main Office';
 
+  // Try splitting by # (Kal Tire style)
   if (rawFullName.includes('#')) {
     const parts = rawFullName.split('#');
     companyName = parts[0].trim();
     locationName = '#' + parts.slice(1).join('#').trim();
-  } else if (rawFullName.toLowerCase().includes('kal tire')) {
-    companyName = 'Kal Tire';
-    locationName = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office';
+  } 
+  // Try splitting by Comma (Carrier Forest style)
+  else if (rawFullName.includes(',')) {
+    const parts = rawFullName.split(',');
+    companyName = parts[0].trim();
+    locationName = parts.slice(1).join(',').trim();
+  }
+  // Try splitting by Dash (City of Lloydminster style)
+  else if (rawFullName.includes(' - ')) {
+    const parts = rawFullName.split(' - ');
+    companyName = parts[0].trim();
+    locationName = parts.slice(1).join(' - ').trim();
   }
 
   return { 
@@ -291,7 +302,6 @@ function parseExcel(buffer, filename) {
     missingCols: [] 
   };
 }
-
 // ---------------------------------------------------------------------------
 // Build column index
 // ---------------------------------------------------------------------------
@@ -756,40 +766,36 @@ const MONTHS_PARSE = {
 
 function parseDate(raw) {
   if (raw == null) return null;
-  
-  // If SheetJS already parsed it as a Date object
   if (raw instanceof Date) return raw.toISOString().slice(0, 10);
 
-  let s = String(raw).trim();
-  if (!s) return null;
+  // Clean up common Excel "noise" seen in screenshots (double dots, question marks)
+  let s = String(raw).trim().replace(/\.\./g, '01').replace(/\?\?\?\?/g, '1900');
+  if (!s || s.includes('?')) return null;
 
-  // 1. Handle Slash format: M/D/YYYY or MM/DD/YYYY (e.g., 7/31/2025)
+  // 1. Handle Slash format: 7/31/2025
   const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) {
-    const m = slashMatch[1].padStart(2, '0');
-    const d = slashMatch[2].padStart(2, '0');
-    const y = slashMatch[3];
-    return `${y}-${m}-${d}`;
+    return `${slashMatch[3]}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
   }
 
-  // 2. Handle Space format: JUN 20 1993 or JULY 27 2023
+  // 2. Handle Space format: SEPT 5 1991 or JUNE 20 1980
+  // Note: Added support for SEPT as 4 letters
   const upperS = s.toUpperCase();
-  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2}|\.\.)\s+(\d{4})$/);
+  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
   if (spaceMatch) {
-    const mo = MONTHS_PARSE[spaceMatch[1]];
+    let monthPart = spaceMatch[1];
+    if (monthPart === 'SEPT') monthPart = 'SEP'; // Normalize SEPT to SEP
+    const mo = MONTHS_PARSE[monthPart];
     if (!mo) return null;
-    const day = (spaceMatch[2].includes('.') || spaceMatch[2] === '0') ? '01' : spaceMatch[2].padStart(2,'0');
-    return `${spaceMatch[3]}-${mo}-${day}`;
+    return `${spaceMatch[3]}-${mo}-${spaceMatch[2].padStart(2,'0')}`;
   }
 
-  // 3. Handle standard ISO format: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  // 4. Handle Excel Serial Numbers (e.g., 45123)
   const n = Number(raw);
   if (!isNaN(n) && n > 1000) {
     const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    return d.toISOString().slice(0, 10);
   }
   
   return null;
