@@ -755,26 +755,44 @@ const MONTHS_PARSE = {
 }
 
 function parseDate(raw) {
-  if (raw == null) return null
-  const s = String(raw).trim().toUpperCase()
-  if (!s) return null
+  if (raw == null) return null;
+  
+  // If SheetJS already parsed it as a Date object
+  if (raw instanceof Date) return raw.toISOString().slice(0, 10);
 
-  const m = s.match(/^([A-Z]+)\s+(\d{1,2}|\.\.)\s+(\d{4})$/)
-  if (m) {
-    const mo = MONTHS_PARSE[m[1]]
-    if (!mo) return null
-    const day = (m[2].includes('.') || m[2] === '0') ? '01' : m[2].padStart(2,'0')
-    return `${m[3]}-${mo}-${day}`
+  let s = String(raw).trim();
+  if (!s) return null;
+
+  // 1. Handle Slash format: M/D/YYYY or MM/DD/YYYY (e.g., 7/31/2025)
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    const m = slashMatch[1].padStart(2, '0');
+    const d = slashMatch[2].padStart(2, '0');
+    const y = slashMatch[3];
+    return `${y}-${m}-${d}`;
   }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  // 2. Handle Space format: JUN 20 1993 or JULY 27 2023
+  const upperS = s.toUpperCase();
+  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2}|\.\.)\s+(\d{4})$/);
+  if (spaceMatch) {
+    const mo = MONTHS_PARSE[spaceMatch[1]];
+    if (!mo) return null;
+    const day = (spaceMatch[2].includes('.') || spaceMatch[2] === '0') ? '01' : spaceMatch[2].padStart(2,'0');
+    return `${spaceMatch[3]}-${mo}-${day}`;
+  }
 
-  const n = Number(raw)
+  // 3. Handle standard ISO format: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // 4. Handle Excel Serial Numbers (e.g., 45123)
+  const n = Number(raw);
   if (!isNaN(n) && n > 1000) {
-    const d = new Date(Math.round((n - 25569) * 86400 * 1000))
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
-  return null
+  
+  return null;
 }
 
 // ---------------------------------------------------------------------------
