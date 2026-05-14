@@ -289,20 +289,6 @@ function parseExcel(buffer, filename) {
     missingCols: [],
     colIndex: {} // placeholder
   };
-}
-
-  return { 
-    columnsMapped: columnsMappedGlobally, 
-    companyName, 
-    locationName, 
-    province, 
-    companyFromFile, 
-    visitDate, 
-    rows: allRows, 
-    warnings: allWarnings, 
-    missingCols: [] // Simplified for multi-sheet
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Build column index
