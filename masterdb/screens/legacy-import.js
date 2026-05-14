@@ -131,51 +131,51 @@ async function handleFile(file, container, navigate) {
 }
 
 // ---------------------------------------------------------------------------
-// Excel parsing
+// Excel parsing - Multi-sheet version with Company/Location splitting
 // ---------------------------------------------------------------------------
 
 function parseExcel(buffer, filename) {
-  const XLSX = window.XLSX
-  if (!XLSX) throw new Error('SheetJS (XLSX) library not loaded. Add it to index.html.')
+  const XLSX = window.XLSX;
+  if (!XLSX) throw new Error('SheetJS (XLSX) library not loaded.');
 
-  const wb = XLSX.read(buffer, { type: 'array', raw: true })
+  const wb = XLSX.read(buffer, { type: 'array', raw: true });
   
-  // 1. Identify all data sheets (filtering out templates)
+  // 1. Get all data sheets, ignoring templates
   const dataSheetNames = wb.SheetNames.filter(n => {
     const name = n.toLowerCase();
-    if (name.includes('template')) return false
-    const ws = wb.Sheets[n]
-    return ws && ws['!ref'] // Ensure sheet isn't empty
-  })
+    if (name.includes('template')) return false;
+    const ws = wb.Sheets[n];
+    return ws && ws['!ref'];
+  });
 
-  if (dataSheetNames.length === 0) throw new Error('No data sheets found. Ensure sheets are not named "Template".')
+  if (dataSheetNames.length === 0) throw new Error('No data sheets found.');
 
-  let allRows = []
-  let allWarnings = []
-  let internalNameFromCell = null
-  let columnsMappedGlobally = false
+  let allRows = [];
+  let allWarnings = [];
+  let internalNameFromCell = null;
+  let columnsMappedGlobally = false;
 
-  // 2. Loop through every valid sheet and collect data
+  // 2. Loop through every valid sheet
   for (const sheetName of dataSheetNames) {
-    const ws  = wb.Sheets[sheetName]
-    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
+    const ws  = wb.Sheets[sheetName];
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
 
-    // Try to find company name in this sheet if we don't have it yet
+    // Try to find company name in this sheet cell (e.g., "Company: Kal Tire #022")
     if (!internalNameFromCell) {
       for (let i = 0; i < Math.min(raw.length, 10); i++) {
         for (const cell of (raw[i] ?? [])) {
-          if (!cell) continue
-          const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i)
-          if (m) { internalNameFromCell = m[1].trim(); break }
+          if (!cell) continue;
+          const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i);
+          if (m) { internalNameFromCell = m[1].trim(); break; }
         }
-        if (internalNameFromCell) break
+        if (internalNameFromCell) break;
       }
     }
 
-    // Find header row in this specific sheet
-    let headerRowIdx = -1, colIndex = {}
+    // Find header row in this sheet
+    let headerRowIdx = -1, colIndex = {};
     for (let i = 0; i < raw.length; i++) {
-      const attempt = buildColIndex(raw[i] ?? [])
+      const attempt = buildColIndex(raw[i] ?? []);
       if (REQUIRED_FIELDS.every(f => f in attempt)) { 
         headerRowIdx = i; 
         colIndex = attempt; 
@@ -184,26 +184,25 @@ function parseExcel(buffer, filename) {
       }
     }
 
-    // Skip this sheet if no header found
     if (headerRowIdx === -1) continue;
 
     // Parse data rows for this sheet
     for (let i = headerRowIdx + 1; i < raw.length; i++) {
-      const r = raw[i]
-      if (!r) continue
-      const firstName = str(r[colIndex.firstName])
-      const lastName  = str(r[colIndex.lastName])
-      if (!firstName && !lastName) continue
+      const r = raw[i];
+      if (!r) continue;
+      const firstName = str(r[colIndex.firstName]);
+      const lastName  = str(r[colIndex.lastName]);
+      if (!firstName && !lastName) continue;
 
-      const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null
-      const testDate    = parseDate(testDateRaw)
+      const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null;
+      const testDate    = parseDate(testDateRaw);
 
       if (!testDate) {
-        allWarnings.push(`Sheet "${sheetName}", Row ${i + 1} (${firstName} ${lastName}): unreadable test date — skipped.`)
-        continue
+        allWarnings.push(`Sheet "${sheetName}", Row ${i + 1} (${firstName} ${lastName}): unreadable date.`);
+        continue;
       }
 
-      const dobRaw = colIndex.dob != null ? r[colIndex.dob] : null
+      const dobRaw = colIndex.dob != null ? r[colIndex.dob] : null;
       allRows.push({
         firstName, lastName,
         occupation:  str(r[colIndex.occupation]),
@@ -222,23 +221,22 @@ function parseExcel(buffer, filename) {
         right_2k:  num(r[colIndex.right_2k]),  right_3k: num(r[colIndex.right_3k]),
         right_4k:  num(r[colIndex.right_4k]),  right_6k: num(r[colIndex.right_6k]),
         right_8k:  num(r[colIndex.right_8k]),
-      })
+      });
     }
   }
 
-  // 3. Split Name into Company vs Location
-  // Logic: "Kal Tire #022 Regina" -> Co: "Kal Tire", Loc: "#022 Regina"
-  const rawFullName = internalNameFromCell || companyNameFromFilename(filename)
-  let companyName = rawFullName
-  let locationName = 'Main Office'
+  // 3. Logic to split "Kal Tire #022 Regina" -> Co: "Kal Tire", Loc: "#022 Regina"
+  const rawFullName = internalNameFromCell || companyNameFromFilename(filename);
+  let companyName = rawFullName;
+  let locationName = 'Main Office';
 
   if (rawFullName.includes('#')) {
-    const parts = rawFullName.split('#')
-    companyName = parts[0].trim()
-    locationName = '#' + parts.slice(1).join('#').trim()
+    const parts = rawFullName.split('#');
+    companyName = parts[0].trim();
+    locationName = '#' + parts.slice(1).join('#').trim();
   } else if (rawFullName.toLowerCase().includes('kal tire')) {
-    companyName = 'Kal Tire'
-    locationName = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office'
+    companyName = 'Kal Tire';
+    locationName = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office';
   }
 
   return { 
@@ -251,44 +249,8 @@ function parseExcel(buffer, filename) {
     rows: allRows, 
     warnings: allWarnings, 
     missingCols: [] 
-  }
-}
-
-  // --- SPLIT LOGIC START ---
-  // Get the full name from the filename or the internal cell
-  let rawFullName = companyName || companyNameFromFilename(filename);
-  let splitCompany = rawFullName;
-  let splitLocation = 'Main Office'; // Default fallback
-
-  // If the name contains a '#', split it.
-  // Example: "Kal Tire #022 Regina" 
-  // becomes Company: "Kal Tire", Location: "#022 Regina"
-  if (rawFullName.includes('#')) {
-    const parts = rawFullName.split('#');
-    splitCompany = parts[0].trim();
-    splitLocation = '#' + parts.slice(1).join('#').trim();
-  } else if (rawFullName.toLowerCase().includes('kal tire')) {
-    // Specific check for Kal Tire if no # is present
-    splitCompany = 'Kal Tire';
-    splitLocation = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office';
-  }
-  // --- SPLIT LOGIC END ---
-
-  const visitDate = visitDateFromFilename(filename);
-  const province  = 'AB'; // Keep your default
-
-  return { 
-    columnsMapped: columnsMappedGlobally, 
-    companyName: splitCompany,   // Now just "Kal Tire"
-    locationName: splitLocation, // Now "#022 Regina"
-    province, 
-    companyFromFile, 
-    visitDate, 
-    rows: allRows, 
-    warnings: allWarnings, 
-    missingCols: [],
-    colIndex: {} // placeholder
   };
+}
 
 // ---------------------------------------------------------------------------
 // Build column index
