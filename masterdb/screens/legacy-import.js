@@ -228,15 +228,42 @@ function parseExcel(buffer, filename) {
     }
   }
 
-  // Final fallback for company name
-  if (!companyName) { 
-    companyName = companyNameFromFilename(filename)
-    companyFromFile = true 
-  }
+  // --- SPLIT LOGIC START ---
+  // Get the full name from the filename or the internal cell
+  let rawFullName = companyName || companyNameFromFilename(filename);
+  let splitCompany = rawFullName;
+  let splitLocation = 'Main Office'; // Default fallback
 
-  const visitDate = visitDateFromFilename(filename)
-  const locationName = companyNameFromFilename(filename)
-  const province = 'AB'
+  // If the name contains a '#', split it.
+  // Example: "Kal Tire #022 Regina" 
+  // becomes Company: "Kal Tire", Location: "#022 Regina"
+  if (rawFullName.includes('#')) {
+    const parts = rawFullName.split('#');
+    splitCompany = parts[0].trim();
+    splitLocation = '#' + parts.slice(1).join('#').trim();
+  } else if (rawFullName.toLowerCase().includes('kal tire')) {
+    // Specific check for Kal Tire if no # is present
+    splitCompany = 'Kal Tire';
+    splitLocation = rawFullName.replace(/kal tire/i, '').trim() || 'Main Office';
+  }
+  // --- SPLIT LOGIC END ---
+
+  const visitDate = visitDateFromFilename(filename);
+  const province  = 'AB'; // Keep your default
+
+  return { 
+    columnsMapped: columnsMappedGlobally, 
+    companyName: splitCompany,   // Now just "Kal Tire"
+    locationName: splitLocation, // Now "#022 Regina"
+    province, 
+    companyFromFile, 
+    visitDate, 
+    rows: allRows, 
+    warnings: allWarnings, 
+    missingCols: [],
+    colIndex: {} // placeholder
+  };
+}
 
   return { 
     columnsMapped: columnsMappedGlobally, 
