@@ -351,7 +351,7 @@ function showPreview(parsed, filename, container, navigate) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 2 — Conflict detection
+// Step 2 — Conflict detection (Updated for Schema 2.0 Hierarchy)
 // ---------------------------------------------------------------------------
 
 function checkConflicts(parsed, container, navigate) {
@@ -368,19 +368,23 @@ function checkConflicts(parsed, container, navigate) {
       const key = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
       if (seen.has(key)) continue
 
+      // Updated SQL: Joining employees to locations to check by company_id
       if (row.dob) {
         const dobMatch = queryOne(
-          `SELECT employee_id FROM employees
-           WHERE company_id = ? AND first_name = ? COLLATE NOCASE
-             AND last_name = ? COLLATE NOCASE AND dob = ?`,
+          `SELECT e.employee_id FROM employees e
+           JOIN locations l ON e.location_id = l.location_id
+           WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE
+             AND e.last_name = ? COLLATE NOCASE AND e.dob = ?`,
           [companyId, row.firstName, row.lastName, row.dob])
         if (dobMatch) continue
       }
 
+      // Updated SQL: Joining employees to locations to check by company_id
       const nameMatches = query(
-        `SELECT employee_id, first_name, last_name, dob, job_title
-         FROM employees
-         WHERE company_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
+        `SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title
+         FROM employees e
+         JOIN locations l ON e.location_id = l.location_id
+         WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE`,
         [companyId, row.firstName, row.lastName])
 
       if (nameMatches.length > 0) {
@@ -397,7 +401,6 @@ function checkConflicts(parsed, container, navigate) {
 
   showConflicts(parsed, conflicts, container, navigate)
 }
-
 // ---------------------------------------------------------------------------
 // Step 2b — Conflict resolution UI
 // ---------------------------------------------------------------------------
