@@ -176,118 +176,87 @@ async function handleFiles(fileList, container, navigate) {
 
 function parseExcel(buffer, filename) {
   const XLSX = window.XLSX;
-  if (!XLSX) throw new Error('SheetJS (XLSX) library not loaded.');
-
   const wb = XLSX.read(buffer, { type: 'array', raw: true });
   
-  const dataSheetNames = wb.SheetNames.filter(n => {
-    const name = n.toLowerCase();
-    if (name.includes('template')) return false;
-    const ws = wb.Sheets[n];
-    return ws && ws['!ref'];
-  });
-
+  // 1. Get data sheets (ignore templates)
+  const dataSheetNames = wb.SheetNames.filter(n => !n.toLowerCase().includes('template'));
   if (dataSheetNames.length === 0) throw new Error('No data sheets found.');
 
   let allRows = [];
   let allWarnings = [];
-  let internalNameFromCell = null;
-  let columnsMappedGlobally = false;
 
+  // 2. Loop through every valid sheet
   for (const sheetName of dataSheetNames) {
     const ws  = wb.Sheets[sheetName];
-    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true });
+    // We use header: 1 to get a raw array of rows
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
-    if (!internalNameFromCell) {
-      for (let i = 0; i < Math.min(raw.length, 10); i++) {
-        for (const cell of (raw[i] ?? [])) {
-          if (!cell) continue;
-          const m = String(cell).match(/Company\s*[/\\]?\s*City\s*:?\s*(.+)/i);
-          if (m) { internalNameFromCell = m[1].trim(); break; }
+    // --- STEP A: GET COMPANY FROM CELL A1 ---
+    // The macro set A1 to "Company: [Name]"
+    let sheetCompany = 'Unknown Company';
+    const cellA1 = raw[0]?.[0] || ''; 
+    if (String(cellA1).toLowerCase().includes('company')) {
+        sheetCompany = String(cellA1).replace(/^Company\s*:\s*/i, '').trim();
+    } else {
+        // Fallback: Check if it's in A2 or B1 just in case
+        const altCell = raw[1]?.[0] || raw[0]?.[1] || '';
+        if (String(altCell).toLowerCase().includes('company')) {
+            sheetCompany = String(altCell).replace(/^Company\s*:\s*/i, '').trim();
         }
-        if (internalNameFromCell) break;
-      }
     }
 
-    let headerRowIdx = -1, colIndex = {};
-    for (let i = 0; i < raw.length; i++) {
+    // --- STEP B: GET LOCATION FROM TAB NAME ---
+    // The macro renamed the tab to the Location
+    const sheetLocation = sheetName.trim();
+
+    // --- STEP C: FIND HEADERS & PARSE DATA ---
+    let hrIdx = -1, colIdx = {};
+    for (let i = 0; i < Math.min(raw.length, 20); i++) {
       const attempt = buildColIndex(raw[i] ?? []);
       if (REQUIRED_FIELDS.every(f => f in attempt)) { 
-        headerRowIdx = i; 
-        colIndex = attempt; 
-        columnsMappedGlobally = true;
+        hrIdx = i; 
+        colIdx = attempt; 
         break; 
       }
     }
+    
+    if (hrIdx === -1) continue;
 
-    if (headerRowIdx === -1) continue;
-
-    for (let i = headerRowIdx + 1; i < raw.length; i++) {
+    for (let i = hrIdx + 1; i < raw.length; i++) {
       const r = raw[i];
       if (!r) continue;
-      const firstName = str(r[colIndex.firstName]);
-      const lastName  = str(r[colIndex.lastName]);
+      
+      const firstName = str(r[colIdx.firstName]);
+      const lastName  = str(r[colIdx.lastName]);
       if (!firstName && !lastName) continue;
 
-      const testDateRaw = colIndex.testDate != null ? r[colIndex.testDate] : null;
-      const testDate    = parseDate(testDateRaw);
-
-      if (!testDate) {
-        allWarnings.push(`Sheet "${sheetName}", Row ${i + 1} (${firstName} ${lastName}): unreadable date.`);
-        continue;
+      const testDate = parseDate(r[colIdx.testDate]);
+      if (!testDate) { 
+        allWarnings.push(`${sheetName}: Row ${i+1} (${firstName}) skipped - unreadable date.`); 
+        continue; 
       }
 
-      const dobRaw = colIndex.dob != null ? r[colIndex.dob] : null;
       allRows.push({
         firstName, lastName,
-        occupation:  str(r[colIndex.occupation]),
-        dob:         parseDate(dobRaw),
-        dobRaw:      str(dobRaw),
-        testDate,    testDateRaw: str(testDateRaw),
-        wearHpd:     str(r[colIndex.wearHpd]),
-        hpdType:     str(r[colIndex.hpdType]),
-        testType:    normalizeTestType(str(r[colIndex.testType])),
-        category:    str(r[colIndex.category]),
-        left_500:  num(r[colIndex.left_500]),  left_1k:  num(r[colIndex.left_1k]),
-        left_2k:   num(r[colIndex.left_2k]),   left_3k:  num(r[colIndex.left_3k]),
-        left_4k:   num(r[colIndex.left_4k]),   left_6k:  num(r[colIndex.left_6k]),
-        left_8k:   num(r[colIndex.left_8k]),
-        right_500: num(r[colIndex.right_500]), right_1k: num(r[colIndex.right_1k]),
-        right_2k:  num(r[colIndex.right_2k]),  right_3k: num(r[colIndex.right_3k]),
-        right_4k:  num(r[colIndex.right_4k]),  right_6k: num(r[colIndex.right_6k]),
-        right_8k:  num(r[colIndex.right_8k]),
+        rowCompany:  sheetCompany,  // Hard-assigned from A1
+        rowLocation: sheetLocation, // Hard-assigned from Tab Name
+        occupation:  str(r[colIdx.occupation]),
+        dob:         parseDate(r[colIdx.dob]),
+        testDate,    
+        testType: normalizeTestType(str(r[colIdx.testType])),
+        category:    str(r[colIdx.category]),
+        left_500: num(r[colIdx.left_500]), left_1k: num(r[colIdx.left_1k]), left_2k: num(r[colIdx.left_2k]), left_3k: num(r[colIdx.left_3k]), left_4k: num(r[colIdx.left_4k]), left_6k: num(r[colIdx.left_6k]), left_8k: num(r[colIdx.left_8k]),
+        right_500: num(r[colIdx.right_500]), right_1k: num(r[colIdx.right_1k]), right_2k: num(r[colIdx.right_2k]), right_3k: num(r[colIdx.right_3k]), right_4k: num(r[colIdx.right_4k]), right_6k: num(r[colIdx.right_6k]), right_8k: num(r[colIdx.right_8k]),
       });
     }
   }
 
-  const rawFullName = internalNameFromCell || companyNameFromFilename(filename);
-  let companyName = rawFullName;
-  let locationName = 'Main Office';
-
-  if (rawFullName.includes('#')) {
-    const parts = rawFullName.split('#');
-    companyName = parts[0].trim();
-    locationName = '#' + parts.slice(1).join('#').trim();
-  } else if (rawFullName.includes(',')) {
-    const parts = rawFullName.split(',');
-    companyName = parts[0].trim();
-    locationName = parts.slice(1).join(',').trim();
-  } else if (rawFullName.includes(' - ')) {
-    const parts = rawFullName.split(' - ');
-    companyName = parts[0].trim();
-    locationName = parts.slice(1).join(' - ').trim();
-  }
-
+  // Return with a generic company name because doImport will use row-level data
   return { 
-    columnsMapped: columnsMappedGlobally, 
-    companyName, 
-    locationName, 
-    province: 'AB', 
-    companyFromFile: !internalNameFromCell, 
-    visitDate: visitDateFromFilename(filename), 
+    columnsMapped: true, 
+    companyName: 'Master Batch', 
     rows: allRows, 
-    warnings: allWarnings, 
-    missingCols: [] 
+    warnings: allWarnings 
   };
 }
 
