@@ -276,61 +276,70 @@ function buildColIndex(row) {
 // ---------------------------------------------------------------------------
 
 function showPreview(parsed, filename, container, navigate) {
-  const { companyName, companyFromFile, visitDate, rows, warnings, missingCols } = parsed
+  const { rows, warnings } = parsed;
 
-  container.querySelector('#drop-zone').style.display  = 'none'
-  const pa = container.querySelector('#preview-area')
-  pa.style.display = ''
+  container.querySelector('#drop-zone').style.display = 'none';
+  const pa = container.querySelector('#preview-area');
+  pa.style.display = '';
 
-  const freqCols   = ['500','1k','2k','3k','4k','6k','8k']
-  const earCols    = [...freqCols.map(f=>`L${f}`), ...freqCols.map(f=>`R${f}`)]
-  const freqFields = [
-    'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
-    'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k'
-  ]
-  const preview = rows.slice(0, 10)
+  // Only show the first 10 rows for speed
+  const preview = rows.slice(0, 15);
 
   pa.innerHTML = `
     <div style="margin-bottom:16px">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${esc(filename)}</div>
       <div style="color:var(--grey-500);font-size:13px">
-        Company: <strong>${esc(companyName)}</strong>
-        &nbsp;·&nbsp; ${rows.length} records detected
+        ✓ ${rows.length} records detected across all sheets.
       </div>
     </div>
-    ${warnings.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
-      <strong>⚠ ${warnings.length} rows will be skipped</strong>
-      <ul style="margin:6px 0 0 16px;font-size:13px; max-height: 150px; overflow-y: auto;">
-        ${warnings.map(w => `<li>${esc(w)}</li>`).join('')}
+
+    ${warnings.length ? `
+    <div class="alert alert-warn" style="margin-bottom:12px; max-height: 100px; overflow-y: auto;">
+      <strong>⚠ ${warnings.length} rows had issues</strong>
+      <ul style="margin:6px 0 0 16px;font-size:12px">
+        ${warnings.slice(0,5).map(w => `<li>${esc(w)}</li>`).join('')}
+        ${warnings.length > 5 ? `<li>...and ${warnings.length - 5} more</li>` : ''}
       </ul>
     </div>` : ''}
-    <div style="overflow-x:auto;margin-bottom:16px">
-      <table class="data-table">
-        <thead>
+
+    <div style="overflow-x:auto;margin-bottom:16px; border: 1px solid #eee; border-radius: 8px;">
+      <table class="data-table" style="font-size: 12px;">
+        <thead style="background: #f9fafb;">
           <tr>
-            <th>Last</th><th>First</th><th>DOB</th><th>Test Date</th><th>Type</th>
-            ${earCols.map(c => `<th style="font-size:11px">${c}</th>`).join('')}
+            <th>Company (From Cell A1)</th>
+            <th>Location (From Tab)</th>
+            <th>Employee</th>
+            <th>Test Date</th>
+            <th>Type</th>
           </tr>
         </thead>
         <tbody>
           ${preview.map(r => `
             <tr>
-              <td>${esc(r.lastName)}</td><td>${esc(r.firstName)}</td>
-              <td>${esc(r.dob)}</td><td>${esc(r.testDate)}</td>
-              <td>${esc(r.testType)}</td>
-              ${freqFields.map(f => `<td>${fmt(r[f])}</td>`).join('')}
+              <td style="color: #0056b3; font-weight: 600;">${esc(r.rowCompany)}</td>
+              <td style="color: #666;">${esc(r.rowLocation)}</td>
+              <td><strong>${esc(r.lastName)}</strong>, ${esc(r.firstName)}</td>
+              <td>${esc(r.testDate)}</td>
+              <td><span class="badge">${esc(r.testType)}</span></td>
             </tr>`).join('')}
+          ${rows.length > 15 ? `
+            <tr>
+              <td colspan="5" style="text-align:center;color:var(--grey-400);padding:10px;font-style:italic">
+                ... showing first 15 of ${rows.length} rows ...
+              </td>
+            </tr>` : ''}
         </tbody>
       </table>
     </div>
+
     <div style="display:flex;gap:12px;justify-content:flex-end">
       <button class="btn btn-outline" id="btn-cancel">Cancel</button>
-      <button class="btn btn-primary" id="btn-next">Continue →</button>
+      <button class="btn btn-primary" id="btn-next">Looks Good - Import All →</button>
     </div>
-  `
+  `;
 
-  pa.querySelector('#btn-cancel').addEventListener('click', () => navigate('dashboard'))
-  pa.querySelector('#btn-next').addEventListener('click',   () => checkConflicts(parsed, container, navigate))
+  pa.querySelector('#btn-cancel').addEventListener('click', () => navigate('dashboard'));
+  pa.querySelector('#btn-next').addEventListener('click', () => checkConflicts(parsed, container, navigate));
 }
 
 function checkConflicts(parsed, container, navigate) {
