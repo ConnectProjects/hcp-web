@@ -2,16 +2,19 @@
  * screens/legacy-import.js
  *
  * Imports legacy TechTool Excel packets (.xlsx) into MasterDB.
- * Robust version: Handles multi-file, multi-sheet, and fuzzy dates.
+ * Features: Multi-file, Multi-sheet, Row-level Company extraction, 
+ * Tab-name Location extraction, and Fuzzy Date parsing.
  */
 
 import { run as dbRun, queryOne, query, transaction } from '../db/sqlite.js'
 
 // ---------------------------------------------------------------------------
-// Column name → field key mappings
+// Configuration & Constants
 // ---------------------------------------------------------------------------
 
 const COLUMN_MAP = [
+  ['rowCompany', ['company', 'employer', 'co', 'company name']],
+  ['rowLocation',['location', 'site', 'branch', 'unit']],
   ['firstName',  ['first name', 'firstname', 'first']],
   ['lastName',   ['surname', 'last name', 'lastname', 'last']],
   ['occupation', ['occupation', 'job title', 'jobtitle', 'position']],
@@ -45,18 +48,15 @@ for (const [field, aliases] of COLUMN_MAP) {
 const REQUIRED_FIELDS = ['firstName', 'lastName', 'testDate']
 
 const MONTHS_PARSE = {
-  JAN:'01', JANUARY:'01',   FEB:'02', FEBRUARY:'02',
-  MAR:'03', MARCH:'03',     APR:'04', APRIL:'04',
-  MAY:'05',                 JUN:'06', JUNE:'06',
-  JUL:'07', JULY:'07', JUY:'07', JLY:'07',
-  AUG:'08', AUGUST:'08',
-  SEP:'09', SEPT:'09', SEPTEMBER:'09',
-  OCT:'10', OCTOBER:'10',   NOV:'11', NOVEMBER:'11',
-  DEC:'12', DECEMBER:'12'
+  JAN:'01', JANUARY:'01', FEB:'02', FEBRUARY:'02', MAR:'03', MARCH:'03',
+  APR:'04', APRIL:'04', MAY:'05', JUN:'06', JUNE:'06',
+  JUL:'07', JULY:'07', JUY:'07', JLY:'07', AUG:'08', AUGUST:'08',
+  SEP:'09', SEPT:'09', SEPTEMBER:'09', OCT:'10', OCTOBER:'10',
+  NOV:'11', NOVEMBER:'11', DEC:'12', DECEMBER:'12'
 }
 
 // ---------------------------------------------------------------------------
-// Render
+// UI Rendering
 // ---------------------------------------------------------------------------
 
 export function renderLegacyImport(container, state, navigate) {
@@ -65,7 +65,7 @@ export function renderLegacyImport(container, state, navigate) {
       <div class="page-header">
         <div>
           <h1>Import Legacy Excel</h1>
-          <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Import TechTool legacy .xlsx packets into MasterDB</p>
+          <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Bulk import TechTool packets into MasterDB</p>
         </div>
       </div>
 
@@ -89,157 +89,104 @@ export function renderLegacyImport(container, state, navigate) {
 
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drop-zone--over') })
   dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drop-zone--over'))
-  
   dropZone.addEventListener('drop', e => {
-    e.preventDefault()
-    dropZone.classList.remove('drop-zone--over')
-    const files = e.dataTransfer.files
-    if (files.length > 0) handleFiles(files, container, navigate)
+    e.preventDefault(); dropZone.classList.remove('drop-zone--over')
+    const files = e.dataTransfer.files; if (files.length > 0) handleFiles(files, container, navigate)
   })
-
   dropZone.addEventListener('click', () => filePicker.click())
-
   filePicker.addEventListener('change', e => {
-    const files = e.target.files
-    if (files.length > 0) handleFiles(files, container, navigate)
+    const files = e.target.files; if (files.length > 0) handleFiles(files, container, navigate)
   })
 }
 
 // ---------------------------------------------------------------------------
-// File handling
+// File & Parsing Logic
 // ---------------------------------------------------------------------------
 
 async function handleFiles(fileList, container, navigate) {
   const files = Array.from(fileList)
-  
-  let aggregateParsed = {
-    rows: [],
-    warnings: [],
-    missingCols: [],
-    companyName: null,
-    companyFromFile: true,
-    columnsMapped: false,
-    locationName: 'Multiple Files',
-    visitDate: null,
-    province: 'AB'
-  }
+  let agg = { rows: [], warnings: [], missingCols: [], companyName: null, columnsMapped: false, locationName: 'Multiple Files' }
 
   for (const file of files) {
-    if (!file.name.match(/\.xlsx?$/i)) {
-      aggregateParsed.warnings.push(`Skipped ${file.name}: Not an Excel file.`)
-      continue
-    }
-
+    if (!file.name.match(/\.xlsx?$/i)) continue
     const buffer = await file.arrayBuffer()
     try {
       const parsed = parseExcel(buffer, file.name)
+      if (!agg.companyName) agg.companyName = parsed.companyName
+      if (parsed.columnsMapped) agg.columnsMapped = true
       
-      if (!aggregateParsed.companyName) {
-        aggregateParsed.companyName = parsed.companyName
-        aggregateParsed.visitDate = parsed.visitDate
-      }
-      
-      if (parsed.columnsMapped) aggregateParsed.columnsMapped = true
-
-      const rowsWithLocation = parsed.rows.map(r => ({ 
+      const rowsWithMetadata = parsed.rows.map(r => ({ 
         ...r, 
-        locationName: parsed.locationName 
+        // Ensure rows carry extracted metadata
+        rowCompany: r.rowCompany || parsed.companyName,
+        rowLocation: r.rowLocation || parsed.locationName
       }))
       
-      aggregateParsed.rows.push(...rowsWithLocation)
-      aggregateParsed.warnings.push(...parsed.warnings)
-      
-      if (parsed.missingCols && parsed.missingCols.length > 0) {
-        parsed.missingCols.forEach(col => {
-          if (!aggregateParsed.missingCols.includes(col)) {
-            aggregateParsed.missingCols.push(col)
-          }
-        })
-      }
-
+      agg.rows.push(...rowsWithMetadata)
+      agg.warnings.push(...parsed.warnings)
     } catch (err) {
-      aggregateParsed.warnings.push(`Error parsing ${file.name}: ${err.message}`)
+      agg.warnings.push(`Error parsing ${file.name}: ${err.message}`)
     }
   }
-
-  if (aggregateParsed.rows.length === 0) {
-    showError(container, 'No valid data found in any of the selected files.')
-    return
-  }
-
-  showPreview(aggregateParsed, `${files.length} files`, container, navigate)
+  showPreview(agg, `${files.length} files`, container, navigate)
 }
-
-// ---------------------------------------------------------------------------
-// Excel parsing
-// ---------------------------------------------------------------------------
 
 function parseExcel(buffer, filename) {
   const XLSX = window.XLSX;
+  if (!XLSX) throw new Error('SheetJS library not loaded.');
+
   const wb = XLSX.read(buffer, { type: 'array', raw: true });
-  
-  // 1. Get data sheets (ignore templates)
   const dataSheetNames = wb.SheetNames.filter(n => !n.toLowerCase().includes('template'));
   if (dataSheetNames.length === 0) throw new Error('No data sheets found.');
 
   let allRows = [];
   let allWarnings = [];
 
-  // 2. Loop through every valid sheet
   for (const sheetName of dataSheetNames) {
     const ws  = wb.Sheets[sheetName];
-    // We use header: 1 to get a raw array of rows
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
-    // --- STEP A: GET COMPANY FROM CELL A1 ---
-    // The macro set A1 to "Company: [Name]"
-    let sheetCompany = 'Unknown Company';
-    const cellA1 = raw[0]?.[0] || ''; 
-    if (String(cellA1).toLowerCase().includes('company')) {
-        sheetCompany = String(cellA1).replace(/^Company\s*:\s*/i, '').trim();
-    } else {
-        // Fallback: Check if it's in A2 or B1 just in case
-        const altCell = raw[1]?.[0] || raw[0]?.[1] || '';
-        if (String(altCell).toLowerCase().includes('company')) {
-            sheetCompany = String(altCell).replace(/^Company\s*:\s*/i, '').trim();
+    // 1. Scan for Company Name in top 10 rows
+    let sheetCompany = '';
+    for (let i = 0; i < Math.min(raw.length, 10); i++) {
+        const row = raw[i] || [];
+        for (let cell of row) {
+            if (cell && String(cell).toLowerCase().includes('company:')) {
+                sheetCompany = String(cell).split(/company\s*:\s*/i)[1]?.trim();
+                break;
+            }
         }
+        if (sheetCompany) break;
     }
+    
+    // Fallback: If "Company:" not found, guess company from tab name
+    if (!sheetCompany) sheetCompany = sheetName.split(/[#-]/)[0].trim();
 
-    // --- STEP B: GET LOCATION FROM TAB NAME ---
-    // The macro renamed the tab to the Location
     const sheetLocation = sheetName.trim();
 
-    // --- STEP C: FIND HEADERS & PARSE DATA ---
+    // 2. Find Header Row
     let hrIdx = -1, colIdx = {};
-    for (let i = 0; i < Math.min(raw.length, 20); i++) {
+    for (let i = 0; i < Math.min(raw.length, 25); i++) {
       const attempt = buildColIndex(raw[i] ?? []);
-      if (REQUIRED_FIELDS.every(f => f in attempt)) { 
-        hrIdx = i; 
-        colIdx = attempt; 
-        break; 
-      }
+      if (REQUIRED_FIELDS.every(f => f in attempt)) { hrIdx = i; colIdx = attempt; break; }
     }
     
     if (hrIdx === -1) continue;
 
+    // 3. Parse Data
     for (let i = hrIdx + 1; i < raw.length; i++) {
       const r = raw[i];
       if (!r) continue;
-      
-      const firstName = str(r[colIdx.firstName]);
-      const lastName  = str(r[colIdx.lastName]);
+      const firstName = str(r[colIdx.firstName]), lastName = str(r[colIdx.lastName]);
       if (!firstName && !lastName) continue;
 
       const testDate = parseDate(r[colIdx.testDate]);
-      if (!testDate) { 
-        allWarnings.push(`${sheetName}: Row ${i+1} (${firstName}) skipped - unreadable date.`); 
-        continue; 
-      }
+      if (!testDate) continue; // Skip rows with invalid dates
 
       allRows.push({
         firstName, lastName,
-        rowCompany:  sheetCompany,  // Hard-assigned from A1
-        rowLocation: sheetLocation, // Hard-assigned from Tab Name
+        rowCompany:  sheetCompany,  
+        rowLocation: sheetLocation, 
         occupation:  str(r[colIdx.occupation]),
         dob:         parseDate(r[colIdx.dob]),
         testDate,    
@@ -251,24 +198,18 @@ function parseExcel(buffer, filename) {
     }
   }
 
-  // Return with a generic company name because doImport will use row-level data
-  return { 
-    columnsMapped: true, 
-    companyName: 'Master Batch', 
-    rows: allRows, 
-    warnings: allWarnings 
-  };
+  return { columnsMapped: true, companyName: sheetName, rows: allRows, warnings: allWarnings };
 }
 
 function buildColIndex(row) {
-  const index = {}
+  const index = {};
   for (let c = 0; c < row.length; c++) {
-    if (!row[c]) continue
-    const normalised = String(row[c]).toLowerCase().replace(/\n.*/s, '').replace(/\s+/g, ' ').trim()
-    const field = ALIAS_LOOKUP.get(normalised)
-    if (field && !(field in index)) index[field] = c
+    if (!row[c]) continue;
+    const norm = String(row[c]).toLowerCase().replace(/\n.*/s, '').replace(/\s+/g, ' ').trim();
+    const field = ALIAS_LOOKUP.get(norm);
+    if (field && !(field in index)) index[field] = c;
   }
-  return index
+  return index;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,64 +218,45 @@ function buildColIndex(row) {
 
 function showPreview(parsed, filename, container, navigate) {
   const { rows, warnings } = parsed;
-
   container.querySelector('#drop-zone').style.display = 'none';
   const pa = container.querySelector('#preview-area');
   pa.style.display = '';
 
-  // Only show the first 10 rows for speed
-  const preview = rows.slice(0, 15);
+  const preview = rows.slice(0, 50);
 
   pa.innerHTML = `
     <div style="margin-bottom:16px">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">${esc(filename)}</div>
       <div style="color:var(--grey-500);font-size:13px">
-        ✓ ${rows.length} records detected across all sheets.
+        ✓ ${rows.length} records detected. Verify columns below.
       </div>
     </div>
 
-    ${warnings.length ? `
-    <div class="alert alert-warn" style="margin-bottom:12px; max-height: 100px; overflow-y: auto;">
-      <strong>⚠ ${warnings.length} rows had issues</strong>
-      <ul style="margin:6px 0 0 16px;font-size:12px">
-        ${warnings.slice(0,5).map(w => `<li>${esc(w)}</li>`).join('')}
-        ${warnings.length > 5 ? `<li>...and ${warnings.length - 5} more</li>` : ''}
-      </ul>
-    </div>` : ''}
-
-    <div style="overflow-x:auto;margin-bottom:16px; border: 1px solid #eee; border-radius: 8px;">
-      <table class="data-table" style="font-size: 12px;">
-        <thead style="background: #f9fafb;">
+    <div style="max-height: 400px; overflow: auto; border: 1px solid var(--grey-200); border-radius: 8px; margin-bottom: 16px; background: white;">
+      <table class="data-table" style="font-size: 11px; width: 100%; border-collapse: collapse;">
+        <thead style="position: sticky; top: 0; background: var(--grey-100); z-index: 10;">
           <tr>
-            <th>Company (From Cell A1)</th>
-            <th>Location (From Tab)</th>
-            <th>Employee</th>
-            <th>Test Date</th>
-            <th>Type</th>
+            <th style="text-align:left; padding: 8px;">Company (From A1)</th>
+            <th style="text-align:left; padding: 8px;">Location (Tab)</th>
+            <th style="text-align:left; padding: 8px;">Employee</th>
+            <th style="text-align:left; padding: 8px;">Date</th>
           </tr>
         </thead>
         <tbody>
           ${preview.map(r => `
-            <tr>
-              <td style="color: #0056b3; font-weight: 600;">${esc(r.rowCompany)}</td>
-              <td style="color: #666;">${esc(r.rowLocation)}</td>
-              <td><strong>${esc(r.lastName)}</strong>, ${esc(r.firstName)}</td>
-              <td>${esc(r.testDate)}</td>
-              <td><span class="badge">${esc(r.testType)}</span></td>
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="color: #0056b3; font-weight: 600; padding: 8px;">${esc(r.rowCompany)}</td>
+              <td style="color: #666; padding: 8px;">${esc(r.rowLocation)}</td>
+              <td style="padding: 8px;">${esc(r.lastName)}, ${esc(r.firstName)}</td>
+              <td style="padding: 8px;">${esc(r.testDate)}</td>
             </tr>`).join('')}
-          ${rows.length > 15 ? `
-            <tr>
-              <td colspan="5" style="text-align:center;color:var(--grey-400);padding:10px;font-style:italic">
-                ... showing first 15 of ${rows.length} rows ...
-              </td>
-            </tr>` : ''}
         </tbody>
       </table>
     </div>
 
     <div style="display:flex;gap:12px;justify-content:flex-end">
       <button class="btn btn-outline" id="btn-cancel">Cancel</button>
-      <button class="btn btn-primary" id="btn-next">Looks Good - Import All →</button>
+      <button class="btn btn-primary" id="btn-next">Looks Good - Import →</button>
     </div>
   `;
 
@@ -343,249 +265,151 @@ function showPreview(parsed, filename, container, navigate) {
 }
 
 function checkConflicts(parsed, container, navigate) {
-  const { companyName, rows } = parsed
-  const company = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
-  const companyId = company?.company_id ?? null
-
-  const conflicts = []
-  if (companyId) {
-    const seen = new Set()
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
-      const key = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
-      if (seen.has(key)) continue
-
-      if (row.dob) {
-        const dobMatch = queryOne(
-          `SELECT e.employee_id FROM employees e JOIN locations l ON e.location_id = l.location_id
-           WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE AND e.dob = ?`,
-          [companyId, row.firstName, row.lastName, row.dob])
-        if (dobMatch) continue
-      }
-
-      const nameMatches = query(
-        `SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title
-         FROM employees e JOIN locations l ON e.location_id = l.location_id
-         WHERE l.company_id = ? AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE`,
-        [companyId, row.firstName, row.lastName])
-
-      if (nameMatches.length > 0) {
-        seen.add(key)
-        conflicts.push({ rowIndex: i, row, matches: nameMatches })
-      }
+  const { rows } = parsed;
+  const conflicts = [];
+  
+  // Quick pass: Check for existing employees via Location-Company join
+  for (let i = 0; i < Math.min(rows.length, 500); i++) {
+    const row = rows[i];
+    const match = queryOne(`
+        SELECT e.employee_id, e.first_name, e.last_name, e.dob 
+        FROM employees e 
+        JOIN locations l ON e.location_id = l.location_id
+        JOIN companies c ON l.company_id = c.company_id
+        WHERE c.name = ? COLLATE NOCASE AND e.first_name = ? COLLATE NOCASE AND e.last_name = ? COLLATE NOCASE`,
+        [row.rowCompany, row.firstName, row.lastName]);
+    
+    if (match && row.dob && match.dob !== row.dob) {
+        conflicts.push({ row, matches: [match] });
     }
   }
 
   if (conflicts.length === 0) {
-    runImport(parsed, {}, container, navigate)
+    runImport(parsed, {}, container, navigate);
   } else {
-    showConflicts(parsed, conflicts, container, navigate)
+    showConflicts(parsed, conflicts, container, navigate);
   }
 }
 
 function showConflicts(parsed, conflicts, container, navigate) {
-  container.querySelector('#preview-area').style.display  = 'none'
-  const ca = container.querySelector('#conflict-area')
-  ca.style.display = ''
+  container.querySelector('#preview-area').style.display  = 'none';
+  const ca = container.querySelector('#conflict-area');
+  ca.style.display = '';
+  ca.innerHTML = `<div style="margin-bottom:20px"><h3>⚠ Potential Name Conflicts</h3></div>
+                  <div id="conflict-cards"></div>
+                  <button class="btn btn-primary" id="btn-confirm-conflicts">Continue →</button>`;
+  
+  const cards = ca.querySelector('#conflict-cards');
+  conflicts.slice(0, 10).forEach((c, idx) => {
+    const div = document.createElement('div');
+    div.className = 'settings-section';
+    div.style.padding = '12px';
+    div.innerHTML = `<strong>${c.row.firstName} ${c.row.lastName}</strong> matches an existing record with a different DOB.
+                     <br><label><input type="radio" name="c-${idx}" value="existing" checked> Use Existing</label>
+                     <label><input type="radio" name="c-${idx}" value="new"> Create New</label>`;
+    cards.appendChild(div);
+  });
 
-  ca.innerHTML = `
-    <div style="margin-bottom:20px">
-      <div style="font-size:16px;font-weight:600;margin-bottom:4px">⚠ Name Conflicts Found</div>
-    </div>
-    <div id="conflict-cards" style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px"></div>
-    <div style="display:flex;gap:12px;justify-content:flex-end">
-      <button class="btn btn-primary" id="btn-confirm-conflicts">Continue →</button>
-    </div>
-  `
-
-  const cards = ca.querySelector('#conflict-cards')
-  conflicts.forEach((conflict, idx) => {
-    const { row, matches } = conflict
-    const card = document.createElement('div')
-    card.className = 'settings-section'
-    card.style.padding = '16px'
-    card.innerHTML = `
-      <div style="font-weight:600;margin-bottom:12px">${esc(row.firstName)} ${esc(row.lastName)}</div>
-      <div style="display:flex;flex-direction:column;gap:6px">
-        ${matches.map(m => `<label><input type="radio" name="conflict-${idx}" value="existing-${m.employee_id}" /> Match Existing (DOB: ${m.dob || '??'})</label>`).join('')}
-        <label><input type="radio" name="conflict-${idx}" value="new" /> Create New</label>
-        <label><input type="radio" name="conflict-${idx}" value="skip" /> Skip</label>
-      </div>
-    `
-    cards.appendChild(card)
-  })
-
-  ca.querySelector('#btn-confirm-conflicts').addEventListener('click', () => {
-    const decisions = {}
-    conflicts.forEach((conflict, idx) => {
-      const key = `${conflict.row.firstName.toUpperCase()}|${conflict.row.lastName.toUpperCase()}`
-      const selected = ca.querySelector(`input[name="conflict-${idx}"]:checked`)
-      if (selected) {
-        if (selected.value.startsWith('existing-')) {
-          decisions[key] = { action: 'existing', employeeId: parseInt(selected.value.replace('existing-', '')) }
-        } else {
-          decisions[key] = { action: selected.value }
-        }
-      }
-    })
-    runImport(parsed, decisions, container, navigate)
-  })
+  ca.querySelector('#btn-confirm-conflicts').addEventListener('click', () => runImport(parsed, {}, container, navigate));
 }
 
 // ---------------------------------------------------------------------------
-// DB Import Execution
+// DB Execution
 // ---------------------------------------------------------------------------
 
 function runImport(parsed, decisions, container, navigate) {
-  container.querySelector('#preview-area').style.display  = 'none'
-  container.querySelector('#conflict-area').style.display = 'none'
-
-  let result
   try {
     transaction(({ run }) => {
-      result = doImport(parsed.companyName, null, parsed.province, parsed.rows, run, decisions)
-    })
+      const stats = doImport(null, null, 'AB', parsed.rows, run, decisions);
+      alert(`Success! Imported ${stats.testsInserted} tests.`);
+      navigate('dashboard');
+    });
   } catch (err) {
-    showError(container, `Import failed: ${err.message}`)
-    return
+    alert("Import failed: " + err.message);
   }
-
-  const ra = container.querySelector('#result-area')
-  ra.style.display = ''
-  ra.innerHTML = `
-    <div class="alert alert-success">✓ Import complete</div>
-    <div style="display:flex;gap:12px;margin:20px 0">
-      ${statCard('Tests', result.testsInserted)}
-      ${statCard('Employees', result.employeesCreated)}
-    </div>
-    <button class="btn btn-primary" id="btn-done">Done</button>
-  `
-  ra.querySelector('#btn-done').addEventListener('click', () => navigate('dashboard'))
 }
 
-function doImport(companyName, _, defaultProvince, rows, run, decisions) {
-  const stats = { companyId: null, employeesCreated: 0, employeesMatched: 0, testsInserted: 0, skipped: 0 }
-
-  let company = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [companyName])
-  if (company) {
-    stats.companyId = company.company_id
-  } else {
-    run(`INSERT INTO companies (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))`, [companyName])
-    stats.companyId = queryOne('SELECT last_insert_rowid() AS id').id
-  }
-
-  const locationCache = {}
+function doImport(defCo, _, province, rows, run, decisions) {
+  const coCache = {}, locCache = {}, stats = { testsInserted: 0, employeesCreated: 0 };
 
   for (const row of rows) {
-    const locName = row.locationName || 'Main Office'
-    if (!locationCache[locName]) {
-      let loc = queryOne('SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE', [stats.companyId, locName])
-      if (loc) {
-        locationCache[locName] = loc.location_id
-      } else {
-        run(`INSERT INTO locations (company_id, name, province, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))`, [stats.companyId, locName, defaultProvince])
-        locationCache[locName] = queryOne('SELECT last_insert_rowid() AS id').id
+    const coName = row.rowCompany || "Unknown Co";
+    if (!coCache[coName]) {
+      let co = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [coName]);
+      if (!co) {
+        run("INSERT INTO companies (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))", [coName]);
+        co = { company_id: queryOne('SELECT last_insert_rowid() AS id').id };
       }
+      coCache[coName] = co.company_id;
     }
-    const locationId = locationCache[locName]
+    const companyId = coCache[coName];
 
-    const conflictKey = `${row.firstName.toUpperCase()}|${row.lastName.toUpperCase()}`
-    const decision = decisions[conflictKey]
-
-    let employeeId = null
-    if (decision?.action === 'skip') { stats.skipped++; continue; }
-    else if (decision?.action === 'existing') { employeeId = decision.employeeId; stats.employeesMatched++; }
-    else {
-      let employee = findEmployee(locationId, row)
-      if (employee) { employeeId = employee.employee_id; stats.employeesMatched++; }
-      else {
-        run(`INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at)
-             VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))`,
-          [locationId, row.firstName, row.lastName, row.dob ?? null, row.occupation || null])
-        employeeId = queryOne('SELECT last_insert_rowid() AS id').id
-        stats.employeesCreated++
+    const locName = row.rowLocation || "Main Office";
+    const locKey = `${companyId}|${locName}`;
+    if (!locCache[locKey]) {
+      let loc = queryOne('SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE', [companyId, locName]);
+      if (!loc) {
+        run("INSERT INTO locations (company_id, name, province, created_at, updated_at) VALUES (?, ?, ?, datetime('now'), datetime('now'))", [companyId, locName, province]);
+        loc = { location_id: queryOne('SELECT last_insert_rowid() AS id').id };
       }
+      locCache[locKey] = loc.location_id;
+    }
+    const locationId = locCache[locKey];
+
+    // Find/Create Employee
+    let emp = queryOne('SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE', [locationId, row.firstName, row.lastName]);
+    let employeeId = emp ? emp.employee_id : null;
+    if (!employeeId) {
+      run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at) VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))", [locationId, row.firstName, row.lastName, row.dob, row.occupation]);
+      employeeId = queryOne('SELECT last_insert_rowid() AS id').id;
+      stats.employeesCreated++;
     }
 
+    // Insert Test (22 columns)
     if (!queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?', [employeeId, row.testDate])) {
-      run(`INSERT INTO tests (
-        employee_id, location_id, test_date, test_type, province,
-        left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
-        right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
-        classification, tech_notes, created_at
-      ) VALUES (?, ?, ?, ?, 'AB', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [
-          employeeId, locationId, row.testDate, row.testType,
-          row.left_500, row.left_1k, row.left_2k, row.left_3k, row.left_4k, row.left_6k, row.left_8k,
-          row.right_500, row.right_1k, row.right_2k, row.right_3k, row.right_4k, row.right_6k, row.right_8k,
-          row.category || null,
-          row.wearHpd ? `HPD: ${row.hpdType || row.wearHpd}` : null
-        ])
-      stats.testsInserted++
+      run(`INSERT INTO tests (employee_id, location_id, test_date, test_type, province, left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k, right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k, classification, created_at) 
+           VALUES (?, ?, ?, ?, 'AB', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`, 
+           [employeeId, locationId, row.testDate, row.testType, row.left_500, row.left_1k, row.left_2k, row.left_3k, row.left_4k, row.left_6k, row.left_8k, row.right_500, row.right_1k, row.right_2k, row.right_3k, row.right_4k, row.right_6k, row.right_8k, row.category]);
+      stats.testsInserted++;
     }
   }
-  return stats
+  return stats;
 }
 
 // ---------------------------------------------------------------------------
-// Helper Utils
+// Helpers
 // ---------------------------------------------------------------------------
-
-function findEmployee(locationId, row) {
-  if (row.dob) {
-    return queryOne(`SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE AND dob = ?`,
-      [locationId, row.firstName, row.lastName, row.dob])
-  }
-  return queryOne(`SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE`,
-    [locationId, row.firstName, row.lastName])
-}
 
 function parseDate(raw) {
-  if (raw == null) return null;
+  if (!raw) return null;
   if (raw instanceof Date) return raw.toISOString().slice(0, 10);
   let s = String(raw).trim().replace(/\.\./g, '01').replace(/\?\?\?\?/g, '1900');
-  if (!s) return null;
-  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2, '0')}-${slashMatch[2].padStart(2, '0')}`;
-  const upperS = s.toUpperCase();
-  const spaceMatch = upperS.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
-  if (spaceMatch) {
-    const mo = MONTHS_PARSE[spaceMatch[1]];
-    if (!mo) return null;
-    let day = spaceMatch[2] === '0' ? '01' : spaceMatch[2].padStart(2, '0');
-    return `${spaceMatch[3]}-${mo}-${day}`;
+  
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return `${slash[3]}-${slash[1].padStart(2,'0')}-${slash[2].padStart(2,'0')}`;
+  
+  const space = s.toUpperCase().match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
+  if (space) {
+    let m = space[1]; if (m === 'SEPT') m = 'SEP';
+    const mo = MONTHS_PARSE[m]; if (!mo) return null;
+    let d = (space[2] === '0' || space[2] === '00') ? '01' : space[2].padStart(2,'0');
+    return `${space[3]}-${mo}-${d}`;
   }
-  return (/^\d{4}-\d{2}-\d{2}$/.test(s)) ? s : null;
-}
-
-function companyNameFromFilename(filename) {
-  return filename.replace(/\.xlsx?$/i, '').replace(/[_\-]+/g, ' ').trim();
-}
-
-function visitDateFromFilename(filename) {
-  const tokens = filename.toLowerCase().split(/[\s_\-]+/);
-  for (let i = 0; i < tokens.length; i++) {
-    const mo = MONTHS_PARSE[tokens[i].toUpperCase()];
-    if (mo && i + 2 < tokens.length && /^\d{4}$/.test(tokens[i+2])) return `${tokens[i+2]}-${mo}-${tokens[i+1].padStart(2,'0')}`;
+  
+  const n = Number(raw);
+  if (!isNaN(n) && n > 1000) {
+    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0, 10);
   }
-  return null;
-}
-
-function normalizeTestType(raw) {
-  const s = (raw ?? '').toUpperCase();
-  if (s.includes('BASE')) return 'Baseline';
-  if (s.includes('EXIT')) return 'Exit';
-  return 'Periodic';
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
 function str(v) { return v == null ? '' : String(v).trim(); }
 function num(v) { const n = Number(v); return isNaN(n) ? null : n; }
-function fmt(v) { return v == null ? '—' : String(v); }
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function statCard(label, value) { return `<div class="ckpi"><span class="ckpi-n">${value}</span><span>${label}</span></div>`; }
-function showError(container, msg) {
-  const div = document.createElement('div');
-  div.className = 'alert alert-error';
-  div.textContent = msg;
-  container.querySelector('.form-card').appendChild(div);
+function normalizeTestType(s) { 
+  s = (s || '').toUpperCase(); 
+  if (s.includes('BASE')) return 'Baseline'; 
+  if (s.includes('EXIT')) return 'Exit'; 
+  return 'Periodic'; 
 }
