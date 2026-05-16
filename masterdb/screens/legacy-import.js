@@ -16,12 +16,12 @@ const COLUMN_MAP = [
   ['rowCompany', ['company', 'employer', 'co', 'company name']],
   ['rowLocation',['location', 'site', 'branch', 'unit']],
   ['firstName',  ['first name', 'firstname', 'first']],
-  ['lastName',   ['surname', 'last name', 'lastname', 'last']],
+  ['lastName',   ['surname', 'last name', 'lastname', 'last', 'last name (surname)']],
   ['occupation', ['occupation', 'job title', 'jobtitle', 'position']],
-  ['dob',        ['birthdate', 'birth date', 'dob', 'date of birth', 'dateofbirth']],
-  ['testDate',   ['test date', 'testdate', 'date tested', 'datetested', 'date of test']],
-  ['wearHpd',    ['wear hpd', 'hpd worn', 'wears hpd', 'wearhpd', 'hpd use']],
-  ['hpdType',    ['type of hpd', 'hpd type', 'hpdtype', 'hpd make', 'hpd model']],
+  ['dob',        ['birthdate', 'birth date', 'dob', 'date of birth', 'dateofbirth', 'birthdate mmddyyyy']], // Added MMDDYYYY
+  ['testDate',   ['test date', 'testdate', 'date tested', 'datetested', 'date of test', 'test date mmddyyyy']], // Added MMDDYYYY
+  ['wearHpd',    ['wear hpd', 'hpd worn', 'wears hpd', 'wearhpd', 'hpd use', 'wear hpi']], // Added HPI typo
+  ['hpdType',    ['type of hpd', 'hpd type', 'hpdtype', 'hpd make', 'hpd model', 'type of hpi']], // Added HPI typo
   ['testType',   ['test type', 'testtype', 'type of test', 'typeoftest']],
   ['category',   ['category of test', 'categoryoftest', 'category', 'result', 'classification']],
   ['left_500',   ['left 05 khz', 'left 0.5 khz', 'left 500', 'left 500 hz', 'l500', 'l 500', 'l.5k', 'l0.5k']],
