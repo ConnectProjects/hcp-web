@@ -415,3 +415,8 @@ function showError(container, msg) {
   div.textContent = msg;
   container.querySelector('.form-card').appendChild(div);
 }
+function num(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
