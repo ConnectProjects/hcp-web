@@ -1,74 +1,28 @@
 import { run as dbRun, queryOne, query, transaction } from '../db/sqlite.js'
 
 // ---------------------------------------------------------------------------
-// THE MASTER TRANSLATION MAP (Generated from your list)
+// THE COMPANY CLEANER (Fixes messy names found in Row 1)
 // ---------------------------------------------------------------------------
-const IMPORT_MAP = {
-  // Tab Name : { company: "Clean Name", location: "Clean Name" }
-  "Main Office": { company: "AUTO", location: "Main Office" }, // Will be handled by row-level logic
-  "Edmonton": { company: "Alternate Technologies", location: "Edmonton" },
-  "Edson": { company: "Bannister Chevrolet", location: "Edson" },
-  "Sherwood": { company: "Baseline Collision Repair", location: "Sherwood Park" },
-  "Boiler Makers Union Local 555": { company: "Boilermakers Union Local 555", location: "Main Office" },
-  "#676 Edmonton": { company: "Canadian Tire", location: "#676 Edmonton" },
-  "Fire Dep": { company: "City of Lloydminster", location: "Fire Dept" },
-  "Innisfail": { company: "CSN", location: "Innisfail" },
-  "Red Deer": { company: "CSN", location: "Red Deer" },
-  "Herbers - Edmonton": { company: "CSN", location: "Herbers - Edmonton" },
-  "32 Ave NE - Calgary": { company: "CSN", location: "32 Ave NE - Calgary" },
-  "Absolute Collision - Stony Plain": { company: "CSN", location: "Absolute Collision - Stony Plain" },
-  "Autotech - Lacombe AB": { company: "CSN", location: "Autotech - Lacombe AB" },
-  "Avalon - Slave Lake": { company: "CSN", location: "Avalon - Slave Lake" },
-  "Auto Shoppe": { company: "CSN", location: "Auto Shoppe" },
-  "Sherwood Park": { company: "CSN", location: "Sherwood Park" },
-  "Burnsland - Calgary": { company: "CSN", location: "Burnsland - Calgary" },
-  "Brennan Collision - Stettler": { company: "CSN", location: "Brennan Collision - Stettler" },
-  "Cascade Collision - Hinton": { company: "CSN", location: "Cascade Collision - Hinton" },
-  "Downtown - Calgary": { company: "CSN", location: "Downtown - Calgary" },
-  "Eastgate - Calgary": { company: "CSN", location: "Eastgate - Calgary" },
-  "Caliber - Red Deer": { company: "CSN", location: "Caliber - Red Deer" },
-  "Sunridge - Calgary": { company: "CSN", location: "Sunridge - Calgary" },
-  "Collision NE": { company: "Craftsman", location: "Collision NE" },
-  "Collision SW": { company: "Craftsman", location: "Collision SW" },
-  "#12 - Calgary": { company: "Fountain Tire", location: "#12 - Calgary" },
-  "#20 - Edmonton": { company: "Fountain Tire", location: "#20 - Edmonton" },
-  "#56 -High Prairie": { company: "Fountain Tire", location: "#56 - High Prairie" },
-  "#59 - Lloydminister": { company: "Fountain Tire", location: "#59 - Lloydminister" },
-  "#63 - Edmonton": { company: "Fountain Tire", location: "#63 - Edmonton" },
-  "#66 - Calgary": { company: "Fountain Tire", location: "#66 - Calgary" },
-  "#084 - Westaskiwin": { company: "Fountain Tire", location: "#084 - Westaskiwin" },
-  "#096 - Calgary AB": { company: "Fountain Tire", location: "#096 - Calgary AB" },
-  "#097 - St Paul": { company: "Fountain Tire", location: "#097 - St Paul" },
-  "East - Edmonton": { company: "Herbers", location: "East - Edmonton" },
-  "Grande Prairie": { company: "Herbers", location: "Grande Prairie" },
-  "Grand Prairie North": { company: "Herbers", location: "Grand Prairie North" },
-  "Leduc": { company: "Herbers", location: "Leduc" },
-  "North - Edmonton": { company: "Herbers", location: "North - Edmonton" },
-  "South - Edmonton": { company: "Herbers", location: "South - Edmonton" },
-  "West - Edmonton": { company: "Herbers", location: "West - Edmonton" },
-  "Hinton": { company: "Integra Tire", location: "Hinton" },
-  "Ponoka": { company: "Integra Tire", location: "Ponoka" },
-  "Taber": { company: "Integra Tire", location: "Taber" },
-  "Wainwright": { company: "Integra Tire", location: "Wainwright" },
-  "Alberta": { company: "Local 146", location: "Alberta" },
-  "Calgary AB": { company: "MB Autoworks", location: "Calgary AB" },
-  "Medicine Hat": { company: "Moduline Industries Canada Ltd", location: "Medicine Hat" },
-  "Linden AB": { company: "Tank Traders", location: "Linden AB" },
-  "Edson AB": { company: "Trans Mountain Pipeline", location: "Edson AB" },
-  "Gainford AB": { company: "Trans Mountain Pipeline", location: "Gainford AB" },
-  "Hardisty": { company: "Trans Mountain Pipeline", location: "Hardisty" },
-  "Jasper AB": { company: "Trans Mountain Pipeline", location: "Jasper AB" },
-  "Sherwood Park AB": { company: "Trans Mountain Pipeline", location: "Sherwood Park AB" },
-  "Tofield Tire & Battery": { company: "Treadpro", location: "Tofield Tire & Battery" },
-  "Calgary": { company: "Union Tractor", location: "Calgary" },
-  "Grand Prairie": { company: "Union Tractor", location: "Grand Prairie" },
-  "Acheson AB": { company: "Wajax Industries", location: "Acheson AB" },
-  "Thorsby AB": { company: "Westower Communications", location: "Thorsby AB" }
+const COMPANY_CLEANER = {
+  "Collision Repair": "Baseline Collision Repair",
+  "Boiler Makers Union Local 555": "Boilermakers Union Local 555",
+  "City of Lloydminster - Lloyd Fire Dept": "City of Lloydminster",
+  "CSB": "CSN",
+  "Herberes": "Herbers",
+  "Westower Commuications": "Westower Communications",
+  // Add any others here as you see them in the preview
 };
 
 // ---------------------------------------------------------------------------
-// Column Mappings
+// THE LOCATION CLEANER (Fixes messy Tab names)
 // ---------------------------------------------------------------------------
+const LOCATION_CLEANER = {
+  "Fire Dep": "Fire Dept",
+  "Sherwood": "Sherwood Park",
+  "Westaskiwin": "Wetaskiwin",
+  // Add any others here...
+};
+
 const COLUMN_MAP = [
   ['firstName',  ['first name', 'firstname', 'first']],
   ['lastName',   ['surname', 'last name', 'lastname', 'last', 'last name (surname)']],
@@ -118,12 +72,12 @@ export function renderLegacyImport(container, state, navigate) {
     <div class="page">
       <div class="page-header">
         <h1>Import Legacy Excel</h1>
-        <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Smart Mapper: Uses the IMPORT_MAP for perfect sorting.</p>
+        <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Ready to import the Masterfile.</p>
       </div>
       <div class="form-card legacy-import-wrap">
         <div class="drop-zone" id="drop-zone">
           <div class="drop-zone__icon">📂</div>
-          <div class="drop-zone__text">Drop your Masterfile .xlsx here</div>
+          <div class="drop-zone__text">Drop your Masterfile here</div>
           <input type="file" id="file-picker" accept=".xlsx,.xls" style="display:none" />
         </div>
         <div id="preview-area"  style="display:none"></div>
@@ -153,12 +107,12 @@ async function handleFiles(fileList, container, navigate) {
     const parsed = parseExcel(buffer, file.name);
     showPreview(parsed, file.name, container, navigate);
   } catch (err) {
-    showError(container, "Failed: " + err.message);
+    alert("Parsing failed: " + err.message);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Excel Parsing with Translation Map
+// Excel Parsing (Row 1 Priority)
 // ---------------------------------------------------------------------------
 function parseExcel(buffer, filename) {
   const XLSX = window.XLSX;
@@ -171,34 +125,35 @@ function parseExcel(buffer, filename) {
     const ws = wb.Sheets[sheetName];
     const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
-    // --- SMART MAP LOOKUP ---
-    let sheetCompany = "";
-    let sheetLocation = "";
-
-    const mapping = IMPORT_MAP[sheetName];
-    if (mapping) {
-        sheetCompany = mapping.company;
-        sheetLocation = mapping.location;
-    } else {
-        // Fallback if sheet not in map: Scan row 1
-        for (let i = 0; i < 5; i++) {
-            const cell = raw[i]?.[0];
-            if (cell && String(cell).toLowerCase().includes('company:')) {
-                sheetCompany = String(cell).replace(/^Company\s*:\s*/i, '').trim();
-                break;
-            }
+    // 1. Extract Company from Row 1
+    let rawCoName = "";
+    for (let i = 0; i < 5; i++) {
+        const cell = raw[i]?.[0];
+        if (cell && String(cell).toLowerCase().includes('company:')) {
+            rawCoName = String(cell).replace(/^Company\s*:\s*/i, '').trim();
+            break;
         }
-        sheetCompany = sheetCompany || "Unknown Company";
-        sheetLocation = sheetName;
+    }
+    rawCoName = rawCoName || "Unknown Company";
+
+    // 2. Clean Company & Location
+    const finalCo = COMPANY_CLEANER[rawCoName] || rawCoName;
+    let finalLoc = LOCATION_CLEANER[sheetName] || sheetName;
+    
+    // If Tab Name is just a repeat of Company, set to Main Office
+    if (finalLoc.toLowerCase() === finalCo.toLowerCase() || finalLoc === "Main Office") {
+        finalLoc = "Main Office";
     }
 
+    // 3. Find Header
     let hrIdx = -1, colIdx = {};
-    for (let i = 0; i < Math.min(raw.length, 25); i++) {
+    for (let i = 0; i < Math.min(raw.length, 30); i++) {
       const attempt = buildColIndex(raw[i] ?? []);
       if (REQUIRED_FIELDS.every(f => f in attempt)) { hrIdx = i; colIdx = attempt; break; }
     }
     if (hrIdx === -1) continue;
 
+    // 4. Parse rows
     for (let i = hrIdx + 1; i < raw.length; i++) {
       const r = raw[i]; if (!r) continue;
       const firstName = str(r[colIdx.firstName]), lastName = str(r[colIdx.lastName]);
@@ -209,8 +164,8 @@ function parseExcel(buffer, filename) {
 
       allRows.push({
         firstName, lastName,
-        rowCompany:  sheetCompany, 
-        rowLocation: sheetLocation,
+        rowCompany:  finalCo, 
+        rowLocation: finalLoc,
         occupation:  str(r[colIdx.occupation]),
         dob:         parseDate(r[colIdx.dob]),
         testDate,    testType: normalizeTestType(str(r[colIdx.testType])),
@@ -244,16 +199,16 @@ function showPreview(parsed, filename, container, navigate) {
   const pa = container.querySelector('#preview-area');
   pa.style.display = '';
   pa.innerHTML = `
-    <div style="margin-bottom:16px"><strong>${filename}</strong> · ${rows.length} rows</div>
-    <div style="max-height: 400px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px;">
+    <div style="margin-bottom:16px"><strong>${filename}</strong> · ${rows.length} records found.</div>
+    <div style="max-height: 450px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px;">
       <table class="data-table" style="font-size: 11px; width: 100%;">
         <thead style="position: sticky; top: 0; background: #eee;">
           <tr><th>Company</th><th>Location</th><th>Employee</th><th>Date</th></tr>
         </thead>
         <tbody>
-          ${rows.slice(0, 100).map(r => `
+          ${rows.slice(0, 150).map(r => `
             <tr>
-              <td style="color:blue; font-weight:bold;">${esc(r.rowCompany)}</td>
+              <td style="color:#0056b3; font-weight:bold;">${esc(r.rowCompany)}</td>
               <td>${esc(r.rowLocation)}</td>
               <td>${esc(r.lastName)}, ${esc(r.firstName)}</td>
               <td>${esc(r.testDate)}</td>
@@ -261,7 +216,10 @@ function showPreview(parsed, filename, container, navigate) {
         </tbody>
       </table>
     </div>
-    <button class="btn btn-primary" id="btn-run-import">Looks Perfect - Import All →</button>
+    <div style="display:flex; justify-content: flex-end; gap: 10px;">
+        <button class="btn btn-outline" onclick="location.reload()">Cancel</button>
+        <button class="btn btn-primary" id="btn-run-import">Everything looks correct - Import →</button>
+    </div>
   `;
   pa.querySelector('#btn-run-import').addEventListener('click', () => runImport(parsed, container, navigate));
 }
@@ -270,7 +228,7 @@ function runImport(parsed, container, navigate) {
   try {
     transaction(({ run }) => {
       const stats = doImport(parsed.rows, run);
-      alert(`Success! Imported ${stats.testsInserted} tests.`);
+      alert(`Success! Imported ${stats.testsInserted} tests into ${stats.companiesCreated} companies.`);
       navigate('dashboard');
     });
   } catch (err) {
@@ -279,13 +237,16 @@ function runImport(parsed, container, navigate) {
 }
 
 function doImport(rows, run) {
-  const coCache = {}, locCache = {}, stats = { testsInserted: 0 };
+  const coCache = {}, locCache = {};
+  const stats = { testsInserted: 0, employeesCreated: 0, companiesCreated: 0 };
+
   for (const row of rows) {
     if (!coCache[row.rowCompany]) {
       let co = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [row.rowCompany]);
       if (!co) {
         run("INSERT INTO companies (name, created_at, updated_at) VALUES (?, datetime('now'), datetime('now'))", [row.rowCompany]);
         co = { company_id: queryOne('SELECT last_insert_rowid() AS id').id };
+        stats.companiesCreated++;
       }
       coCache[row.rowCompany] = co.company_id;
     }
@@ -307,6 +268,7 @@ function doImport(rows, run) {
     if (!eid) {
       run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status, created_at) VALUES (?, ?, ?, ?, ?, 'active', datetime('now'))", [locationId, row.firstName, row.lastName, row.dob, row.occupation]);
       eid = queryOne('SELECT last_insert_rowid() AS id').id;
+      stats.employeesCreated++;
     }
 
     if (!queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?', [eid, row.testDate])) {
@@ -320,7 +282,7 @@ function doImport(rows, run) {
 }
 
 // ---------------------------------------------------------------------------
-// Utils
+// Helpers
 // ---------------------------------------------------------------------------
 function parseDate(raw) {
   if (!raw) return null;
@@ -335,24 +297,17 @@ function parseDate(raw) {
     let d = (space[2] === '0' || space[2] === '00') ? '01' : space[2].padStart(2,'0');
     return `${space[3]}-${mo}-${d}`;
   }
-  const iso = s.match(/^\d{4}-\d{2}-\d{2}$/);
-  if (iso) return s;
-  const n = Number(raw);
-  if (!isNaN(n) && n > 1000) {
-    const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    return d.toISOString().slice(0, 10);
-  }
-  return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
 function str(v) { return v == null ? '' : String(v).trim(); }
-function num(v) { const n = Number(v); return isNaN(n) ? null : n; }
+function num(v) { 
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v); return isNaN(n) ? null : n; 
+}
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function normalizeTestType(s) { 
-    s = (s || '').toUpperCase(); 
-    if (s.includes('BASE')) return 'Baseline'; 
-    if (s.includes('EXIT')) return 'Exit'; 
-    return 'Periodic'; 
+    s = (s || '').toUpperCase(); if (s.includes('BASE')) return 'Baseline'; if (s.includes('EXIT')) return 'Exit'; return 'Periodic'; 
 }
 function showError(container, msg) {
   const div = document.createElement('div');
