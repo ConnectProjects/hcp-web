@@ -2,7 +2,7 @@ import { query, queryOne, transaction, run } from './sqlite.js'
 
 /**
  * Gets all active companies.
- * Aggregates data from child locations for Schema 2.0 compliance.
+ * Aggregates data from child locations for Schema 2.0.
  */
 export function getAllCompanies() {
   return query(`
@@ -19,8 +19,9 @@ export function getAllCompanies() {
 
 /**
  * Gets a single company by ID.
+ * Renamed to 'getCompany' to match the import in company-detail.js
  */
-export function getCompanyById(id) {
+export function getCompany(id) {
   return queryOne(`
     SELECT 
       c.*,
