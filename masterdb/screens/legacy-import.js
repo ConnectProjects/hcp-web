@@ -9,12 +9,12 @@ export function renderLegacyImport(container, state, navigate) {
     <div class="page">
       <div class="page-header">
         <h1>Import Standardized Masterfile</h1>
-        <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Optimized for Surgical CSV Export.</p>
+        <p style="color:var(--grey-500);font-size:13px;margin-top:4px">Robust CSV Importer v2.0</p>
       </div>
       <div class="form-card legacy-import-wrap">
         <div class="drop-zone" id="drop-zone">
           <div class="drop-zone__icon">📄</div>
-          <div class="drop-zone__text">Drop MASTER_IMPORT_CLEAN.csv here</div>
+          <div class="drop-zone__text">Drop your clean CSV here</div>
           <input type="file" id="file-picker" accept=".csv" style="display:none" />
         </div>
         <div id="preview-area"  style="display:none"></div>
@@ -39,11 +39,9 @@ export function renderLegacyImport(container, state, navigate) {
 async function handleFiles(fileList, container, navigate) {
   const file = fileList[0];
   const reader = new FileReader();
-  
   reader.onload = (e) => {
-    const text = e.target.result;
     try {
-      const parsedRows = parseSurgicalCSV(text);
+      const parsedRows = parseSurgicalCSV(e.target.result);
       showPreview(parsedRows, file.name, container, navigate);
     } catch (err) {
       alert("Error: " + err.message);
@@ -53,7 +51,7 @@ async function handleFiles(fileList, container, navigate) {
 }
 
 // ---------------------------------------------------------------------------
-// SURGICAL CSV PARSER (Matches the VBA Macro Output)
+// ROBUST CSV PARSER
 // ---------------------------------------------------------------------------
 
 function parseSurgicalCSV(csvText) {
@@ -65,72 +63,70 @@ function parseSurgicalCSV(csvText) {
   let currentProv = "AB";
   let parsingData = false;
 
-  // Helper to split CSV lines while respecting quotes (e.g., "Hall, Michael")
-  const splitCSV = (text) => {
+  // Extremely robust CSV splitter that handles quotes and empty fields correctly
+  const splitSafe = (line) => {
     const result = [];
-    let cur = '', inQuote = false;
-    for (let char of text) {
-      if (char === '"') inQuote = !inQuote;
-      else if (char === ',' && !inQuote) { result.push(cur); cur = ''; }
-      else cur += char;
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') { inQuotes = !inQuotes; }
+        else if (char === ',' && !inQuotes) { result.push(current.trim()); current = ""; }
+        else { current += char; }
     }
-    result.push(cur);
+    result.push(current.trim());
     return result;
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (!line) continue;
+    if (!line || line.startsWith(',,,')) continue;
 
-    // 1. Metadata Detection (More robust search)
-    if (line.includes("### RECORD ###") || line.toLowerCase().startsWith("company,location")) {
+    // 1. Detect Metadata Block
+    if (line.includes("### RECORD ###")) {
         parsingData = false;
-        // Look at the next 2 lines to find the actual names
-        for (let j = i; j < i + 3; j++) {
-            if (!lines[j]) continue;
-            const parts = splitCSV(lines[j]);
-            // If this line isn't a header and has content, it's our Company info
-            if (parts[0] && !parts[0].toLowerCase().includes("company") && !parts[0].includes("###")) {
-                currentCo = parts[0].replace(/^"|"$/g, '').trim();
-                currentLoc = (parts[1] || "Main Office").replace(/^"|"$/g, '').trim();
-                currentProv = (parts[2] || "AB").replace(/^"|"$/g, '').trim();
-                i = j; // Advance main loop
-                break;
-            }
+        const metaValues = splitSafe(lines[i + 2] || "");
+        if (metaValues.length >= 2) {
+            currentCo = metaValues[0].replace(/^"|"$/g, '') || "Unknown Company";
+            currentLoc = metaValues[1].replace(/^"|"$/g, '') || "Main Office";
+            currentProv = metaValues[2] || "AB";
         }
+        i += 2; 
         continue;
     }
 
-    // 2. Data Header Detection
-    if (line.toLowerCase().startsWith("first name")) {
+    // 2. Detect the Data Header
+    if (line.toLowerCase().startsWith("first name,surname")) {
         parsingData = true;
         continue;
     }
 
     // 3. Process Data Rows
     if (parsingData) {
-        const r = splitCSV(line);
-        const clean = (val) => val ? val.replace(/^"|"$/g, '').trim() : "";
+        const r = splitSafe(line);
+        if (r.length < 5 || r[0].toLowerCase() === "first name" || r[0].includes("MMDDYYYY")) continue;
 
-        // Skip labels, headers, or empty names
-        if (!r[0] || clean(r[0]) === "" || clean(r[0]).includes("MMDDYYYY") || clean(r[0]).toLowerCase() === "first name") continue;
-
-        allRows.push({
-          firstName:   clean(r[0]),
-          lastName:    clean(r[1]),
-          occupation:  clean(r[2]),
-          dob:         parseDate(clean(r[3])),
-          testDate:    parseDate(clean(r[4])),
-          rowCompany:  currentCo,
-          rowLocation: currentLoc,
-          province:    currentProv,
-          wearHpd:     clean(r[5]),
-          hpdType:     clean(r[6]),
-          testType:    normalizeTestType(clean(r[7])),
-          category:    clean(r[8]),
-          l500: num(r[9]),  l1k: num(r[10]), l2k: num(r[11]), l3k: num(r[12]), l4k: num(r[13]), l6k: num(r[14]), l8k: num(r[15]),
-          r500: num(r[16]), r1k: num(r[17]), r2k: num(r[18]), r3k: num(r[19]), r4k: num(r[20]), r6k: num(r[21]), r8k: num(r[22])
-        });
+        const testDate = parseDate(r[4]);
+        
+        // CRITICAL FIX: Only add the row if we have a valid test date
+        if (testDate) {
+            allRows.push({
+              firstName:   r[0],
+              lastName:    r[1],
+              occupation:  r[2],
+              dob:         parseDate(r[3]), // Could be null, that's okay
+              testDate:    testDate,        // Must NOT be null
+              rowCompany:  currentCo,
+              rowLocation: currentLoc,
+              province:    currentProv,
+              wearHpd:     r[5],
+              hpdType:     r[6],
+              testType:    normalizeTestType(r[7]),
+              category:    r[8],
+              l500: num(r[9]),  l1k: num(r[10]), l2k: num(r[11]), l3k: num(r[12]), l4k: num(r[13]), l6k: num(r[14]), l8k: num(r[15]),
+              r500: num(r[16]), r1k: num(r[17]), r2k: num(r[18]), r3k: num(r[19]), r4k: num(r[20]), r6k: num(r[21]), r8k: num(r[22])
+            });
+        }
     }
   }
   return allRows;
@@ -145,7 +141,7 @@ function showPreview(rows, filename, container, navigate) {
   const pa = container.querySelector('#preview-area');
   pa.style.display = '';
   pa.innerHTML = `
-    <div style="margin-bottom:16px"><strong>${filename}</strong> · ${rows.length} records processed</div>
+    <div style="margin-bottom:16px"><strong>${filename}</strong> · ${rows.length} records ready for import</div>
     <div style="max-height: 400px; overflow: auto; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 16px;">
       <table class="data-table" style="font-size: 11px; width: 100%;">
         <thead style="position: sticky; top: 0; background: #eee; z-index:10;">
@@ -164,7 +160,7 @@ function showPreview(rows, filename, container, navigate) {
     </div>
     <div style="display:flex; gap:10px; justify-content: flex-end;">
        <button class="btn btn-outline" onclick="location.reload()">Cancel</button>
-       <button class="btn btn-primary" id="btn-run-import">Everything looks correct - Import All →</button>
+       <button class="btn btn-primary" id="btn-run-import">Import ${rows.length} Records →</button>
     </div>
   `;
   pa.querySelector('#btn-run-import').addEventListener('click', () => runImport(rows, container, navigate));
@@ -177,7 +173,6 @@ function runImport(rows, container, navigate) {
       let count = 0;
 
       for (const row of rows) {
-        // 1. Company
         if (!coCache[row.rowCompany]) {
           let co = queryOne('SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE', [row.rowCompany]);
           if (!co) {
@@ -188,7 +183,6 @@ function runImport(rows, container, navigate) {
         }
         const companyId = coCache[row.rowCompany];
 
-        // 2. Location
         const locKey = `${companyId}|${row.rowLocation}`;
         if (!locCache[locKey]) {
           let loc = queryOne('SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE', [companyId, row.rowLocation]);
@@ -200,7 +194,6 @@ function runImport(rows, container, navigate) {
         }
         const locationId = locCache[locKey];
 
-        // 3. Employee
         let emp = queryOne('SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? COLLATE NOCASE AND last_name = ? COLLATE NOCASE', [locationId, row.firstName, row.lastName]);
         let eid = emp ? emp.employee_id : null;
         if (!eid) {
@@ -208,7 +201,6 @@ function runImport(rows, container, navigate) {
           eid = queryOne('SELECT last_insert_rowid() AS id').id;
         }
 
-        // 4. Test (Matches 22 column schema + created_at)
         if (!queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?', [eid, row.testDate])) {
           const hpdNote = row.wearHpd ? `HPD: ${row.wearHpd} (${row.hpdType})` : null;
           run(`INSERT INTO tests (employee_id, location_id, test_date, test_type, province, 
@@ -223,7 +215,7 @@ function runImport(rows, container, navigate) {
           count++;
         }
       }
-      alert(`Success! Imported ${count} tests.`);
+      alert(`Successfully imported ${count} tests!`);
       navigate('dashboard');
     });
   } catch (err) {
@@ -236,18 +228,25 @@ function runImport(rows, container, navigate) {
 // ---------------------------------------------------------------------------
 
 function parseDate(raw) {
-    if (!raw) return null;
-    let s = String(raw).trim().toUpperCase();
+    if (!raw || raw === "?") return null;
+    let s = String(raw).trim().toUpperCase().replace(/-/g, ' ');
     const MONTHS = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12',SEPT:'09',JULY:'07',JUNE:'06'};
     
-    // Handles MAR 2 2021
-    const spaceMatch = s.match(/^([A-Z]+)\s+(\d{1,2})\s+(\d{4})$/);
+    // Handles MAR 2 2021 or OCT 1 1970 or APR 84
+    const spaceMatch = s.match(/^([A-Z]+)\s+(\d{1,4})(\s+(\d{4}))?$/);
     if (spaceMatch) {
         const mo = MONTHS[spaceMatch[1]];
         if (!mo) return null;
-        return `${spaceMatch[3]}-${mo}-${spaceMatch[2].padStart(2,'0')}`;
+        let day = spaceMatch[2].padStart(2, '0');
+        let year = spaceMatch[4];
+        
+        // Handle "Apr-84" style where only Month and Year are provided
+        if (!year && day.length === 2) { year = parseInt(day) > 30 ? "19" + day : "20" + day; day = "01"; }
+        if (!year) year = "1900"; 
+
+        return `${year}-${mo}-${day.substring(0,2)}`;
     }
-    // Handles 3/2/2021
+    // Handles 7/31/2025
     const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2,'0')}-${slashMatch[2].padStart(2,'0')}`;
     
