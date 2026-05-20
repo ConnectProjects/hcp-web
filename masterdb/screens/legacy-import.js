@@ -60,41 +60,60 @@ function parseSurgicalCSV(csvText) {
   const lines = csvText.split(/\r?\n/);
   const allRows = [];
   
-  let currentCo = "";
-  let currentLoc = "";
+  let currentCo = "Unknown Company";
+  let currentLoc = "Main Office";
   let currentProv = "AB";
   let parsingData = false;
+
+  // Helper to split CSV lines while respecting quotes (e.g., "Hall, Michael")
+  const splitCSV = (text) => {
+    const result = [];
+    let cur = '', inQuote = false;
+    for (let char of text) {
+      if (char === '"') inQuote = !inQuote;
+      else if (char === ',' && !inQuote) { result.push(cur); cur = ''; }
+      else cur += char;
+    }
+    result.push(cur);
+    return result;
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // 1. Detect Metadata Block
-    if (line.includes("### RECORD ###")) {
+    // 1. Metadata Detection (More robust search)
+    if (line.includes("### RECORD ###") || line.toLowerCase().startsWith("company,location")) {
         parsingData = false;
-        const metaLine = lines[i + 2]?.split(',');
-        if (metaLine) {
-            currentCo = metaLine[0]?.replace(/^"|"$/g, '').trim();
-            currentLoc = metaLine[1]?.replace(/^"|"$/g, '').trim();
-            currentProv = metaLine[2]?.trim() || "AB";
+        // Look at the next 2 lines to find the actual names
+        for (let j = i; j < i + 3; j++) {
+            if (!lines[j]) continue;
+            const parts = splitCSV(lines[j]);
+            // If this line isn't a header and has content, it's our Company info
+            if (parts[0] && !parts[0].toLowerCase().includes("company") && !parts[0].includes("###")) {
+                currentCo = parts[0].replace(/^"|"$/g, '').trim();
+                currentLoc = (parts[1] || "Main Office").replace(/^"|"$/g, '').trim();
+                currentProv = (parts[2] || "AB").replace(/^"|"$/g, '').trim();
+                i = j; // Advance main loop
+                break;
+            }
         }
-        i += 2; // Jump past meta
         continue;
     }
 
-    // 2. Detect the Data Header
-    if (line.toLowerCase().startsWith("first name,surname")) {
+    // 2. Data Header Detection
+    if (line.toLowerCase().startsWith("first name")) {
         parsingData = true;
         continue;
     }
 
-    // 3. Process Data Rows (23 columns fixed)
+    // 3. Process Data Rows
     if (parsingData) {
-        // Simple CSV split (handles quoted strings)
-        const r = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || line.split(',');
+        const r = splitCSV(line);
         const clean = (val) => val ? val.replace(/^"|"$/g, '').trim() : "";
 
-        if (clean(r[0]) === "" || clean(r[0]).includes("MMDDYYYY")) continue;
+        // Skip labels, headers, or empty names
+        if (!r[0] || clean(r[0]) === "" || clean(r[0]).includes("MMDDYYYY") || clean(r[0]).toLowerCase() === "first name") continue;
 
         allRows.push({
           firstName:   clean(r[0]),
@@ -109,7 +128,6 @@ function parseSurgicalCSV(csvText) {
           hpdType:     clean(r[6]),
           testType:    normalizeTestType(clean(r[7])),
           category:    clean(r[8]),
-          // Frequencies (Indices 9 - 22)
           l500: num(r[9]),  l1k: num(r[10]), l2k: num(r[11]), l3k: num(r[12]), l4k: num(r[13]), l6k: num(r[14]), l8k: num(r[15]),
           r500: num(r[16]), r1k: num(r[17]), r2k: num(r[18]), r3k: num(r[19]), r4k: num(r[20]), r6k: num(r[21]), r8k: num(r[22])
         });
