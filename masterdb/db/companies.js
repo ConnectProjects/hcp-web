@@ -1,79 +1,84 @@
+import { query, queryOne, transaction } from './sqlite.js'
+
 /**
- * db/companies.js
- * Company-level queries. Province and HPD inventory now live on locations.
+ * Gets all active companies.
+ * Aggregates provinces, employee counts, and last visit dates from child locations.
  */
-
-import { query, queryOne, run, lastInsertId } from './sqlite.js'
-
 export function getAllCompanies() {
   return query(`
-    SELECT c.*,
-      (SELECT COUNT(*) FROM locations l WHERE l.company_id = c.company_id AND l.active = 1) AS location_count,
-      (SELECT COUNT(*) FROM employees e
-         JOIN locations l ON l.location_id = e.location_id
-         WHERE l.company_id = c.company_id AND e.status = 'active') AS employee_count,
-      (SELECT MAX(t.test_date) FROM tests t
-         JOIN employees e ON e.employee_id = t.employee_id
-         JOIN locations l ON l.location_id = e.location_id
-         WHERE l.company_id = c.company_id) AS last_test_date
+    SELECT 
+      c.*,
+      -- Aggregates all unique provinces from this company's locations
+      (SELECT GROUP_CONCAT(DISTINCT province) FROM locations WHERE company_id = c.company_id) as province_list,
+      -- Counts employees across all locations belonging to this company
+      (SELECT COUNT(*) FROM employees e JOIN locations l ON e.location_id = l.location_id WHERE l.company_id = c.company_id) as employee_count,
+      -- Finds the most recent test date across all company locations
+      (SELECT MAX(test_date) FROM tests t JOIN locations l ON t.location_id = l.location_id WHERE l.company_id = c.company_id) as last_test_date
     FROM companies c
     WHERE c.active = 1
     ORDER BY c.name ASC
-  `)
+  `);
 }
 
-export function getCompany(companyId) {
-  return queryOne('SELECT * FROM companies WHERE company_id = ?', [companyId])
-}
-
+/**
+ * Search companies by name.
+ */
 export function searchCompanies(q) {
-  const like = `%${q}%`
   return query(`
-    SELECT c.*,
-      (SELECT COUNT(*) FROM locations l WHERE l.company_id = c.company_id AND l.active = 1) AS location_count,
-      (SELECT COUNT(*) FROM employees e
-         JOIN locations l ON l.location_id = e.location_id
-         WHERE l.company_id = c.company_id AND e.status = 'active') AS employee_count
+    SELECT 
+      c.*,
+      (SELECT GROUP_CONCAT(DISTINCT province) FROM locations WHERE company_id = c.company_id) as province_list,
+      (SELECT COUNT(*) FROM employees e JOIN locations l ON e.location_id = l.location_id WHERE l.company_id = c.company_id) as employee_count,
+      (SELECT MAX(test_date) FROM tests t JOIN locations l ON t.location_id = l.location_id WHERE l.company_id = c.company_id) as last_test_date
     FROM companies c
-    WHERE c.active = 1
-      AND (c.name LIKE ? OR c.contact_name LIKE ? OR c.city LIKE ?)
+    WHERE c.active = 1 AND c.name LIKE ?
     ORDER BY c.name ASC
-  `, [like, like, like])
+  `, [`%${q}%`]);
 }
 
+/**
+ * Creates a new company AND an automatic 'Main Office' location.
+ * This keeps the "Add Company" workflow simple while respecting Schema 2.0.
+ */
 export function createCompany(data) {
-  run(`INSERT INTO companies
-    (name, address, city, contact_name, contact_phone, contact_email, website, sticky_notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [data.name,
-     data.address       ?? null,
-     data.city          ?? null,
-     data.contact_name  ?? null,
-     data.contact_phone ?? null,
-     data.contact_email ?? null,
-     data.website       ?? null,
-     data.sticky_notes  ?? null]
-  )
-  return lastInsertId()
-}
+  let newCompanyId;
 
-export function updateCompany(companyId, data) {
-  run(`UPDATE companies SET
-    name = ?, address = ?, city = ?, contact_name = ?, contact_phone = ?,
-    contact_email = ?, website = ?, sticky_notes = ?, updated_at = datetime('now')
-    WHERE company_id = ?`,
-    [data.name,
-     data.address       ?? null,
-     data.city          ?? null,
-     data.contact_name  ?? null,
-     data.contact_phone ?? null,
-     data.contact_email ?? null,
-     data.website       ?? null,
-     data.sticky_notes  ?? null,
-     companyId]
-  )
-}
+  // Use a transaction to ensure both Company and Location are created together
+  transaction(({ run }) => {
+    
+    // 1. Insert the Company
+    run(`
+      INSERT INTO companies (
+        name, address, contact_name, contact_phone, 
+        contact_email, sticky_notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `, [
+      data.name, 
+      data.address, 
+      data.contact_name, 
+      data.contact_phone, 
+      data.contact_email, 
+      data.sticky_notes
+    ]);
 
-export function deactivateCompany(companyId) {
-  run(`UPDATE companies SET active = 0, updated_at = datetime('now') WHERE company_id = ?`, [companyId])
+    newCompanyId = queryOne("SELECT last_insert_rowid() AS id").id;
+
+    // 2. Insert the default 'Main Office' Location
+    run(`
+      INSERT INTO locations (
+        company_id, name, province, address, 
+        contact_name, contact_phone, contact_email, 
+        active, created_at, updated_at
+      ) VALUES (?, 'Main Office', ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
+    `, [
+      newCompanyId,
+      data.province,     // The province selected in the UI
+      data.address,      // Shared with company HQ info
+      data.contact_name, 
+      data.contact_phone, 
+      data.contact_email
+    ]);
+  });
+
+  return newCompanyId;
 }
