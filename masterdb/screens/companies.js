@@ -53,7 +53,7 @@ export function renderCompanies(container, state, navigate) {
     </div>
   `
 
-  // Search
+  // Search logic
   container.querySelector('#company-search').addEventListener('input', e => {
     const q = e.target.value.trim()
     companies = q ? searchCompanies(q) : getAllCompanies()
@@ -62,10 +62,8 @@ export function renderCompanies(container, state, navigate) {
     attachRowHandlers(container, navigate)
   })
 
-  // Row click → company detail
   attachRowHandlers(container, navigate)
 
-  // Add company modal
   const modal = container.querySelector('#modal-add')
   container.querySelector('#btn-add-company').addEventListener('click',   () => modal.classList.remove('hidden'))
   container.querySelector('#modal-close-add').addEventListener('click',   () => modal.classList.add('hidden'))
@@ -96,16 +94,21 @@ function renderRows(companies) {
   if (companies.length === 0) {
     return '<tr><td colspan="6" class="empty-cell">No companies found.</td></tr>'
   }
-  return companies.map(c => `
-    <tr class="table-row" data-company-id="${c.company_id}">
-      <td class="td-primary">${esc(c.name)}</td>
-      <td><span class="province-badge">${esc(c.province)}</span></td>
-      <td>${c.employee_count ?? 0}</td>
-      <td>${c.last_test_date ?? '—'}</td>
-      <td class="td-muted">${esc(c.contact_name ?? '—')}</td>
-      <td><button class="btn btn-sm btn-outline" data-company-id="${c.company_id}">Open →</button></td>
-    </tr>
-  `).join('')
+  return companies.map(c => {
+    // Format the province list (e.g., "AB, SK")
+    const provinceDisplay = c.province_list ? c.province_list.split(',').join(', ') : '—';
+    
+    return `
+      <tr class="table-row" data-company-id="${c.company_id}">
+        <td class="td-primary">${esc(c.name)}</td>
+        <td><span class="province-badge">${esc(provinceDisplay)}</span></td>
+        <td>${c.employee_count ?? 0}</td>
+        <td>${c.last_test_date ?? '—'}</td>
+        <td class="td-muted">${esc(c.contact_name ?? '—')}</td>
+        <td><button class="btn btn-sm btn-outline" data-company-id="${c.company_id}">Open →</button></td>
+      </tr>
+    `;
+  }).join('')
 }
 
 function attachRowHandlers(container, navigate) {
@@ -119,9 +122,7 @@ function attachRowHandlers(container, navigate) {
 }
 
 function companyForm(data = {}) {
-  const provinces = [
-    ['AB', 'Alberta'], ['BC', 'British Columbia'], ['SK', 'Saskatchewan']
-  ]
+  const provinces = [['AB', 'Alberta'], ['BC', 'British Columbia'], ['SK', 'Saskatchewan']]
   return `
     <div class="form-grid">
       <div class="form-group span-2">
@@ -154,7 +155,7 @@ function companyForm(data = {}) {
         <input id="f-address" type="text" value="${esc(data.address ?? '')}" />
       </div>
       <div class="form-group span-2">
-        <label>Sticky Notes <span class="label-hint">(travel to tech with packet)</span></label>
+        <label>Sticky Notes</label>
         <textarea id="f-sticky" rows="3">${esc(data.sticky_notes ?? '')}</textarea>
       </div>
     </div>
