@@ -1,196 +1,212 @@
-import { renderAudiogram }                     from '../components/audiogram.js'
-import { classify }                            from '@shared/classification/engine.js'
-import { validateThresholds } from '@shared/validation/thresholds.js'
-import { saveDraft, getDraft }                  from '../db/idb.js'
+import { writeJsonFile } from '@shared/fs/sync-folder.js'
 
-const EARS        = ['right', 'left']
-const FREQ_SUFFIX = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
-const FREQ_LABELS = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
-
-// Pre-built options for the threshold dropdowns (0–100 × 5, plus NR)
-function threshOptions(currentVal) {
-  const cur = currentVal === undefined || currentVal === null ? '' : String(currentVal)
-  let html = `<option value=""${cur === '' ? ' selected' : ''}>—</option>`
-  for (let v = 0; v <= 100; v += 5) {
-    html += `<option value="${v}"${String(v) === cur ? ' selected' : ''}>${v}</option>`
-  }
-  html += `<option value="NR"${cur === 'NR' ? ' selected' : ''}>NR</option>`
-  return html
-}
-
-export async function renderTestEntry(container, state, navigate) {
-  const emp      = state.currentEmployee
-  const packet   = state.currentPacket
-  const baseline = emp.baseline?.thresholds ?? null
-
-  // Restore draft if one exists
-  const draft = await getDraft(packet.packet_id, emp.employee_id)
-  if (draft && Object.keys(state.testData).length === 0) {
-    Object.assign(state.testData, draft)
-  }
-  const test = state.testData
-
-  const testType = emp.baseline ? 'Periodic' : 'Baseline'
+export function renderTestEntry(container, state, navigate) {
+  // Access the data for the currently active booth/slot
+  const slot = state.slots[state.activeSlot];
+  const emp = slot.currentEmployee || { first_name: 'New', last_name: 'Worker' };
+  const packet = slot.currentPacket || {};
 
   container.innerHTML = `
-    <div class="screen screen-test">
-      <header class="app-header">
-        <button class="btn btn-ghost" id="btn-back">‹ Pre-Test</button>
-        <h1 class="app-title">${esc(emp.last_name)}, ${esc(emp.first_name)}</h1>
-        <span class="test-type-chip">${testType}</span>
-      </header>
+    <div class="tech-tool-container" style="max-width: 900px; margin: 0 auto; padding: 20px;">
+      
+      <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin:0; color: #333;">New Hearing Test</h1>
+        <div style="text-align:right">
+            <span class="badge" style="background:#76B214; color:white; padding:4px 12px; border-radius:20px; font-size:12px;">
+                BOOTH ${state.activeSlot + 1}
+            </span>
+        </div>
+      </div>
 
-      <main class="test-layout">
-        <!-- Left column: threshold grid -->
-        <div class="threshold-panel">
-          <div class="panel-title">Threshold Entry</div>
+      <!-- SECTION 1: TEST SETTING (Connect Hearing Green) -->
+      <div style="background: #76B214; color: white; border-radius: 8px; padding: 25px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Worker</label>
+            <span style="font-size:1.1rem; font-weight:500;">${emp.last_name}, ${emp.first_name}</span>
+        </div>
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Employer</label>
+            <span style="font-size:1.1rem; font-weight:500;">${packet.company_name || 'Manual Entry'}</span>
+        </div>
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Test Date</label>
+            <span style="font-size:1.1rem; font-weight:500;">${new Date().toISOString().split('T')[0]}</span>
+        </div>
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Worker ID</label>
+            <span style="font-size:1.1rem; font-weight:500;">${emp.employee_id || '—'}</span>
+        </div>
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Location</label>
+            <span style="font-size:1.1rem; font-weight:500;">${packet.location_name || 'Main Office'}</span>
+        </div>
+        <div class="setting-item">
+            <label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.8; margin-bottom:4px;">Technician</label>
+            <span style="font-size:1.1rem; font-weight:500;">${state.user?.name || 'Tech'}</span>
+        </div>
+      </div>
 
-          <table class="thresh-table">
-            <thead>
-              <tr>
-                <th></th>
-                ${FREQ_LABELS.map(f => `<th>${f}</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${EARS.map(ear => `
-                <tr data-ear="${ear}">
-                  <th class="ear-th ear-${ear}">${ear === 'left' ? 'L' : 'R'}</th>
-                  ${FREQ_SUFFIX.map(freq => {
-                    const key = `${ear}_${freq}`
-                    return `<td><select class="thresh-cell" data-key="${key}">${threshOptions(test[key])}</select></td>`
-                  }).join('')}
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+      <!-- SECTION 2: NOISE EXPOSURE -->
+      <h2 style="color: #76B214; font-size: 1.4rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 40px 0 20px 0;">Noise Exposure & Conservation</h2>
+      <div class="form-card" style="background:white; padding:20px; border-radius:8px; border:1px solid #eee;">
+        ${renderQ("exposed_2hr", "Have you been exposed to noise within the last two hours?", slot.testData.exposed_2hr)}
+        ${renderQ("regular_hpd", "Do you regularly wear hearing protection in noisy areas?", slot.testData.regular_hpd)}
+        ${renderQ("edu_received", "Have you received hearing conservation info in the last year?", slot.testData.edu_received)}
+      </div>
 
-          <div id="thresh-errors" class="alert alert-error hidden"></div>
+      <!-- SECTION 3: HISTORY -->
+      <h2 style="color: #76B214; font-size: 1.4rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 40px 0 20px 0;">Noise & Hearing History</h2>
+      <div class="form-card" style="background:white; padding:20px; border-radius:8px; border:1px solid #eee;">
+        ${renderQ("ear_infection", "Have you ever had a severe ear infection?", slot.testData.ear_infection)}
+        ${renderQ("ear_surgery", "Have you ever had ear surgery?", slot.testData.ear_surgery)}
+        ${renderQ("dizziness", "Have you ever had dizziness or balance problems?", slot.testData.dizziness)}
+        ${renderQ("ringing", "Do you have ringing in your ears (tinnitus)?", slot.testData.ringing)}
+        ${renderQ("loud_blast", "Have you ever had exposure to a loud blast or explosion?", slot.testData.loud_blast)}
+        ${renderQ("firearms", "Have you ever used a firearm?", slot.testData.firearms)}
+      </div>
 
-          <div class="thresh-actions">
-            <button class="btn btn-ghost btn-sm" id="btn-clear">Clear All</button>
-            <button class="btn btn-outline btn-sm" id="btn-draft">Save Draft</button>
-            <button class="btn btn-primary" id="btn-classify">Classify →</button>
+      <!-- SECTION 4: AUDIOGRAM (WorkSafeBC Style) -->
+      <h2 style="color: #76B214; font-size: 1.4rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 40px 0 20px 0;">Hearing Test Results</h2>
+      
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
+        <div>
+          <strong style="display:block; margin-bottom:15px; color:#1e3a5f; text-transform:uppercase; letter-spacing:1px;">Left Ear (dB)</strong>
+          <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+            ${[500, 1000, 2000, 3000, 4000, 6000, 8000].map(f => renderAudioCell('L', f, slot.testData[`l${f}`])).join('')}
           </div>
         </div>
-
-        <!-- Right column: live audiogram -->
-        <div class="audiogram-panel" id="audiogram-panel">
-          <!-- rendered by JS -->
+        <div>
+          <strong style="display:block; margin-bottom:15px; color:#1e3a5f; text-transform:uppercase; letter-spacing:1px;">Right Ear (dB)</strong>
+          <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap: 8px;">
+            ${[500, 1000, 2000, 3000, 4000, 6000, 8000].map(f => renderAudioCell('R', f, slot.testData[`r${f}`])).join('')}
+          </div>
         </div>
-      </main>
+      </div>
+
+      <!-- SECTION 5: COMMENTS & SUBMIT -->
+      <h2 style="color: #76B214; font-size: 1.4rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 40px 0 20px 0;">Technician Comments</h2>
+      <div class="form-group">
+        <textarea id="tech-notes" rows="4" style="width:100%; border: 1px solid #ccc; border-radius: 4px; padding: 12px;" placeholder="Enter any additional observations...">${slot.techNotes || ''}</textarea>
+      </div>
+
+      <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 8px; border: 1px solid #eee;">
+        <label style="display:flex; gap:12px; font-size: 14px; cursor:pointer; align-items: center;">
+          <input type="checkbox" id="chk-confirm" style="width:20px; height:20px;"> 
+          <span>I confirm that the technician conducted this test and provided appropriate counseling.</span>
+        </label>
+      </div>
+
+      <div style="margin-top: 50px; text-align: right; display: flex; gap: 15px; justify-content: flex-end; padding-bottom: 100px;">
+        <button class="btn btn-outline" id="btn-save-draft" style="padding: 12px 30px;">Save Draft</button>
+        <button class="btn btn-primary" id="btn-submit-json" style="padding: 12px 50px; background:#1e3a5f; color:white; border:none;">Submit to Inbox</button>
+      </div>
     </div>
-  `
+  `;
 
-  // Render initial audiogram
-  repaintAudiogram(container, test, baseline)
+  // --- INTERACTION LOGIC ---
 
-  // Threshold change handlers
-  container.querySelectorAll('.thresh-cell').forEach(sel => {
+  // 1. Auto-save to slot state on any change
+  container.querySelectorAll('select, textarea').forEach(el => {
+    el.addEventListener('change', () => {
+        if (el.classList.contains('q-input')) {
+            slot.testData[el.dataset.id] = el.value;
+        } else if (el.classList.contains('audio-input')) {
+            const key = (el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq;
+            slot.testData[key] = el.value;
+        } else if (el.id === 'tech-notes') {
+            slot.techNotes = el.value;
+        }
+    });
+  });
+
+  // 2. Auto-tabbing for audiogram
+  const audioInputs = container.querySelectorAll('.audio-input');
+  audioInputs.forEach((sel, idx) => {
     sel.addEventListener('change', () => {
-      const key = sel.dataset.key
-      const val = sel.value
-      if (val === '') {
-        delete test[key]
-        sel.classList.remove('filled')
-      } else {
-        test[key] = val === 'NR' ? 'NR' : parseInt(val, 10)
-        sel.classList.add('filled')
-      }
-      repaintAudiogram(container, test, baseline)
-    })
-  })
+        if (sel.value !== "" && idx < audioInputs.length - 1) {
+            audioInputs[idx + 1].focus();
+        }
+    });
+  });
 
-  container.querySelector('#btn-back').addEventListener('click', () => navigate('questionnaire-pre'))
+  // 3. Draft Saving
+  container.querySelector('#btn-save-draft').onclick = () => {
+    alert("Draft saved to Booth " + (state.activeSlot + 1));
+    navigate('dashboard');
+  };
 
-  container.querySelector('#btn-clear').addEventListener('click', () => {
-    if (!confirm('Clear all entered thresholds?')) return
-    Object.keys(test).forEach(k => delete test[k])
-    container.querySelectorAll('.thresh-cell').forEach(sel => {
-      sel.value = ''
-      sel.classList.remove('filled')
-    })
-    repaintAudiogram(container, test, baseline)
-  })
+  // 4. Final Submission to Shared Folder
+  container.querySelector('#btn-submit-json').onclick = async () => {
+    if (!container.querySelector('#chk-confirm').checked) {
+      alert("Please check the confirmation box before submitting.");
+      return;
+    }
 
-  container.querySelector('#btn-draft').addEventListener('click', async () => {
-    await saveDraft(packet.packet_id, emp.employee_id, test)
-    showToast('Draft saved')
-  })
+    if (!state.syncFolder) {
+      alert("Error: Shared OneDrive folder is not connected. Please go to Settings.");
+      return;
+    }
 
-  container.querySelector('#btn-classify').addEventListener('click', () => {
-    doClassify(container, state, navigate)
-  })
+    // Build the final result object
+    const finalResult = {
+      version: "2.0",
+      tech: state.user,
+      worker: {
+          firstName: emp.first_name,
+          lastName: emp.last_name,
+          dob: emp.dob,
+          employee_id: emp.employee_id
+      },
+      employer: {
+          name: packet.company_name,
+          location: packet.location_name,
+          company_id: packet.company_id
+      },
+      test_date: new Date().toISOString().split('T')[0],
+      history: slot.testData,
+      notes: container.querySelector('#tech-notes').value
+    };
+
+    try {
+      const filename = `test_${emp.last_name}_${Date.now()}.json`;
+      // Use your existing sync-folder utility to write to the 'inbox'
+      await writeJsonFile(state.syncFolder, 'inbox', filename, finalResult);
+      
+      alert("Test submitted successfully to the office inbox!");
+      
+      // Clear the slot after successful submit
+      state.slots[state.activeSlot] = { screen: 'dashboard', testData: {}, currentThresholds: {} };
+      navigate('dashboard');
+    } catch (err) {
+      alert("Submission failed: " + err.message);
+    }
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Audiogram refresh
-// ---------------------------------------------------------------------------
+// --- HELPERS ---
 
-function repaintAudiogram(container, test, baseline) {
-  const panel = container.querySelector('#audiogram-panel')
-  panel.innerHTML = ''
-  panel.appendChild(renderAudiogram({ current: test, baseline }))
+function renderQ(id, label, currentVal = "No") {
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid #f0f0f0;">
+      <span style="font-size:14px; color:#333;">${label}</span>
+      <select class="q-input" data-id="${id}" style="width:100px; padding:8px; border-radius:4px; border:1px solid #ccc;">
+        <option value="No" ${currentVal === 'No' ? 'selected' : ''}>No</option>
+        <option value="Yes" ${currentVal === 'Yes' ? 'selected' : ''}>Yes</option>
+      </select>
+    </div>`;
 }
 
-// ---------------------------------------------------------------------------
-// Classification
-// ---------------------------------------------------------------------------
-
-function doClassify(container, state, navigate) {
-  const errEl   = container.querySelector('#thresh-errors')
-  const test    = state.testData
-  const emp     = state.currentEmployee
-  const packet  = state.currentPacket
-
-  // Must have at least one ear
-  const hasAny = Object.values(test).some(v => v !== undefined && v !== null)
-  if (!hasAny) {
-    errEl.textContent = 'Enter at least one threshold before classifying.'
-    errEl.classList.remove('hidden')
-    return
+function renderAudioCell(ear, freq, currentVal = "") {
+  let opts = '<option value="">--</option>';
+  for (let i = -10; i <= 90; i += 5) {
+      opts += `<option value="${i}" ${currentVal == i ? 'selected' : ''}>${i}</option>`;
   }
-
-  const { valid, errors } = validateThresholds(test)
-  if (!valid) {
-    errEl.textContent = 'Fix invalid values: ' + errors.join('; ')
-    errEl.classList.remove('hidden')
-    return
-  }
-
-  errEl.classList.add('hidden')
-
-  const rules    = packet.rules ?? []
-  const baseline = emp.baseline?.thresholds ?? null
-  const result   = classify(test, baseline, rules)
-
-  // Auto-generate counsel from template
-  const template = (packet.counsel_templates ?? []).find(t => t.category_code === result.category)
-  let counselText = ''
-  if (template) {
-    counselText = template.summary_text
-      .replace(/\[freq\]/g,  result.triggering_freq_hz != null ? String(result.triggering_freq_hz) : '')
-      .replace(/\[ear\]/g,   result.triggering_ear ?? '')
-      .replace(/\[date\]/g,  emp.baseline?.test_date ?? '')
-      .replace(/\[shift\]/g, result.shift_db != null ? String(result.shift_db) : '')
-  }
-
-  navigate('questionnaire-post', { classResult: result, counselText })
-}
-
-// ---------------------------------------------------------------------------
-// Toast
-// ---------------------------------------------------------------------------
-
-function showToast(msg) {
-  const el = document.createElement('div')
-  el.className   = 'toast'
-  el.textContent = msg
-  document.body.appendChild(el)
-  requestAnimationFrame(() => el.classList.add('toast--visible'))
-  setTimeout(() => { el.classList.remove('toast--visible'); setTimeout(() => el.remove(), 300) }, 2200)
-}
-
-function esc(str) {
-  return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const label = freq >= 1000 ? (freq/1000) + 'k' : '.5k';
+  return `
+    <div style="text-align:center">
+      <select class="audio-input" data-ear="${ear}" data-freq="${freq}" style="width:100%; font-weight:bold; padding:10px 2px; border:1px solid #ccc; border-radius:4px;">
+        ${opts}
+      </select>
+      <label style="font-size:10px; color:#999; display:block; margin-top:4px;">${label}</label>
+    </div>`;
 }
