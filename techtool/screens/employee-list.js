@@ -210,22 +210,26 @@ function empRow(emp) {
 }
 
 function attachRowHandlers(container, employees, packet, state, navigate) {
-  // Row click → navigate to test entry (only non-skipped, pending or done rows)
+  // Row click → navigate to the new ONE-LONG-SCREEN test entry
   container.querySelectorAll('.emp-row').forEach(row => {
     const empId = row.dataset.empId
     const emp   = employees.find(e => e.employee_id === empId)
     if (!emp || emp.skipped_at) return
 
     row.addEventListener('click', e => {
-      // Ignore clicks on the skip button itself
       if (e.target.closest('.emp-row__skip')) return
-      navigate('questionnaire-pre', {
+      
+      // 1. Load the employee into the current Booth Slot
+      const slot = state.slots[state.activeSlot];
+      slot.currentEmployee = emp;
+      slot.currentPacket   = packet; // Ensure company/location info is carried over
+      slot.testData        = {}; 
+      slot.techNotes       = '';
+
+      // 2. Navigate to the new consolidated screen
+      navigate('test-entry', {
         currentEmployee: emp,
-        testData:    {},
-        classResult: null,
-        counselText: '',
-        techNotes:   '',
-        hpdResult:   null
+        currentPacket: packet
       })
     })
   })
