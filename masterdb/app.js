@@ -58,6 +58,7 @@ const SCREENS = {
   'legacy-import':   renderLegacyImport,
   help:              renderHelp,
   'location-detail': renderLocationDetail,
+  'data-tools':      renderDataTools,
 }
 
 const NAV_ITEMS = [
@@ -67,7 +68,8 @@ const NAV_ITEMS = [
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
-  { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' }
+  { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
+  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
 ]
 
 const NAV_PARENT = {
@@ -78,7 +80,8 @@ const NAV_PARENT = {
   'rejected-packets': 'packets',
   'import-confirm':  'packets',
   'province-rules':  'settings',
-  'location-detail': 'companies'
+  'location-detail': 'companies',
+  'data-tools':      'data-tools'
 }
 
 function isNavActive(current, navScreen) {
