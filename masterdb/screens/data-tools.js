@@ -1,3 +1,4 @@
+// Version 2.1 - Cache Buster: Multi-Mode Data Tools
 import { query, transaction } from '../db/sqlite.js'
 
 export function renderDataTools(container, state, navigate) {
@@ -9,64 +10,62 @@ export function renderDataTools(container, state, navigate) {
         <h1>Data Management Tools</h1>
       </div>
 
-      <div class="tabs" style="display: flex; gap: 20px; margin-bottom: 20px; border-bottom: 2px solid #eee;">
-        <button class="tab-btn active" data-tab="move-emp" style="padding: 10px; border: none; background: none; cursor: pointer; font-weight: bold; border-bottom: 2px solid var(--navy-mid);">Move Employees</button>
-        <button class="tab-btn" data-tab="move-loc" style="padding: 10px; border: none; background: none; cursor: pointer; font-weight: bold;">Move Locations</button>
+      <div class="tabs" style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #ddd;">
+        <button class="tab-btn active" data-tab="move-emp" style="padding: 10px 20px; border: none; background: none; cursor: pointer; border-bottom: 3px solid var(--navy-mid); font-weight: bold;">Move Employees</button>
+        <button class="tab-btn" data-tab="move-loc" style="padding: 10px 20px; border: none; background: none; cursor: pointer; font-weight: bold; color: #666;">Move Locations</button>
       </div>
 
       <!-- TAB 1: MOVE EMPLOYEES -->
       <div id="tab-move-emp" class="tab-content">
-        <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+        <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
           
-          <!-- SOURCE -->
           <div class="form-card">
-            <h3 style="color: var(--navy-mid);">Source</h3>
+            <h3 style="margin-top:0">1. Source (Move FROM)</h3>
             <div class="form-group">
-              <label>From Company</label>
+              <label>Company</label>
               <select id="emp-src-co" class="search-input">
                 <option value="">-- Select Company --</option>
                 ${companies.map(c => `<option value="${c.company_id}">${c.name}</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
-              <label>From Location</label>
+              <label>Location</label>
               <select id="emp-src-loc" class="search-input" disabled>
                 <option value="">-- Select Location --</option>
               </select>
             </div>
             
-            <div id="employee-list-wrap" style="margin-top: 15px; border: 1px solid #eee; border-radius: 4px; max-height: 300px; overflow-y: auto; display:none;">
-                <table class="data-table" style="font-size: 12px;">
-                    <thead>
+            <div id="emp-list-container" style="margin-top: 15px; border: 1px solid #eee; border-radius: 4px; max-height: 250px; overflow-y: auto; display:none;">
+                <table class="data-table" style="font-size: 12px; width: 100%;">
+                    <thead style="position: sticky; top:0; background: #f9f9f9;">
                         <tr>
                             <th style="width: 30px;"><input type="checkbox" id="select-all-emp"></th>
                             <th>Employee Name</th>
                         </tr>
                     </thead>
-                    <tbody id="employee-list-tbody"></tbody>
+                    <tbody id="emp-list-tbody"></tbody>
                 </table>
             </div>
           </div>
 
-          <!-- DESTINATION -->
           <div class="form-card">
-            <h3 style="color: #28a745;">Destination</h3>
+            <h3 style="margin-top:0">2. Destination (Move TO)</h3>
             <div class="form-group">
-              <label>To Company</label>
+              <label>Company</label>
               <select id="emp-dest-co" class="search-input">
                 <option value="">-- Select Company --</option>
                 ${companies.map(c => `<option value="${c.company_id}">${c.name}</option>`).join('')}
               </select>
             </div>
             <div class="form-group">
-              <label>To Location</label>
+              <label>Location</label>
               <select id="emp-dest-loc" class="search-input" disabled>
                 <option value="">-- Select Location --</option>
               </select>
             </div>
             
-            <div style="margin-top: 100px; text-align: right;">
-                <button class="btn btn-primary" id="btn-move-selected-emp" disabled>Move Selected Employees</button>
+            <div style="margin-top: 50px; text-align: right;">
+                <button class="btn btn-primary" id="btn-move-selected-emp" disabled>Execute Employee Move</button>
             </div>
           </div>
 
@@ -75,12 +74,12 @@ export function renderDataTools(container, state, navigate) {
 
       <!-- TAB 2: MOVE LOCATIONS -->
       <div id="tab-move-loc" class="tab-content" style="display:none;">
-        <div class="form-card" style="max-width: 600px;">
-          <h3 style="color: var(--navy-mid);">Re-parent a Location</h3>
-          <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Moves an entire location (and everyone in it) to a different company.</p>
+        <div class="form-card" style="max-width: 500px;">
+          <h3 style="margin-top:0">Re-parent Entire Location</h3>
+          <p style="font-size: 12px; color: #666; margin-bottom: 20px;">Move a location and all its employees to a different company.</p>
           
           <div class="form-group">
-            <label>Select Company (Current Owner)</label>
+            <label>Source Company</label>
             <select id="loc-src-co" class="search-input">
                 <option value="">-- Select Company --</option>
                 ${companies.map(c => `<option value="${c.company_id}">${c.name}</option>`).join('')}
@@ -88,140 +87,111 @@ export function renderDataTools(container, state, navigate) {
           </div>
 
           <div class="form-group">
-            <label>Select Location to Move</label>
+            <label>Location to Move</label>
             <select id="loc-to-move" class="search-input" disabled>
                 <option value="">-- Select Location --</option>
             </select>
           </div>
 
-          <div style="text-align: center; padding: 10px;">⬇ Move To ⬇</div>
+          <div style="text-align: center; padding: 10px; color: #ccc;">▼</div>
 
           <div class="form-group">
-            <label>Target Company (New Owner)</label>
+            <label>New Parent Company</label>
             <select id="loc-dest-co" class="search-input">
-                <option value="">-- Select Company --</option>
+                <option value="">-- Select Target Company --</option>
                 ${companies.map(c => `<option value="${c.company_id}">${c.name}</option>`).join('')}
             </select>
           </div>
 
-          <button class="btn btn-primary" id="btn-execute-loc-move" style="width: 100%; margin-top: 20px;">Move Entire Location</button>
+          <button class="btn btn-primary" id="btn-execute-loc-move" style="width: 100%; margin-top: 10px; background: #d9534f;">Move Entire Location</button>
         </div>
       </div>
-
     </div>
   `;
 
-  // --- TAB LOGIC ---
+  // --- TAB NAVIGATION ---
   container.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       container.querySelectorAll('.tab-btn').forEach(b => {
-          b.classList.remove('active');
           b.style.borderBottom = "none";
+          b.style.color = "#666";
       });
-      btn.classList.add('active');
-      btn.style.borderBottom = "2px solid var(--navy-mid)";
+      btn.style.borderBottom = "3px solid var(--navy-mid)";
+      btn.style.color = "black";
       
       container.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
       container.querySelector(`#tab-${btn.dataset.tab}`).style.display = 'block';
     });
   });
 
-  // --- HELPER: Load Locations into a Select ---
-  const updateLocDropdown = (coId, selectId) => {
+  // --- HELPER: Update Location Dropdowns ---
+  const updateLocs = (coId, selectId) => {
     const select = container.querySelector(`#${selectId}`);
-    if (!coId) {
-      select.innerHTML = '<option value="">-- Select Location --</option>';
-      select.disabled = true;
-      return;
-    }
+    if (!coId) { select.innerHTML = '<option value="">-- Select --</option>'; select.disabled = true; return; }
     const locs = query("SELECT location_id, name FROM locations WHERE company_id = ? AND active = 1", [coId]);
-    select.innerHTML = '<option value="">-- Select Location --</option>' + 
-      locs.map(l => `<option value="${l.location_id}">${l.name}</option>`).join('');
+    select.innerHTML = '<option value="">-- Select Location --</option>' + locs.map(l => `<option value="${l.location_id}">${l.name}</option>`).join('');
     select.disabled = false;
   };
 
-  // --- EMPLOYEE MOVE LOGIC ---
-  const empSrcCo = container.querySelector('#emp-src-co');
-  const empSrcLoc = container.querySelector('#emp-src-loc');
-  const empDestCo = container.querySelector('#emp-dest-co');
-  const empDestLoc = container.querySelector('#emp-dest-loc');
-  const empListWrap = container.querySelector('#employee-list-wrap');
-  const empTbody = container.querySelector('#employee-list-tbody');
+  // --- EMPLOYEE LOGIC ---
+  const eSrcCo = container.querySelector('#emp-src-co');
+  const eSrcLoc = container.querySelector('#emp-src-loc');
+  const eDestCo = container.querySelector('#emp-dest-co');
+  const eDestLoc = container.querySelector('#emp-dest-loc');
   const btnMoveEmp = container.querySelector('#btn-move-selected-emp');
 
-  empSrcCo.addEventListener('change', () => updateLocDropdown(empSrcCo.value, 'emp-src-loc'));
-  empDestCo.addEventListener('change', () => updateLocDropdown(empDestCo.value, 'emp-dest-loc'));
+  eSrcCo.addEventListener('change', () => updateLocs(eSrcCo.value, 'emp-src-loc'));
+  eDestCo.addEventListener('change', () => updateLocs(eDestCo.value, 'emp-dest-loc'));
 
-  empSrcLoc.addEventListener('change', () => {
-    if (!empSrcLoc.value) {
-        empListWrap.style.display = 'none';
-        return;
-    }
-    const emps = query("SELECT employee_id, first_name, last_name FROM employees WHERE location_id = ? ORDER BY last_name, first_name", [empSrcLoc.value]);
-    empTbody.innerHTML = emps.map(e => `
-        <tr>
-            <td><input type="checkbox" class="emp-chk" value="${e.employee_id}"></td>
-            <td>${e.last_name}, ${e.first_name}</td>
-        </tr>
-    `).join('');
-    empListWrap.style.display = 'block';
+  eSrcLoc.addEventListener('change', () => {
+    const tbody = container.querySelector('#emp-list-tbody');
+    const wrap = container.querySelector('#emp-list-container');
+    if (!eSrcLoc.value) { wrap.style.display = 'none'; return; }
+    
+    const emps = query("SELECT employee_id, first_name, last_name FROM employees WHERE location_id = ? ORDER BY last_name", [eSrcLoc.value]);
+    tbody.innerHTML = emps.map(e => `<tr><td><input type="checkbox" class="emp-chk" value="${e.employee_id}"></td><td>${e.last_name}, ${e.first_name}</td></tr>`).join('');
+    wrap.style.display = 'block';
     btnMoveEmp.disabled = false;
   });
 
   container.querySelector('#select-all-emp').addEventListener('change', (e) => {
-    container.querySelectorAll('.emp-chk').forEach(chk => chk.checked = e.target.checked);
+    container.querySelectorAll('.emp-chk').forEach(c => c.checked = e.target.checked);
   });
 
   btnMoveEmp.addEventListener('click', () => {
-    const targetLocId = empDestLoc.value;
-    const selectedIds = Array.from(container.querySelectorAll('.emp-chk:checked')).map(chk => chk.value);
+    const selected = Array.from(container.querySelectorAll('.emp-chk:checked')).map(c => c.value);
+    if (!eDestLoc.value) return alert("Pick a destination location.");
+    if (selected.length === 0) return alert("Pick at least one employee.");
 
-    if (!targetLocId) return alert("Please select a destination location.");
-    if (selectedIds.length === 0) return alert("Please select at least one employee.");
-
-    if (confirm(`Move ${selectedIds.length} employees to the new location?`)) {
-        try {
-            transaction(({ run }) => {
-                const ids = selectedIds.join(',');
-                run(`UPDATE employees SET location_id = ? WHERE employee_id IN (${ids})`, [targetLocId]);
-                run(`UPDATE tests SET location_id = ? WHERE employee_id IN (${ids})`, [targetLocId]);
-                run(`UPDATE baselines SET location_id = ? WHERE employee_id IN (${ids})`, [targetLocId]);
-                run(`UPDATE employment SET location_id = ? WHERE employee_id IN (${ids})`, [targetLocId]);
-            });
-            alert("Employees moved successfully.");
-            navigate('dashboard');
-        } catch (e) { alert(e.message); }
+    if (confirm(`Move ${selected.length} employees?`)) {
+        transaction(({ run }) => {
+            const ids = selected.join(',');
+            run(`UPDATE employees SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
+            run(`UPDATE tests SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
+            run(`UPDATE baselines SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
+            run(`UPDATE employment SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
+        });
+        alert("Moved successfully.");
+        navigate('dashboard');
     }
   });
 
-  // --- LOCATION MOVE LOGIC ---
-  const locSrcCo = container.querySelector('#loc-src-co');
-  const locToMove = container.querySelector('#loc-to-move');
-  const locDestCo = container.querySelector('#loc-dest-co');
+  // --- LOCATION LOGIC ---
+  const lSrcCo = container.querySelector('#loc-src-co');
+  const lToMove = container.querySelector('#loc-to-move');
+  const lDestCo = container.querySelector('#loc-dest-co');
 
-  locSrcCo.addEventListener('change', () => updateLocDropdown(locSrcCo.value, 'loc-to-move'));
+  lSrcCo.addEventListener('change', () => updateLocs(lSrcCo.value, 'loc-to-move'));
 
   container.querySelector('#btn-execute-loc-move').addEventListener('click', () => {
-    const locId = locToMove.value;
-    const newCoId = locDestCo.value;
-
-    if (!locId || !newCoId) return alert("Select a location and a target company.");
-    
-    const locName = locToMove.options[locToMove.selectedIndex].text;
-    const coName = locDestCo.options[locDestCo.selectedIndex].text;
-
-    if (confirm(`Move the entire location "${locName}" to "${coName}"?`)) {
-        try {
-            transaction(({ run }) => {
-                // Update the location's parent company
-                run("UPDATE locations SET company_id = ? WHERE location_id = ?", [newCoId, locId]);
-                // Update any packets or schedules tied to this location to reflect the new company parent
-                run("UPDATE packets SET company_id = ? WHERE location_id = ?", [newCoId, locId]);
-                run("UPDATE schedules SET company_id = ? WHERE location_id = ?", [newCoId, locId]);
-            });
-            alert("Location moved successfully.");
-            navigate('dashboard');
-        } catch (e) { alert(e.message); }
+    if (!lToMove.value || !lDestCo.value) return alert("Select a location and a target company.");
+    if (confirm(`Move this entire location to a new company?`)) {
+        transaction(({ run }) => {
+            run("UPDATE locations SET company_id = ? WHERE location_id = ?", [lDestCo.value, lToMove.value]);
+            run("UPDATE packets SET company_id = ? WHERE location_id = ?", [lDestCo.value, lToMove.value]);
+        });
+        alert("Location re-parented successfully.");
+        navigate('dashboard');
     }
   });
 }
