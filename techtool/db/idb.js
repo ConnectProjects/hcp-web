@@ -126,3 +126,27 @@ function write(db, storeName, fn) {
     req.onerror   = e => reject(e.target.error)
   })
 }
+
+/**
+ * Marks a packet as archived so it doesn't show on the dashboard.
+ */
+export async function archivePacket(packetId) {
+  const db = await openDB(); // Use your existing openDB function
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('packets', 'readwrite');
+    const store = tx.objectStore('packets');
+    
+    const getReq = store.get(packetId);
+    
+    getReq.onsuccess = () => {
+      const packet = getReq.result;
+      if (packet) {
+        packet.ui_archived = true; // Set a flag for the UI
+        store.put(packet);
+      }
+      resolve();
+    };
+    
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
