@@ -1,8 +1,6 @@
 import { archivePacket } from '../db/idb.js'
 
 export function renderDashboard(container, state, navigate) {
-  // 1. Filter out packets the user has chosen to hide
-  // We check for both ui_archived and ensure the packet has employees to avoid crashes
   const activePackets = (state.packets || []).filter(p => !p.ui_archived);
 
   container.innerHTML = `
@@ -11,7 +9,10 @@ export function renderDashboard(container, state, navigate) {
         <h1 class="app-title">Good morning, ${state.user?.name?.split(' ')[0] || 'Tech'}</h1>
       </header>
 
-      <div class="section-label">ACTIVE VISITS</div>
+      <div class="section-header-row">
+        <div class="section-label">ACTIVE VISITS</div>
+        <button class="btn btn-sm btn-outline" id="btn-sync-now">🔄 Sync Now</button>
+      </div>
       
       <div class="packet-grid">
         ${activePackets.length > 0 ? activePackets.map(p => `
@@ -21,18 +22,30 @@ export function renderDashboard(container, state, navigate) {
                   <div class="packet-name">${esc(p.company_name || p.company?.name || 'Unknown')}</div>
                   <div class="packet-meta">${esc(p.location_name || 'Main Office')} · ${(p.employees || []).length} workers</div>
                 </div>
-                <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
+                <button class="btn-archive" data-id="${p.packet_id}" title="Hide">✕</button>
             </div>
             <div class="progress-bar">
                 <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
             </div>
           </div>
-        `).join('') : '<div class="empty-state">No active packets. Check "Sync" to download new ones.</div>'}
+        `).join('') : `
+          <div class="empty-state">
+            <p>No active packets found on this device.</p>
+            <button class="btn btn-primary" id="btn-empty-sync">Download Packets from OneDrive</button>
+          </div>
+        `}
       </div>
     </div>
   `;
 
-  // Handle clicking the card to open it
+  // --- Handlers ---
+  
+  // Sync Buttons
+  const goToSync = () => navigate('sync');
+  container.querySelector('#btn-sync-now')?.addEventListener('click', goToSync);
+  container.querySelector('#btn-empty-sync')?.addEventListener('click', goToSync);
+
+  // Card Click
   container.querySelectorAll('.packet-card').forEach(card => {
     card.onclick = (e) => {
         if (e.target.classList.contains('btn-archive')) return;
@@ -44,11 +57,11 @@ export function renderDashboard(container, state, navigate) {
     };
   });
 
-  // Handle the Archive (Hide) button
+  // Archive Button
   container.querySelectorAll('.btn-archive').forEach(btn => {
     btn.onclick = async (e) => {
         e.stopPropagation(); 
-        if (confirm("Hide this packet from your dashboard?")) {
+        if (confirm("Hide this packet?")) {
             await archivePacket(btn.dataset.id);
             const p = state.packets.find(p => p.packet_id === btn.dataset.id);
             if (p) p.ui_archived = true;
@@ -58,14 +71,12 @@ export function renderDashboard(container, state, navigate) {
   });
 }
 
-// Helper: Calculate progress based on completed tests
 function calculateProgress(p) {
     if (!p.employees || p.employees.length === 0) return 0;
-    const done = p.employees.filter(e => e.completed_tests?.length > 0).length;
+    const done = p.employees.filter(e => e.completed_tests?.length > 0 || e.skipped_at).length;
     return Math.round((done / p.employees.length) * 100);
 }
 
-// Helper: Escape HTML to prevent XSS (Ensure this is only here ONCE)
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
