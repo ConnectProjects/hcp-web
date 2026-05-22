@@ -1,63 +1,33 @@
-const CACHE = 'hcp-techtool-v2'
+const CACHE_NAME = 'techtool-v1';
 
-const APP_SHELL = [
+// Add only the absolute essentials here
+const ASSETS_TO_CACHE = [
+  './',
   './index.html',
   './app.js',
-  './style.css',
-  './manifest.json',
-  '../shared/components/brand-logo.png',
-  './theme.js',
-  './db/idb.js',
-  './components/audiogram.js',
-  './screens/login.js',
-  './screens/dashboard.js',
-  './screens/schedule.js',
-  './screens/calendar.js',
-  './screens/company.js',
-  './screens/employee-list.js',
-  './screens/questionnaire-pre.js',
-  './screens/questionnaire-post.js',
-  './screens/test-entry.js',
-  './screens/classification.js',
-  './screens/counsel.js',
-  './screens/submit.js',
-  './screens/sync.js',
-  './screens/settings.js',
-  './screens/help.js',
-  './screens/training.js',
-  './screens/new-visit.js',
-  './screens/practice-overlay.js',
-  './data/practice-packet.js',
-  '../shared/classification/engine.js',
-  '../shared/validation/thresholds.js',
-  '../shared/packet/schema.js',
-  '../shared/fs/sync-folder.js',
-  '../shared/auth/msal-stub.js'
-]
+  './style.css'
+];
 
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(APP_SHELL))
-  )
-  self.skipWaiting()
-})
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      // we use .addAll but wrap it to stay safe if a file is missing
+      return Promise.allSettled(ASSETS_TO_CACHE.map(url => cache.add(url)));
+    })
+  );
+});
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
-  )
-  self.clients.claim()
-})
+self.addEventListener('fetch', (event) => {
+  // If it's a browser extension or a non-http request, ignore it
+  if (!event.request.url.startsWith('http')) return;
 
-self.addEventListener('fetch', e => {
-  // Pass through Graph API and MSAL requests — never intercept auth
-  const url = e.request.url
-  if (url.includes('graph.microsoft.com') || url.includes('login.microsoftonline.com')) {
-    return
-  }
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  )
-})
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      // Return cached file OR fetch from network
+      return response || fetch(event.request).catch(() => {
+        // If network fails and it's not in cache, just fail gracefully
+        return new Response('Network error occurred', { status: 408 });
+      });
+    })
+  );
+});
