@@ -2,114 +2,71 @@ import { getAllPackets, savePacket, packetExists } from '../db/idb.js'
 import { getSyncFolder, pickSyncFolder, listJsonFiles } from '@shared/fs/sync-folder.js'
 import { PACKET_STATUS } from '@shared/packet/schema.js'
 import { syncLogoFromFolder } from './settings.js'
+import { archivePacket } from '../db/idb.js'
 
-export async function renderDashboard(container, state, navigate) {
-  const today   = new Date().toISOString().slice(0, 10)
-  const packets = (state.packets ?? []).filter(p => 
-    p.status !== PACKET_STATUS.SUBMITTED && 
-    p.status !== PACKET_STATUS.IMPORTED &&
-    p.status !== PACKET_STATUS.ARCHIVED
-  )
-  const user    = state.user
-
-  const todayPackets = packets.filter(p => p.visit?.visit_date === today)
-  const upcoming     = packets
-    .filter(p => (p.visit?.visit_date ?? '') > today)
-    .sort((a, b) => (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? ''))
-    .slice(0, 5)
-
-  const totalToday  = todayPackets.reduce((n, p) => n + (p.employees?.length ?? 0), 0)
-  const testedToday = todayPackets.reduce((n, p) =>
-    n + (p.employees?.filter(e => (e.completed_tests?.length ?? 0) > 0).length ?? 0), 0)
-
-  const greeting  = getGreeting()
-  const firstName = user?.name?.split(' ')[0] ?? user?.initials ?? 'there'
-  const dateLabel = new Date().toLocaleDateString('en-CA', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-  })
+export function renderDashboard(container, state, navigate) {
+  // 1. Filter out packets the user has chosen to hide
+  const activePackets = state.packets.filter(p => !p.ui_archived);
 
   container.innerHTML = `
     <div class="screen">
       <header class="app-header">
-        <h1 class="app-title">Dashboard</h1>
-        <div class="header-right">
-          <button class="btn btn-sm btn-outline" id="btn-sync">Check Sync Folder</button>
-          <button class="btn btn-sm btn-ghost"   id="btn-schedule">☰</button>
-          <button class="btn btn-sm btn-ghost"   id="btn-settings">⚙</button>
-          <span class="user-chip">${esc(firstName)}</span>
-        </div>
+        <h1 class="app-title">Good morning, ${state.user?.name.split(' ')[0]}</h1>
       </header>
 
-      <div id="sync-banner" class="sync-banner hidden"></div>
-
-      <main class="screen-body dash-body">
-
-        <div class="dash-greeting">
-          <div class="dash-greeting-line">${greeting}, <strong>${esc(firstName)}</strong>.</div>
-          <div class="dash-date">${dateLabel}</div>
-        </div>
-
-        <section class="dash-section">
-          <div class="dash-section-head">
-            <h2 class="dash-section-title">Today</h2>
-            ${totalToday > 0
-              ? `<span class="dash-count-chip ${testedToday === totalToday ? 'chip-done' : ''}">${testedToday} / ${totalToday} tested</span>`
-              : ''}
-          </div>
-          ${todayPackets.length === 0
-            ? `<div class="dash-empty">
-                 <p>No assignments scheduled for today.</p>
-                 <button class="btn btn-primary btn-sm" id="btn-sync-today">↓ Check for Packets</button>
-               </div>`
-            : todayPackets.map(p => todayCard(p)).join('')
-          }
-        </section>
-
-        ${upcoming.length > 0 ? `
-          <section class="dash-section">
-            <div class="dash-section-head">
-              <h2 class="dash-section-title">Upcoming</h2>
-              <button class="btn btn-ghost btn-sm" id="btn-view-all"
-                style="color:var(--blue-mid);padding:4px 8px">View all →</button>
+      <div class="section-label">ACTIVE VISITS</div>
+      
+      <div class="packet-grid">
+        ${activePackets.length > 0 ? activePackets.map(p => `
+          <div class="packet-card" data-id="${p.packet_id}">
+            <div class="packet-card__body">
+                <div class="packet-info">
+                  <div class="packet-name">${esc(p.company_name)}</div>
+                  <div class="packet-meta">${esc(p.location_name)} · ${p.employees.length} workers</div>
+                </div>
+                <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
             </div>
-            <div class="dash-upcoming-list">
-              ${upcoming.map(p => upcomingRow(p)).join('')}
+            <div class="progress-bar">
+                <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
             </div>
-          </section>
-        ` : ''}
-
-        ${packets.length === 0 ? `
-          <div class="empty-state">
-            <p>No packets on this device yet.</p>
-            <p style="font-size:13px;margin-top:6px">Tap <strong>Sync</strong> to load your assignments.</p>
           </div>
-        ` : ''}
-
-      </main>
+        `).join('') : '<div class="empty-state">No active packets. Check "Sync" to download new ones.</div>'}
+      </div>
     </div>
-  `
+  `;
 
-  container.querySelectorAll('.dash-today-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const packet = state.packets.find(p => p.packet_id === card.dataset.packetId)
-      if (packet) navigate('company', { currentPacket: packet })
-    })
-  })
+  // Handle clicking the card to open it
+  container.querySelectorAll('.packet-card').forEach(card => {
+    card.onclick = (e) => {
+        // Don't open if they clicked the 'X' button
+        if (e.target.classList.contains('btn-archive')) return;
+        
+        state.currentPacket = activePackets.find(p => p.packet_id === card.dataset.id);
+        navigate('employee-list');
+    };
+  });
 
-  container.querySelectorAll('.dash-upcoming-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const packet = state.packets.find(p => p.packet_id === row.dataset.packetId)
-      if (packet) navigate('company', { currentPacket: packet })
-    })
-  })
-
-  const syncFn = () => doSync(container, state, navigate)
-  container.querySelector('#btn-sync')?.addEventListener('click', syncFn)
-  container.querySelector('#btn-sync-today')?.addEventListener('click', syncFn)
-  container.querySelector('#btn-schedule')?.addEventListener('click', () => navigate('schedule'))
-  container.querySelector('#btn-view-all')?.addEventListener('click', () => navigate('schedule'))
-  container.querySelector('#btn-settings')?.addEventListener('click', () => navigate('settings'))
+  // Handle the Archive (Hide) button
+  container.querySelectorAll('.btn-archive').forEach(btn => {
+    btn.onclick = async (e) => {
+        e.stopPropagation(); // Prevent opening the packet
+        if (confirm("Hide this packet from your dashboard?")) {
+            await archivePacket(btn.dataset.id);
+            // Update local state and re-render
+            const p = state.packets.find(p => p.packet_id === btn.dataset.id);
+            if (p) p.ui_archived = true;
+            renderDashboard(container, state, navigate);
+        }
+    };
+  });
 }
+
+function calculateProgress(p) {
+    const done = p.employees.filter(e => e.completed_tests?.length > 0).length;
+    return (done / p.employees.length) * 100;
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
 // ---------------------------------------------------------------------------
 // Card / row builders
