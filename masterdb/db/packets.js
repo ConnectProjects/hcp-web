@@ -90,3 +90,9 @@ export function updateTech(techId, data) {
 export function deleteTech(techId) {
   run(`UPDATE techs SET active = 0 WHERE tech_id = ?`, [techId])
 }
+/**
+ * Permanently removes a packet record from the database.
+ */
+export function deletePacketRecord(packetId) {
+  run("DELETE FROM packets WHERE packet_id = ?", [packetId]);
+}

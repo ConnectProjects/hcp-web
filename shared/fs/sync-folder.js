@@ -171,3 +171,11 @@ export async function moveJsonFile(root, fromSub, toSub, filename) {
   const srcDir = await getDir(root, fromSub)
   await srcDir.removeEntry(filename)
 }
+
+/**
+ * Deletes a file from a subfolder.
+ */
+export async function deleteJsonFile(root, sub, filename) {
+  const dir = await getDir(root, sub);
+  await dir.removeEntry(filename);
+}
