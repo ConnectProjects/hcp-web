@@ -173,56 +173,44 @@ export function getAllBaselinesForEmployee(employeeId) {
   `, [employeeId])
 }
 
-// ---------------------------------------------------------------------------
-// Packet building — employees for a location visit
-// ---------------------------------------------------------------------------
-
+/**
+ * Builds the array of employees for a tech packet based on location_id.
+ * MUST use location_id to find the workers.
+ */
 export function buildPacketEmployees(locationId) {
-  const fourYearsAgo = new Date()
-  fourYearsAgo.setFullYear(fourYearsAgo.getFullYear() - 4)
-  const cutoff = fourYearsAgo.toISOString().slice(0, 10)
+  const { query, queryOne } = await import('./sqlite.js'); // Ensure imports are available
 
+  // 1. Get all active employees assigned to this location
   const employees = query(`
-    SELECT e.*
-    FROM employees e
-    WHERE e.location_id = ? AND e.status = 'active'
-      AND (
-        (SELECT MAX(t.test_date) FROM tests t WHERE t.employee_id = e.employee_id) >= ?
-        OR (SELECT COUNT(*) FROM tests t WHERE t.employee_id = e.employee_id) = 0
-      )
-    ORDER BY e.last_name, e.first_name
-  `, [locationId, cutoff])
+    SELECT * FROM employees 
+    WHERE location_id = ? AND status = 'active'
+    ORDER BY last_name, first_name
+  `, [locationId]);
 
-  const location = getLocation(locationId)
-
+  // 2. For each employee, attach their history
   return employees.map(emp => {
-    const baseline = getActiveBaseline(emp.employee_id, locationId)
+    // Get the most recent 3 tests
     const priorTests = query(`
-      SELECT t.*, h.adequacy AS hpd_adequacy
-      FROM tests t
-      LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
-      WHERE t.employee_id = ? AND t.location_id = ? AND t.test_type = 'Periodic'
-      ORDER BY t.test_date DESC LIMIT 3
-    `, [emp.employee_id, locationId])
+      SELECT * FROM tests 
+      WHERE employee_id = ? 
+      ORDER BY test_date DESC 
+      LIMIT 3
+    `, [emp.employee_id]);
+
+    // Get the active baseline
+    const baseline = queryOne(`
+      SELECT * FROM baselines 
+      WHERE employee_id = ? AND archived = 0
+      ORDER BY test_date DESC 
+      LIMIT 1
+    `, [emp.employee_id]);
 
     return {
-      employee_id:  String(emp.employee_id),
-      first_name:   emp.first_name,
-      last_name:    emp.last_name,
-      dob:          emp.dob,
-      hire_date:    emp.hire_date,
-      job_title:    emp.job_title,
-      status:       emp.status,
-      baseline:     baseline ? { ...baseline, thresholds: extractThresholds(baseline) } : null,
-      prior_tests:  priorTests.map(t => ({
-        test_id:        String(t.test_id),
-        test_date:      t.test_date,
-        classification: t.classification ? JSON.parse(t.classification) : null,
-        thresholds:     extractThresholds(t)
-      })),
-      completed_tests: []
-    }
-  })
+      ...emp,
+      prior_tests: priorTests,
+      baseline: baseline || null
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
