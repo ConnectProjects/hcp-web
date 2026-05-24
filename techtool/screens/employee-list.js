@@ -102,7 +102,7 @@ export function renderEmployeeList(container, state, navigate) {
 
   attachRowHandlers(container, employees, packet, state, navigate)
 
-  // Add employee toggle
+  // Add employee toggle logic
   const addToggle = container.querySelector('#btn-add-emp-toggle')
   const addForm   = container.querySelector('#add-emp-form')
   addToggle.addEventListener('click', () => {
@@ -177,7 +177,7 @@ function empRow(emp) {
         <div class="emp-row__meta">
           ${age ? `Age ${age}` : ''}
           ${emp.job_title ? `· ${esc(emp.job_title)}` : ''}
-          ${!baseline && !isNew ? '<em>· No baseline on file</em>' : ''}
+          ${!baseline && !emp.prior_tests?.length && !isNew ? '<em>· No baseline on file</em>' : ''}
           ${isNew ? '<em>· New</em>' : ''}
           ${skipped ? `· Skipped: ${esc(emp.skip_reason ?? '')}` : ''}
         </div>
@@ -210,23 +210,22 @@ function empRow(emp) {
 }
 
 function attachRowHandlers(container, employees, packet, state, navigate) {
-  // Row click → navigate to the new ONE-LONG-SCREEN test entry
   container.querySelectorAll('.emp-row').forEach(row => {
     const empId = row.dataset.empId
-    const emp   = employees.find(e => e.employee_id === empId)
+    
+    // FIX: Use loose equality (==) to find the employee
+    const emp = employees.find(e => e.employee_id == empId)
     if (!emp || emp.skipped_at) return
 
     row.addEventListener('click', e => {
       if (e.target.closest('.emp-row__skip')) return
-      
-      // 1. Load the employee into the current Booth Slot
-      const slot = state.slots[state.activeSlot];
-      slot.currentEmployee = emp;
-      slot.currentPacket   = packet; // Ensure company/location info is carried over
-      slot.testData        = {}; 
-      slot.techNotes       = '';
 
-      // 2. Navigate to the new consolidated screen
+      // FIX: Load data into the booth slot correctly
+      const slot = state.slots[state.activeSlot]
+      slot.currentEmployee = emp
+      slot.currentPacket = packet
+      
+      // FIX: Change destination to 'test-entry'
       navigate('test-entry', {
         currentEmployee: emp,
         currentPacket: packet
@@ -234,7 +233,7 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
     })
   })
 
-  // Skip button — show confirmation row
+  // Skip logic (Original functionality preserved)
   container.querySelectorAll('.emp-row__skip').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
@@ -244,7 +243,6 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
     })
   })
 
-  // Confirm skip
   container.querySelectorAll('[data-confirm-skip]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const empId  = btn.dataset.confirmSkip
@@ -255,7 +253,6 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
     })
   })
 
-  // Cancel skip
   container.querySelectorAll('[data-cancel-skip]').forEach(btn => {
     btn.addEventListener('click', () => {
       const empId = btn.dataset.cancelSkip
