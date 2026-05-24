@@ -2,6 +2,8 @@
  * db/locations.js
  * Location-level queries. A location belongs to a company and has its own
  * province, CU code, contact info, and HPD inventory.
+ * 
+ * Optimized for Schema 2.0 (Company -> Location -> Employee)
  */
 
 import { query, queryOne, run, lastInsertId } from './sqlite.js'
@@ -15,8 +17,7 @@ export function getLocationsByCompany(companyId) {
     SELECT l.*,
       (SELECT COUNT(*) FROM employees e WHERE e.location_id = l.location_id AND e.status = 'active') AS employee_count,
       (SELECT MAX(t.test_date) FROM tests t
-         JOIN employees e ON e.employee_id = t.employee_id
-         WHERE e.location_id = l.location_id) AS last_test_date
+         WHERE t.location_id = l.location_id) AS last_test_date
     FROM locations l
     WHERE l.company_id = ? AND l.active = 1
     ORDER BY l.name ASC
@@ -27,7 +28,7 @@ export function getLocation(locationId) {
   return queryOne(`
     SELECT l.*, c.name AS company_name
     FROM locations l
-    JOIN companies c ON c.company_id = l.company_id
+    JOIN companies c ON l.company_id = c.company_id
     WHERE l.location_id = ?
   `, [locationId])
 }
@@ -173,13 +174,15 @@ export function getAllBaselinesForEmployee(employeeId) {
   `, [employeeId])
 }
 
+// ---------------------------------------------------------------------------
+// Packet Generation
+// ---------------------------------------------------------------------------
+
 /**
- * Builds the array of employees for a tech packet based on location_id.
- * MUST use location_id to find the workers.
+ * THE CORE FIX: This function builds the employee list for TechTool.
+ * It now uses location_id (Schema 2.0) and includes history.
  */
 export function buildPacketEmployees(locationId) {
-  const { query, queryOne } = await import('./sqlite.js'); // Ensure imports are available
-
   // 1. Get all active employees assigned to this location
   const employees = query(`
     SELECT * FROM employees 
