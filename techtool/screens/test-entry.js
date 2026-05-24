@@ -282,14 +282,20 @@ function renderAudiogramSVG(ear) {
 function updateAudiogramPlot(container, ear, baseline) {
     const freqs = [500, 1000, 2000, 3000, 4000, 6000, 8000];
     
-    // 1. Plot Baseline (Static)
+    // 1. Plot Baseline (Faded Dashed Line)
     const baseMarkers = container.querySelector(`#base-markers-${ear}`);
     const basePath = container.querySelector(`#base-path-${ear}`);
-    if (baseline && baseMarkers.children.length === 0) {
+    
+    if (baseline && baseMarkers.innerHTML === '') {
         const basePoints = [];
         freqs.forEach((f, i) => {
-            const val = baseline[ear === 'L' ? 'left_'+f : 'right_'+f];
-            if (val !== null && val !== undefined) {
+            // MAPPER: Database uses '1k', code uses '1000'
+            const dbKey = f >= 1000 ? (f/1000) + 'k' : f;
+            const fieldName = (ear === 'L' ? 'left_' : 'right_') + dbKey;
+            
+            const val = baseline[fieldName];
+            
+            if (val !== null && val !== undefined && val !== "") {
                 const x = 40 + (i * 40);
                 const y = 40 + ((parseInt(val) + 10) * 2);
                 basePoints.push(`${x},${y}`);
@@ -299,7 +305,7 @@ function updateAudiogramPlot(container, ear, baseline) {
         basePath.setAttribute('points', basePoints.join(' '));
     }
 
-    // 2. Plot Current (Dynamic)
+    // 2. Plot Current (Solid Dynamic Line)
     const points = [];
     const markers = container.querySelector(`#markers-${ear}`);
     const path = container.querySelector(`#path-${ear}`);

@@ -183,48 +183,37 @@ export function getAllBaselinesForEmployee(employeeId) {
  * It now uses location_id (Schema 2.0) and includes history.
  */
 export function buildPacketEmployees(locationId) {
-  // 1. Get all active employees assigned to this location
   const employees = query(`
     SELECT * FROM employees 
     WHERE location_id = ? AND status = 'active'
     ORDER BY last_name, first_name
   `, [locationId]);
 
-  // 2. For each employee, attach their history
   return employees.map(emp => {
-    // Get the most recent 3 tests
-    const priorTests = query(`
-      SELECT * FROM tests 
-      WHERE employee_id = ? 
-      ORDER BY test_date DESC 
-      LIMIT 3
-    `, [emp.employee_id]);
+    const priorTests = query(`SELECT * FROM tests WHERE employee_id = ? ORDER BY test_date DESC LIMIT 3`, [emp.employee_id]);
 
-    // 3. GET BASELINE (With Fallback)
-    // First, try the official baselines table
+    // We explicitly select all columns to be 100% sure the frequencies are included
     let baseline = queryOne(`
-      SELECT * FROM baselines 
+      SELECT 
+        test_date, 
+        left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+        right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k
+      FROM baselines 
       WHERE employee_id = ? AND archived = 0
-      ORDER BY test_date DESC 
-      LIMIT 1
+      ORDER BY test_date DESC LIMIT 1
     `, [emp.employee_id]);
 
-    // Fallback: If no official baseline, look for a test marked 'Baseline'
+    // Fallback if no baseline record exists
     if (!baseline) {
-      const baselineTest = queryOne(`
-        SELECT * FROM tests 
+      baseline = queryOne(`
+        SELECT 
+          test_date, 
+          left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+          right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k
+        FROM tests 
         WHERE employee_id = ? AND test_type = 'Baseline'
-        ORDER BY test_date DESC 
-        LIMIT 1
+        ORDER BY test_date DESC LIMIT 1
       `, [emp.employee_id]);
-
-      if (baselineTest) {
-        // Map the test fields to match the baseline structure
-        baseline = {
-          ...baselineTest,
-          is_from_test_table: true // Flag so we know where it came from
-        };
-      }
     }
 
     return {
