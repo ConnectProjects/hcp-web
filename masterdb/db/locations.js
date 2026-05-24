@@ -200,13 +200,32 @@ export function buildPacketEmployees(locationId) {
       LIMIT 3
     `, [emp.employee_id]);
 
-    // Get the active baseline
-    const baseline = queryOne(`
+    // 3. GET BASELINE (With Fallback)
+    // First, try the official baselines table
+    let baseline = queryOne(`
       SELECT * FROM baselines 
       WHERE employee_id = ? AND archived = 0
       ORDER BY test_date DESC 
       LIMIT 1
     `, [emp.employee_id]);
+
+    // Fallback: If no official baseline, look for a test marked 'Baseline'
+    if (!baseline) {
+      const baselineTest = queryOne(`
+        SELECT * FROM tests 
+        WHERE employee_id = ? AND test_type = 'Baseline'
+        ORDER BY test_date DESC 
+        LIMIT 1
+      `, [emp.employee_id]);
+
+      if (baselineTest) {
+        // Map the test fields to match the baseline structure
+        baseline = {
+          ...baselineTest,
+          is_from_test_table: true // Flag so we know where it came from
+        };
+      }
+    }
 
     return {
       ...emp,
