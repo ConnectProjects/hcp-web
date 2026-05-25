@@ -6,6 +6,13 @@ export function renderTestEntry(container, state, navigate) {
   const packet = slot.currentPacket || {};
   const baseline = emp.baseline || null;
 
+  // DEBUG: Let's see what the baseline data actually looks like in the console
+  if (baseline) {
+    console.log("📊 Baseline Data Found:", baseline);
+  } else {
+    console.warn("⚠️ No baseline data found in employee record.");
+  }
+
   container.innerHTML = `
     <style>
         .tech-tool-container { max-width: 900px; margin: 0 auto; padding: 20px; font-family: system-ui, -apple-system, sans-serif; }
@@ -18,7 +25,6 @@ export function renderTestEntry(container, state, navigate) {
         
         .section-title { color: #76B214; font-size: 1.5rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 45px 0 20px 0; font-weight: 700; }
         
-        /* Audiogram SVG Styles */
         .audiogram-wrapper { background: white; border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; position: relative; width: 100%; height: 260px; }
         .chart-grid line { stroke: #eef0f2; stroke-width: 1; }
         .chart-grid line.major { stroke: #d1d5db; }
@@ -32,12 +38,12 @@ export function renderTestEntry(container, state, navigate) {
         
         .badge-booth { background: #76B214; color: white; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         
-        /* Legend */
-        .chart-legend { display: flex; gap: 15px; font-size: 11px; margin-top: 10px; justify-content: center; }
-        .legend-item { display: flex; align-items: center; gap: 5px; }
-        .legend-line { width: 20px; height: 2px; }
-        .line-solid { border-top: 2px solid #333; }
-        .line-dashed { border-top: 2px dashed #999; }
+        .chart-legend { display: flex; gap: 15px; font-size: 11px; margin-top: 15px; justify-content: center; padding-bottom: 20px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-line { width: 25px; height: 0; border-top: 2.5px solid #333; }
+        .line-solid-l { border-color: #0056b3; }
+        .line-solid-r { border-color: #d9534f; }
+        .line-dashed { border-style: dashed; border-width: 1.5px; border-color: #999; }
     </style>
 
     <div class="tech-tool-container">
@@ -48,7 +54,6 @@ export function renderTestEntry(container, state, navigate) {
       
       <button class="btn btn-ghost" id="btn-back" style="margin-bottom:25px">❮ Back to Employees</button>
 
-      <!-- 1. Test Setting (Green Box) -->
       <div style="background: #76B214; color: white; border-radius: 12px; padding: 25px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; box-shadow: 0 6px 16px rgba(0,0,0,0.08);">
           <div class="setting-item"><label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.85; margin-bottom:4px;">Worker</label><span style="font-size:1.1rem; font-weight:600;">${esc(emp.last_name)}, ${esc(emp.first_name)}</span></div>
           <div class="setting-item"><label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.85; margin-bottom:4px;">Employer</label><span style="font-size:1.1rem; font-weight:600;">${esc(packet.company?.name || 'N/A')}</span></div>
@@ -58,7 +63,6 @@ export function renderTestEntry(container, state, navigate) {
           <div class="setting-item"><label style="display:block; font-size:10px; text-transform:uppercase; font-weight:bold; opacity:0.85; margin-bottom:4px;">Technician</label><span style="font-size:1.1rem; font-weight:600;">${esc(state.user?.name || 'Admin')}</span></div>
       </div>
 
-      <!-- 2. Noise Exposure -->
       <h2 class="section-title" style="margin-top:0">Noise Exposure & Conservation</h2>
       <div class="q-row">
         <div class="q-label">Have you been exposed to noise within the last two hours?</div>
@@ -89,7 +93,6 @@ export function renderTestEntry(container, state, navigate) {
         <select class="q-input q-select" data-id="employer_info"><option value="No">No</option><option value="Yes">Yes</option></select>
       </div>
 
-      <!-- 3. Hearing History -->
       <h2 class="section-title">Noise & Hearing History</h2>
       ${renderSimpleQ("ear_infection", "Have you ever had a severe ear infection?")}
       ${renderSimpleQ("ear_surgery", "Have you ever had ear surgery?")}
@@ -130,7 +133,6 @@ export function renderTestEntry(container, state, navigate) {
         </div>
       </div>
 
-      <!-- 4. Audiogram Results -->
       <h2 class="section-title">Hearing Test Results</h2>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px;">
           <div>
@@ -156,11 +158,11 @@ export function renderTestEntry(container, state, navigate) {
       </div>
 
       <div class="chart-legend">
-        <div class="legend-item"><div class="legend-line line-solid"></div> <span>Current Test</span></div>
+        <div class="legend-item"><div class="legend-line line-solid-l"></div> <span>Left Ear</span></div>
+        <div class="legend-item"><div class="legend-line line-solid-r"></div> <span>Right Ear</span></div>
         <div class="legend-item"><div class="legend-line line-dashed"></div> <span style="color:#999">Baseline</span></div>
       </div>
 
-      <!-- 5. Comments & Submit -->
       <h2 class="section-title">Finalize & Submit</h2>
       <div class="form-group">
           <label style="font-size:13px; font-weight:bold; color:#666; display:block; margin-bottom:8px;">Additional Technician Notes</label>
@@ -181,12 +183,14 @@ export function renderTestEntry(container, state, navigate) {
     </div>
   `;
 
-  // --- LOGIC ---
+  // --- INTERACTION LOGIC ---
 
   const toggleSub = (parentId, subId) => {
     const parent = container.querySelector(`#${parentId}`);
     const sub = container.querySelector(`#${subId}`);
-    parent.onchange = () => sub.classList.toggle('visible', parent.value === 'Yes');
+    if (parent && sub) {
+        parent.onchange = () => sub.classList.toggle('visible', parent.value === 'Yes');
+    }
   };
 
   toggleSub('exposed_2hr', 'exposed_2hr_details');
@@ -270,9 +274,9 @@ function renderAudiogramSVG(ear) {
                 return `<line x1="40" y1="${y}" x2="280" y2="${y}" class="${db % 20 === 0 ? 'major' : ''}" /><text x="35" y="${y + 4}" text-anchor="end" class="chart-axis-text">${db}</text>`;
             }).join('')}
         </g>
-        <!-- Baseline Path (Dashed/Faded) -->
-        <polyline id="base-path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.3" />
-        <g id="base-markers-${ear}" opacity="0.4"></g>
+        <!-- Baseline Path (Dashed/Faded) - Drawn FIRST so it stays in background -->
+        <polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" />
+        <g id="base-markers-${ear}" opacity="0.5"></g>
         <!-- Current Path (Solid) -->
         <polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" stroke-linejoin="round" />
         <g id="markers-${ear}"></g>
@@ -288,18 +292,23 @@ function updateAudiogramPlot(container, ear, baseline) {
     
     if (baseline && baseMarkers.innerHTML === '') {
         const basePoints = [];
+        // Robust key search: finds 'left_500' regardless of case
+        const findVal = (key) => {
+            const lowerKey = key.toLowerCase();
+            const foundKey = Object.keys(baseline).find(k => k.toLowerCase() === lowerKey);
+            return foundKey ? baseline[foundKey] : null;
+        };
+
         freqs.forEach((f, i) => {
-            // MAPPER: Database uses '1k', code uses '1000'
             const dbKey = f >= 1000 ? (f/1000) + 'k' : f;
             const fieldName = (ear === 'L' ? 'left_' : 'right_') + dbKey;
-            
-            const val = baseline[fieldName];
+            const val = findVal(fieldName);
             
             if (val !== null && val !== undefined && val !== "") {
                 const x = 40 + (i * 40);
                 const y = 40 + ((parseInt(val) + 10) * 2);
                 basePoints.push(`${x},${y}`);
-                baseMarkers.innerHTML += `<circle cx="${x}" cy="${y}" r="3" fill="${ear === 'L' ? '#0056b3' : '#d9534f'}" />`;
+                baseMarkers.innerHTML += `<circle cx="${x}" cy="${y}" r="3" fill="#999" />`;
             }
         });
         basePath.setAttribute('points', basePoints.join(' '));
