@@ -1,7 +1,10 @@
 import { archivePacket } from '../db/idb.js'
 
 export function renderDashboard(container, state, navigate) {
-  const activePackets = (state.packets || []).filter(p => !p.ui_archived);
+  // Filter logic: Hide packets that are manually archived OR already submitted to the office
+  const activePackets = (state.packets || []).filter(p => {
+    return !p.ui_archived && p.status !== 'submitted';
+  });
 
   container.innerHTML = `
     <div class="screen">
@@ -20,9 +23,11 @@ export function renderDashboard(container, state, navigate) {
             <div class="packet-card__body">
                 <div class="packet-info">
                   <div class="packet-name">${esc(p.company_name || p.company?.name || 'Unknown')}</div>
-                  <div class="packet-meta">${esc(p.location_name || 'Main Office')} · ${(p.employees || []).length} workers</div>
+                  <div class="packet-meta">
+                    ${esc(p.location_name || 'Main Office')} · ${(p.employees || []).length} workers
+                  </div>
                 </div>
-                <button class="btn-archive" data-id="${p.packet_id}" title="Hide">✕</button>
+                <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
             </div>
             <div class="progress-bar">
                 <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
@@ -31,7 +36,8 @@ export function renderDashboard(container, state, navigate) {
         `).join('') : `
           <div class="empty-state">
             <p>No active packets found on this device.</p>
-            <button class="btn btn-primary" id="btn-empty-sync">Download Packets from OneDrive</button>
+            <p style="font-size: 13px; color: #999; margin-bottom: 20px;">Packets are hidden once they are submitted to the office.</p>
+            <button class="btn btn-primary" id="btn-empty-sync">Check for New Packets</button>
           </div>
         `}
       </div>
@@ -40,12 +46,10 @@ export function renderDashboard(container, state, navigate) {
 
   // --- Handlers ---
   
-  // Sync Buttons
   const goToSync = () => navigate('sync');
   container.querySelector('#btn-sync-now')?.addEventListener('click', goToSync);
   container.querySelector('#btn-empty-sync')?.addEventListener('click', goToSync);
 
-  // Card Click
   container.querySelectorAll('.packet-card').forEach(card => {
     card.onclick = (e) => {
         if (e.target.classList.contains('btn-archive')) return;
@@ -57,11 +61,10 @@ export function renderDashboard(container, state, navigate) {
     };
   });
 
-  // Archive Button
   container.querySelectorAll('.btn-archive').forEach(btn => {
     btn.onclick = async (e) => {
         e.stopPropagation(); 
-        if (confirm("Hide this packet?")) {
+        if (confirm("Hide this packet from your dashboard?")) {
             await archivePacket(btn.dataset.id);
             const p = state.packets.find(p => p.packet_id === btn.dataset.id);
             if (p) p.ui_archived = true;
@@ -73,7 +76,8 @@ export function renderDashboard(container, state, navigate) {
 
 function calculateProgress(p) {
     if (!p.employees || p.employees.length === 0) return 0;
-    const done = p.employees.filter(e => e.completed_tests?.length > 0 || e.skipped_at).length;
+    // Count workers who have a completed test OR were marked as skipped
+    const done = p.employees.filter(e => (e.completed_tests && e.completed_tests.length > 0) || e.skipped_at).length;
     return Math.round((done / p.employees.length) * 100);
 }
 
