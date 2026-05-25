@@ -1,6 +1,6 @@
 import { markEmployeeSkipped, addNewEmployee } from '@shared/packet/schema.js'
 import { savePacket } from '../db/idb.js'
-import { writeJsonFile } from '@shared/fs/sync-folder.js' // Added for OneDrive sync
+import { writeJsonFile, deleteJsonFile } from '@shared/fs/sync-folder.js'
 
 export function renderEmployeeList(container, state, navigate) {
   const packet    = state.currentPacket
@@ -109,9 +109,16 @@ export function renderEmployeeList(container, state, navigate) {
             const filename = `FINAL_${packet.filename}`;
             await writeJsonFile(state.syncFolder, 'inbox', filename, packet);
 
-            // 3. Save to local IndexedDB and exit
+            // 3. Delete the original assignment file from the tech's folder
+            // This prevents the packet from being re-downloaded during the next Sync
+            if (state.user?.folder_name) {
+                const techSubfolder = `techs/${state.user.folder_name}`;
+                await deleteJsonFile(state.syncFolder, techSubfolder, packet.filename);
+            }
+
+            // 4. Save to local IndexedDB and exit
             await savePacket(packet);
-            alert("Packet successfully submitted to the office!");
+            alert("Packet successfully submitted! It will no longer appear in your sync list.");
             navigate('dashboard');
         } catch (err) {
             console.error(err);
@@ -244,20 +251,14 @@ function empRow(emp) {
 function attachRowHandlers(container, employees, packet, state, navigate) {
   container.querySelectorAll('.emp-row').forEach(row => {
     const empId = row.dataset.empId
-    
-    // FIX: Use loose equality (==) for ID comparison
     const emp = employees.find(e => e.employee_id == empId)
     if (!emp || emp.skipped_at) return
 
     row.addEventListener('click', e => {
       if (e.target.closest('.emp-row__skip')) return
-
-      // Load data into the booth slot
       const slot = state.slots[state.activeSlot]
       slot.currentEmployee = emp
       slot.currentPacket = packet
-      
-      // Navigate to the long-form test entry
       navigate('test-entry', {
         currentEmployee: emp,
         currentPacket: packet
@@ -265,7 +266,6 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
     })
   })
 
-  // Skip logic
   container.querySelectorAll('.emp-row__skip').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
