@@ -6,25 +6,15 @@ export function renderTestEntry(container, state, navigate) {
   const packet = slot.currentPacket || {};
   const baseline = emp.baseline || null;
 
-  // DEBUG: Let's see what the baseline data actually looks like in the console
-  if (baseline) {
-    console.log("📊 Baseline Data Found:", baseline);
-  } else {
-    console.warn("⚠️ No baseline data found in employee record.");
-  }
-
   container.innerHTML = `
     <style>
         .tech-tool-container { max-width: 900px; margin: 0 auto; padding: 20px; font-family: system-ui, -apple-system, sans-serif; }
         .sub-question { margin-left: 30px; padding: 15px; border-left: 4px solid #76B214; background: #f9f9f9; display: none; margin-top: 5px; margin-bottom: 15px; border-radius: 0 8px 8px 0; }
         .sub-question.visible { display: block; }
-        
         .q-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid #eee; }
         .q-label { font-size: 14px; color: #333; flex: 1; padding-right: 20px; line-height: 1.4; }
         .q-select { width: 120px; padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; background: white; }
-        
         .section-title { color: #76B214; font-size: 1.5rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 45px 0 20px 0; font-weight: 700; }
-        
         .audiogram-wrapper { background: white; border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; position: relative; width: 100%; height: 260px; }
         .chart-grid line { stroke: #eef0f2; stroke-width: 1; }
         .chart-grid line.major { stroke: #d1d5db; }
@@ -32,12 +22,9 @@ export function renderTestEntry(container, state, navigate) {
         .normal-range { fill: #76B214; opacity: 0.12; }
         .threshold-line { stroke: #76B214; stroke-width: 2; stroke-dasharray: 5,3; }
         .range-label { font-size: 9px; fill: #4d8a0b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-        
         .ear-header { font-weight: 800; color: #1e3a5f; display: block; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; font-size: 13px; }
         .baseline-info { font-size: 11px; color: #888; margin-bottom: 10px; display: block; }
-        
         .badge-booth { background: #76B214; color: white; padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: bold; }
-        
         .chart-legend { display: flex; gap: 15px; font-size: 11px; margin-top: 15px; justify-content: center; padding-bottom: 20px; }
         .legend-item { display: flex; align-items: center; gap: 8px; }
         .legend-line { width: 25px; height: 0; border-top: 2.5px solid #333; }
@@ -274,10 +261,8 @@ function renderAudiogramSVG(ear) {
                 return `<line x1="40" y1="${y}" x2="280" y2="${y}" class="${db % 20 === 0 ? 'major' : ''}" /><text x="35" y="${y + 4}" text-anchor="end" class="chart-axis-text">${db}</text>`;
             }).join('')}
         </g>
-        <!-- Baseline Path (Dashed/Faded) - Drawn FIRST so it stays in background -->
         <polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" />
         <g id="base-markers-${ear}" opacity="0.5"></g>
-        <!-- Current Path (Solid) -->
         <polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" stroke-linejoin="round" />
         <g id="markers-${ear}"></g>
     </svg>`;
@@ -286,23 +271,22 @@ function renderAudiogramSVG(ear) {
 function updateAudiogramPlot(container, ear, baseline) {
     const freqs = [500, 1000, 2000, 3000, 4000, 6000, 8000];
     
-    // 1. Plot Baseline (Faded Dashed Line)
+    // 1. Plot Baseline
     const baseMarkers = container.querySelector(`#base-markers-${ear}`);
     const basePath = container.querySelector(`#base-path-${ear}`);
     
     if (baseline && baseMarkers.innerHTML === '') {
         const basePoints = [];
-        // Robust key search: finds 'left_500' regardless of case
-        const findVal = (key) => {
-            const lowerKey = key.toLowerCase();
-            const foundKey = Object.keys(baseline).find(k => k.toLowerCase() === lowerKey);
-            return foundKey ? baseline[foundKey] : null;
-        };
+        // Support both top-level keys AND the nested 'thresholds' object from your console log
+        const source = baseline.thresholds || baseline;
 
         freqs.forEach((f, i) => {
             const dbKey = f >= 1000 ? (f/1000) + 'k' : f;
             const fieldName = (ear === 'L' ? 'left_' : 'right_') + dbKey;
-            const val = findVal(fieldName);
+            
+            // Check for key in the source object (case-insensitive)
+            const foundKey = Object.keys(source).find(k => k.toLowerCase() === fieldName.toLowerCase());
+            const val = foundKey ? source[foundKey] : null;
             
             if (val !== null && val !== undefined && val !== "") {
                 const x = 40 + (i * 40);
@@ -314,7 +298,7 @@ function updateAudiogramPlot(container, ear, baseline) {
         basePath.setAttribute('points', basePoints.join(' '));
     }
 
-    // 2. Plot Current (Solid Dynamic Line)
+    // 2. Plot Current
     const points = [];
     const markers = container.querySelector(`#markers-${ear}`);
     const path = container.querySelector(`#path-${ear}`);
