@@ -87,7 +87,7 @@ export function renderEmployeeList(container, state, navigate) {
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate('company'))
 
-  // --- SUBMIT PACKET LOGIC ---
+  // --- UPDATED SUBMIT PACKET LOGIC ---
   if (allResolved) {
     const btnSubmit = container.querySelector('#btn-submit-packet');
     btnSubmit.addEventListener('click', async () => {
@@ -105,20 +105,21 @@ export function renderEmployeeList(container, state, navigate) {
             packet.submitted_at = new Date().toISOString();
             packet.submitted_by = state.user?.name || 'Unknown Tech';
 
-            // 2. Write the file to the 'inbox' folder for MasterDB to find
+            // 2. Write the FINAL file to the 'inbox' folder
             const filename = `FINAL_${packet.filename}`;
             await writeJsonFile(state.syncFolder, 'inbox', filename, packet);
 
-            // 3. Delete the original assignment file from the tech's folder
-            // This prevents the packet from being re-downloaded during the next Sync
+            // 3. THE FIX: Delete the ORIGINAL assignment file from the tech's folder
+            // This prevents it from being re-downloaded during the next Sync
             if (state.user?.folder_name) {
                 const techSubfolder = `techs/${state.user.folder_name}`;
                 await deleteJsonFile(state.syncFolder, techSubfolder, packet.filename);
+                console.log(`Original packet ${packet.filename} deleted from ${techSubfolder}`);
             }
 
             // 4. Save to local IndexedDB and exit
             await savePacket(packet);
-            alert("Packet successfully submitted! It will no longer appear in your sync list.");
+            alert("Packet successfully submitted! The assignment has been removed from your sync list.");
             navigate('dashboard');
         } catch (err) {
             console.error(err);
