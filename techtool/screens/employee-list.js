@@ -1,5 +1,6 @@
 import { markEmployeeSkipped, addNewEmployee } from '@shared/packet/schema.js'
 import { savePacket } from '../db/idb.js'
+import { writeJsonFile } from '@shared/fs/sync-folder.js' // Added for OneDrive sync
 
 export function renderEmployeeList(container, state, navigate) {
   const packet    = state.currentPacket
@@ -26,7 +27,7 @@ export function renderEmployeeList(container, state, navigate) {
       ${allResolved ? `
         <div class="emp-complete-banner">
           <p>✓ All employees resolved — ready to submit</p>
-          <button class="btn btn-primary btn-sm" id="btn-submit-packet">Submit Packet →</button>
+          <button class="btn btn-primary btn-sm" id="btn-submit-packet">Submit Packet to Office →</button>
         </div>
       ` : ''}
 
@@ -86,8 +87,39 @@ export function renderEmployeeList(container, state, navigate) {
 
   container.querySelector('#btn-back').addEventListener('click', () => navigate('company'))
 
+  // --- SUBMIT PACKET LOGIC ---
   if (allResolved) {
-    container.querySelector('#btn-submit-packet').addEventListener('click', () => navigate('company'))
+    const btnSubmit = container.querySelector('#btn-submit-packet');
+    btnSubmit.addEventListener('click', async () => {
+        if (!state.syncFolder) {
+            alert("OneDrive folder not connected. Please connect via the Sync screen.");
+            return;
+        }
+
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Uploading...";
+
+        try {
+            // 1. Update packet status
+            packet.status = 'submitted';
+            packet.submitted_at = new Date().toISOString();
+            packet.submitted_by = state.user?.name || 'Unknown Tech';
+
+            // 2. Write the file to the 'inbox' folder for MasterDB to find
+            const filename = `FINAL_${packet.filename}`;
+            await writeJsonFile(state.syncFolder, 'inbox', filename, packet);
+
+            // 3. Save to local IndexedDB and exit
+            await savePacket(packet);
+            alert("Packet successfully submitted to the office!");
+            navigate('dashboard');
+        } catch (err) {
+            console.error(err);
+            alert("Failed to submit: " + err.message);
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = "Submit Packet to Office →";
+        }
+    });
   }
 
   const searchEl = container.querySelector('#emp-search')
@@ -102,7 +134,7 @@ export function renderEmployeeList(container, state, navigate) {
 
   attachRowHandlers(container, employees, packet, state, navigate)
 
-  // Add employee toggle logic
+  // Add employee toggle
   const addToggle = container.querySelector('#btn-add-emp-toggle')
   const addForm   = container.querySelector('#add-emp-form')
   addToggle.addEventListener('click', () => {
@@ -213,19 +245,19 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
   container.querySelectorAll('.emp-row').forEach(row => {
     const empId = row.dataset.empId
     
-    // FIX: Use loose equality (==) to find the employee
+    // FIX: Use loose equality (==) for ID comparison
     const emp = employees.find(e => e.employee_id == empId)
     if (!emp || emp.skipped_at) return
 
     row.addEventListener('click', e => {
       if (e.target.closest('.emp-row__skip')) return
 
-      // FIX: Load data into the booth slot correctly
+      // Load data into the booth slot
       const slot = state.slots[state.activeSlot]
       slot.currentEmployee = emp
       slot.currentPacket = packet
       
-      // FIX: Change destination to 'test-entry'
+      // Navigate to the long-form test entry
       navigate('test-entry', {
         currentEmployee: emp,
         currentPacket: packet
@@ -233,7 +265,7 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
     })
   })
 
-  // Skip logic (Original functionality preserved)
+  // Skip logic
   container.querySelectorAll('.emp-row__skip').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
