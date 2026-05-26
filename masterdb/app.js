@@ -1,5 +1,5 @@
-import { renderUsers } from './screens/users.js'
 import { renderDataTools } from './screens/data-tools.js'
+import { renderUsers }     from './screens/users.js' // NEW: User Management
 import { initDB, query, queryOne, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { querySyncFolder }    from '@shared/fs/sync-folder.js'
@@ -38,6 +38,7 @@ export const state = {
   params:          {}
 }
 
+// Expose state to window for console access
 window.state = state;
 
 // ---------------------------------------------------------------------------
@@ -62,7 +63,7 @@ const SCREENS = {
   help:              renderHelp,
   'location-detail': renderLocationDetail,
   'data-tools':      renderDataTools,
-  'users': renderUsers
+  'users':           renderUsers, // NEW
 }
 
 const NAV_ITEMS = [
@@ -70,11 +71,11 @@ const NAV_ITEMS = [
   { screen: 'companies',    label: 'Companies',     icon: '🏭' },
   { screen: 'employees',    label: 'Employees',     icon: '👷' },
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
+  { screen: 'users',        label: 'Team',          icon: '👥' }, // NEW
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
   { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
-  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' },
-  { screen: 'users', label: 'Team', icon: '👥' }
+  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
 ]
 
 const NAV_PARENT = {
@@ -86,7 +87,8 @@ const NAV_PARENT = {
   'import-confirm':  'packets',
   'province-rules':  'settings',
   'location-detail': 'companies',
-  'data-tools':      'data-tools'
+  'data-tools':      'data-tools',
+  'users':           'users'
 }
 
 function isNavActive(current, navScreen) {
@@ -210,7 +212,7 @@ boot().catch(err => {
   document.getElementById('app').innerHTML = `
     <div class="error-screen">
       <h2>Startup Error</h2>
-      <p>MasterDB could not initialize. This may happen if your browser does not support OPFS or WebAssembly.</p>
+      <p>MasterDB could not initialize.</p>
       <pre>${err.message}</pre>
     </div>
   `
