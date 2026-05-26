@@ -15,6 +15,17 @@ import { getDB, run, query, transaction } from './sqlite.js'
 
 const CREATE_TABLES = `
 
+CREATE TABLE IF NOT EXISTS users (
+  user_id       TEXT PRIMARY KEY,
+  name          TEXT NOT NULL,
+  initials      TEXT,
+  role          TEXT DEFAULT 'tech',
+  folder_name   TEXT,
+  pin_hash      TEXT,
+  active        INTEGER DEFAULT 1,
+  created_at    TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS provinces (
   province_code  TEXT PRIMARY KEY,
   province_name  TEXT NOT NULL,
