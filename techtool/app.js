@@ -16,7 +16,7 @@ import { renderTraining }       from './screens/training.js'
 import { renderNewVisit }       from './screens/new-visit.js'
 
 // ---------------------------------------------------------------------------
-// App state — single mutable object passed to all screens
+// App state
 // ---------------------------------------------------------------------------
 
 export const state = {
@@ -27,8 +27,7 @@ export const state = {
   packets:            [],         
   currentPacket:      null,       
   
-  // Dual booth support
-  activeSlot:         0,          // 0 = Slot A, 1 = Slot B
+  activeSlot:         0, // 0 = Booth 1, 1 = Booth 2
   slots: [
     {
       screen:             'dashboard',
@@ -46,24 +45,16 @@ export const state = {
     }
   ],
 
-  // Convenience pointers for active slot
   currentEmployee:    null,
   testData:           {},
   techNotes:          '',
-
   lastSync:           null,       
   helpReturnScreen:   null,       
-
-  // Practice mode
-  _inPracticeMode:    false,
-  _realPackets:       null,
-  _realUser:          null,
-  practiceHintsSeen:  {},
-  practiceCompleted:  false
+  _inPracticeMode:    false
 }
 
 // ---------------------------------------------------------------------------
-// Screen registry (Consolidated to one 'test-entry' screen)
+// Screens
 // ---------------------------------------------------------------------------
 
 const SCREENS = {
@@ -73,7 +64,7 @@ const SCREENS = {
   'calendar':       renderCalendar,
   'company':        renderCompany,
   'employee-list':  renderEmployeeList,
-  'test-entry':     renderTestEntry, // Consolidated Screen
+  'test-entry':     renderTestEntry,
   'sync':           renderSync,
   'settings':       renderSettings,
   'help':           renderHelp,
@@ -139,26 +130,13 @@ export function switchSlot(slotIndex) {
 // ---------------------------------------------------------------------------
 
 export function navigate(screen, params = {}) {
-  console.log(`Navigating to: ${screen}`, params);
-  
-  if (!SCREENS[screen]) {
-    console.error('Unknown screen:', screen)
-    return
-  }
-  
-  if (screen === 'help') {
-    state.helpReturnScreen = state.screen
-  }
+  if (!SCREENS[screen]) return;
   
   saveStateToSlot()
 
-  // Reset per-employee state when moving to a new test entry
-  if (screen === 'test-entry') {
-    state.testData               = {}
-    state.techNotes              = ''
-    const s = state.slots[state.activeSlot]
-    s.testData = {}
-    s.techNotes = ''
+  if (screen === 'test-entry' && !params.keepData) {
+    state.testData = {}
+    state.techNotes = ''
   }
 
   state.screen = screen
@@ -170,12 +148,7 @@ export function navigate(screen, params = {}) {
 
 function paint() {
   const app = document.getElementById('app')
-
   const renderFn = SCREENS[state.screen]
-  if (!renderFn) {
-    app.innerHTML = `<div class="error-screen"><h2>Unknown screen: ${state.screen}</h2></div>`
-    return
-  }
 
   if (state.screen === 'login') {
     app.innerHTML = ''
@@ -192,30 +165,10 @@ function paint() {
       <nav class="sidebar" id="sidebar">
         <div class="sidebar-brand">
           ${state.logoUrl
-            ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Company logo" />`
+            ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Logo" />`
             : `<div class="sidebar-logo-img">${BrandLogo}</div>`
           }
         </div>
-        
-        ${showSwitcher ? `
-          <div class="booth-switcher">
-            <button class="booth-btn ${state.activeSlot === 0 ? 'booth-btn--active' : ''}" data-slot="0">
-              <span class="booth-num">1</span>
-              <div class="booth-info">
-                <span class="booth-label">Booth 1</span>
-                <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
-            </button>
-            <button class="booth-btn ${state.activeSlot === 1 ? 'booth-btn--active' : ''}" data-slot="1">
-              <span class="booth-num">2</span>
-              <div class="booth-info">
-                <span class="booth-label">Booth 2</span>
-                <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
-            </button>
-          </div>
-        ` : ''}
-
         <ul class="sidebar-nav">
           ${NAV_ITEMS.map(item => `
             <li>
@@ -226,49 +179,41 @@ function paint() {
               </button>
             </li>
           `).join('')}
-          <li style="padding:8px 8px 2px">
-            <button class="nav-item nav-item--offline ${state.screen === 'new-visit' ? 'nav-item--active' : ''}"
-              id="btn-new-visit">
-              <span class="nav-icon">📋</span>
-              <span class="nav-label">New Offline Visit</span>
-            </button>
-          </li>
         </ul>
         <div class="sidebar-footer">
           <span class="user-name">${techName}</span>
-          ${state._inPracticeMode
-            ? `<span class="folder-indicator" style="color:#7dd3fc">🎓 Practice</span>`
-            : `<span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}"
-                title="${state.syncFolder ? 'Sync folder connected' : 'No sync folder — go to Settings'}">
-                ${state.syncFolder ? '●' : '○'} Sync
-              </span>`
-          }
+          <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
+            ${state.syncFolder ? '●' : '○'} Sync
+          </span>
         </div>
       </nav>
+
       <div class="main-area">
+        <!-- HORIZONTAL STICKY BOOTH SWITCHER -->
+        ${showSwitcher ? `
+          <div class="booth-switcher-bar">
+            <button class="booth-tab ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
+              <span class="booth-indicator">1</span>
+              <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
+            </button>
+            <button class="booth-tab ${state.activeSlot === 1 ? 'active' : ''}" data-slot="1">
+              <span class="booth-indicator">2</span>
+              <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
+            </button>
+          </div>
+        ` : ''}
+
         <div id="main-content" class="main-content"></div>
       </div>
     </div>
   `
 
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (state._inPracticeMode && !['settings','help'].includes(btn.dataset.screen)) {
-        if (!confirm('Exit practice mode? Your progress will be lost.')) return
-        const { exitPracticeMode } = await import('./screens/practice-overlay.js')
-        exitPracticeMode(state, navigate)
-        return
-      }
-      navigate(btn.dataset.screen)
-    })
+    btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
 
-  app.querySelector('#btn-new-visit')?.addEventListener('click', () => navigate('new-visit'))
-
-  app.querySelectorAll('.booth-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchSlot(Number(btn.dataset.slot))
-    })
+  app.querySelectorAll('.booth-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchSlot(Number(btn.dataset.slot)))
   })
 
   renderFn(document.getElementById('main-content'), state, navigate)
@@ -279,23 +224,14 @@ function paint() {
 // ---------------------------------------------------------------------------
 
 async function boot() {
-  const techName       = await getSetting('tech_name')
-  const techInitials   = await getSetting('tech_initials')
-  const techFolderName = await getSetting('tech_folder_name')
-  const techIatNumber  = await getSetting('tech_iat_number')
-
+  const techName = await getSetting('tech_name')
+  const techInitials = await getSetting('tech_initials')
   state.logoUrl = (await getSetting('logo_url')) ?? null
   await loadAndApplyTheme()
 
   if (techName && techInitials) {
-    state.user = {
-      name:        techName,
-      initials:    techInitials,
-      tech_id:     techInitials,
-      folder_name: techFolderName ?? null,
-      iat_number:  techIatNumber  ?? null
-    }
-    state.packets    = await getAllPackets()
+    state.user = { name: techName, initials: techInitials, tech_id: techInitials, folder_name: await getSetting('tech_folder_name') }
+    state.packets = await getAllPackets()
     state.syncFolder = await querySyncFolder()
     navigate('dashboard')
   } else {
@@ -303,26 +239,7 @@ async function boot() {
   }
 }
 
-function setBootMsg(msg) {
-  const el = document.getElementById('boot-msg')
-  if (el) el.textContent = msg
-}
-
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(e =>
-    console.warn('SW registration failed:', e)
-  )
-}
-
-openDB().then(boot).catch(err => {
-  document.getElementById('app').innerHTML = `
-    <div class="error-screen">
-      <h2>Startup Error</h2>
-      <p>TechTool could not initialize.</p>
-      <pre>${err.message}</pre>
-    </div>
-  `
-})
+openDB().then(boot);
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
