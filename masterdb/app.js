@@ -1,5 +1,6 @@
 import { renderDataTools } from './screens/data-tools.js'
-import { renderUsers }     from './screens/users.js' // NEW: User Management
+import { renderUsers }     from './screens/users.js'
+import { renderLogin }     from './screens/login.js' // NEW
 import { initDB, query, queryOne, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { querySyncFolder }    from '@shared/fs/sync-folder.js'
@@ -27,7 +28,7 @@ import { renderLocationDetail } from './screens/location-detail.js'
 // ---------------------------------------------------------------------------
 
 export const state = {
-  screen:          'dashboard',
+  screen:          'login',
   user:            null,
   syncFolder:      null,
   logoUrl:         null,
@@ -38,14 +39,26 @@ export const state = {
   params:          {}
 }
 
-// Expose state to window for console access
 window.state = state;
+
+// ---------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------
+
+export function logout() {
+  if (confirm("Logout of MasterDB?")) {
+    localStorage.removeItem('masterdb_user_id');
+    state.user = null;
+    navigate('login');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Screens
 // ---------------------------------------------------------------------------
 
 const SCREENS = {
+  login:             renderLogin,
   dashboard:         renderDashboard,
   companies:         renderCompanies,
   'company-detail':  renderCompanyDetail,
@@ -63,7 +76,7 @@ const SCREENS = {
   help:              renderHelp,
   'location-detail': renderLocationDetail,
   'data-tools':      renderDataTools,
-  'users':           renderUsers, // NEW
+  'users':           renderUsers,
 }
 
 const NAV_ITEMS = [
@@ -71,7 +84,7 @@ const NAV_ITEMS = [
   { screen: 'companies',    label: 'Companies',     icon: '🏭' },
   { screen: 'employees',    label: 'Employees',     icon: '👷' },
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
-  { screen: 'users',        label: 'Team',          icon: '👥' }, // NEW
+  { screen: 'users',        label: 'Team',          icon: '👥' },
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
   { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
@@ -108,10 +121,17 @@ export function navigate(screen, params = {}) {
 
 function paint() {
   const app = document.getElementById('app')
-
   const renderFn = SCREENS[state.screen]
+  
   if (!renderFn) {
     app.innerHTML = `<div class="error-screen"><h2>Unknown screen: ${state.screen}</h2></div>`
+    return
+  }
+
+  // Login renders full-screen
+  if (state.screen === 'login') {
+    app.innerHTML = ''
+    renderFn(app, state, navigate)
     return
   }
 
@@ -120,7 +140,7 @@ function paint() {
       <nav class="sidebar" id="sidebar">
         <div class="sidebar-brand">
           ${state.logoUrl
-            ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Company logo" />`
+            ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Logo" />`
             : `<div class="sidebar-logo-img">${BrandLogo}</div>`
           }
         </div>
@@ -136,7 +156,10 @@ function paint() {
           `).join('')}
         </ul>
         <div class="sidebar-footer">
-          <span class="user-name">Admin</span>
+          <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:8px;">
+            <span class="user-name">${state.user?.name || 'Admin'}</span>
+            <button id="btn-logout" style="background:none; border:none; color:rgba(255,255,255,0.5); font-size:10px; text-align:left; cursor:pointer; padding:0; text-decoration:underline;">Logout</button>
+          </div>
           <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}"
             title="${state.syncFolder ? 'Sync folder connected' : 'No sync folder — go to Settings'}">
             ${state.syncFolder ? '●' : '○'} Sync
@@ -153,6 +176,8 @@ function paint() {
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
+
+  app.querySelector('#btn-logout').onclick = logout;
 
   app.querySelector('#btn-help')?.addEventListener('click', () => {
     state.helpReturnScreen = state.screen
@@ -174,7 +199,14 @@ async function boot() {
   state.syncFolder = await querySyncFolder()
   state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null
 
-  // Load org profile into state
+  // Restore user session if it exists
+  const savedUserId = localStorage.getItem('masterdb_user_id');
+  if (savedUserId) {
+      const user = queryOne("SELECT * FROM users WHERE user_id = ?", [savedUserId]);
+      if (user && user.active !== 0) state.user = user;
+  }
+
+  // Load org profile
   const orgKeys = ['org_name','org_address','org_city','org_province','org_postal','org_phone','org_email','org_website']
   state.orgProfile = Object.fromEntries(
     orgKeys.map(k => [k, queryOne('SELECT value FROM settings WHERE key = ?', [k])?.value ?? ''])
@@ -182,19 +214,23 @@ async function boot() {
 
   applyTheme(loadThemeColor())
   
-  // Start auto-backup interval (every 5 minutes)
   if (state.syncFolder) {
     setInterval(() => {
       backupToSyncFolder(state.syncFolder)
       exportExcelToSyncFolder(state.syncFolder)
     }, 5 * 60 * 1000)
-    // Run once immediately on boot
     backupToSyncFolder(state.syncFolder)
     exportExcelToSyncFolder(state.syncFolder)
   }
 
   setBootMsg('Ready.')
-  navigate('dashboard')
+  
+  // If no user, force login
+  if (!state.user) {
+      navigate('login');
+  } else {
+      navigate('dashboard');
+  }
 }
 
 function setBootMsg(msg) {
@@ -202,17 +238,10 @@ function setBootMsg(msg) {
   if (el) el.textContent = msg
 }
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(e =>
-    console.warn('SW registration failed:', e)
-  )
-}
-
 boot().catch(err => {
   document.getElementById('app').innerHTML = `
     <div class="error-screen">
       <h2>Startup Error</h2>
-      <p>MasterDB could not initialize.</p>
       <pre>${err.message}</pre>
     </div>
   `
