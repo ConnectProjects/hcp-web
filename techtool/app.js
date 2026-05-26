@@ -1,4 +1,4 @@
-import { openDB, getSetting, getAllPackets } from './db/idb.js'
+import { openDB, getSetting, setSetting, removeSetting, getAllPackets } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
 import { loadAndApplyTheme }                 from './theme.js'
@@ -26,25 +26,11 @@ export const state = {
   logoUrl:            null,       
   packets:            [],         
   currentPacket:      null,       
-  
-  activeSlot:         0, // 0 = Booth 1, 1 = Booth 2
+  activeSlot:         0, 
   slots: [
-    {
-      screen:             'dashboard',
-      currentPacket:      null,
-      currentEmployee:    null,
-      testData:           {},
-      techNotes:          ''
-    },
-    {
-      screen:             'dashboard',
-      currentPacket:      null,
-      currentEmployee:    null,
-      testData:           {},
-      techNotes:          ''
-    }
+    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '' },
+    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '' }
   ],
-
   currentEmployee:    null,
   testData:           {},
   techNotes:          '',
@@ -54,7 +40,31 @@ export const state = {
 }
 
 // ---------------------------------------------------------------------------
-// Screens
+// Actions
+// ---------------------------------------------------------------------------
+
+export async function logout() {
+  if (!confirm("Are you sure you want to logout?")) return;
+
+  // 1. Clear local persistent settings
+  await removeSetting('tech_name');
+  await removeSetting('tech_initials');
+  await removeSetting('tech_folder_name');
+
+  // 2. Clear app state
+  state.user = null;
+  state.packets = [];
+  state.slots.forEach(s => {
+    s.currentEmployee = null;
+    s.testData = {};
+  });
+
+  // 3. Go to login
+  navigate('login');
+}
+
+// ---------------------------------------------------------------------------
+// Screens & Navigation
 // ---------------------------------------------------------------------------
 
 const SCREENS = {
@@ -93,10 +103,6 @@ function isNavActive(current, navScreen) {
   return current === navScreen || NAV_PARENT[current] === navScreen
 }
 
-// ---------------------------------------------------------------------------
-// Slot Management
-// ---------------------------------------------------------------------------
-
 function saveStateToSlot() {
   const s = state.slots[state.activeSlot]
   s.screen            = state.screen
@@ -118,30 +124,20 @@ function loadStateFromSlot() {
 export function switchSlot(slotIndex) {
   if (slotIndex < 0 || slotIndex > 1) return
   if (state.activeSlot === slotIndex) return
-
   saveStateToSlot()
   state.activeSlot = slotIndex
   loadStateFromSlot()
   paint()
 }
 
-// ---------------------------------------------------------------------------
-// Navigation
-// ---------------------------------------------------------------------------
-
 export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
-  
   saveStateToSlot()
-
   if (screen === 'test-entry' && !params.keepData) {
-    state.testData = {}
-    state.techNotes = ''
+    state.testData = {}; state.techNotes = '';
   }
-
   state.screen = screen
   Object.assign(state, params)
-
   saveStateToSlot()
   paint()
 }
@@ -181,7 +177,10 @@ function paint() {
           `).join('')}
         </ul>
         <div class="sidebar-footer">
-          <span class="user-name">${techName}</span>
+          <div style="display:flex; flex-direction:column; gap:4px">
+            <span class="user-name">${techName}</span>
+            <button id="btn-logout" style="background:none; border:none; color:rgba(255,255,255,0.6); font-size:11px; text-align:left; cursor:pointer; padding:0; text-decoration:underline;">Logout</button>
+          </div>
           <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
             ${state.syncFolder ? '●' : '○'} Sync
           </span>
@@ -189,7 +188,6 @@ function paint() {
       </nav>
 
       <div class="main-area">
-        <!-- HORIZONTAL STICKY BOOTH SWITCHER -->
         ${showSwitcher ? `
           <div class="booth-switcher-bar">
             <button class="booth-tab ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
@@ -202,7 +200,6 @@ function paint() {
             </button>
           </div>
         ` : ''}
-
         <div id="main-content" class="main-content"></div>
       </div>
     </div>
@@ -215,6 +212,9 @@ function paint() {
   app.querySelectorAll('.booth-tab').forEach(btn => {
     btn.addEventListener('click', () => switchSlot(Number(btn.dataset.slot)))
   })
+
+  // NEW: Logout listener
+  app.querySelector('#btn-logout').addEventListener('click', logout);
 
   renderFn(document.getElementById('main-content'), state, navigate)
 }
@@ -230,7 +230,12 @@ async function boot() {
   await loadAndApplyTheme()
 
   if (techName && techInitials) {
-    state.user = { name: techName, initials: techInitials, tech_id: techInitials, folder_name: await getSetting('tech_folder_name') }
+    state.user = { 
+      name: techName, 
+      initials: techInitials, 
+      tech_id: techInitials, 
+      folder_name: await getSetting('tech_folder_name') 
+    }
     state.packets = await getAllPackets()
     state.syncFolder = await querySyncFolder()
     navigate('dashboard')
