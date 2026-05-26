@@ -1,34 +1,43 @@
-import { openDB, getSetting, getAllPackets } from './db/idb.js'
-import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
-import { BrandLogo }                         from '@shared/components/brand-logo.js'
-import { loadAndApplyTheme }                 from './theme.js'
-import { renderLogin }          from './screens/login.js'
-import { renderDashboard }      from './screens/dashboard.js'
-import { renderSchedule }       from './screens/schedule.js'
-import { renderCalendar }       from './screens/calendar.js'
-import { renderCompany }        from './screens/company.js'
-import { renderEmployeeList }   from './screens/employee-list.js'
-import { renderTestEntry }      from './screens/test-entry.js'
-import { renderSync }           from './screens/sync.js'
-import { renderSettings }       from './screens/settings.js'
-import { renderHelp }           from './screens/help.js'
-import { renderTraining }       from './screens/training.js'
-import { renderNewVisit }       from './screens/new-visit.js'
+import { renderDataTools } from './screens/data-tools.js'
+import { initDB, query, queryOne, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
+import { initSchema }         from './db/schema.js'
+import { querySyncFolder }    from '@shared/fs/sync-folder.js'
+import { BrandLogo }          from '@shared/components/brand-logo.js'
+import { applyTheme, loadThemeColor } from './theme.js'
+import { renderLegacyImport } from './screens/legacy-import.js'
+import { renderDashboard }    from './screens/dashboard.js'
+import { renderCompanies }    from './screens/companies.js'
+import { renderCompanyDetail }from './screens/company-detail.js'
+import { renderEmployeeDetail}from './screens/employee-detail.js'
+import { renderEmployees }    from './screens/employees.js'
+import { renderGeneratePacket}from './screens/generate-packet.js'
+import { renderPackets }      from './screens/packets.js'
+import { renderIncoming }     from './screens/incoming.js'
+import { renderRejectedPackets } from './screens/rejected-packets.js'
+import { renderImportConfirm }from './screens/import-confirm.js'
+import { renderSettings }     from './screens/settings.js'
+import { renderProvinceRules }from './screens/province-rules.js'
+import { renderReports }      from './screens/reports.js'
+import { renderHelp }         from './screens/help.js'
+import { renderLocationDetail } from './screens/location-detail.js'
 
 // ---------------------------------------------------------------------------
-// App state — single mutable object passed to all screens
+// App state
 // ---------------------------------------------------------------------------
 
 export const state = {
-  screen:             'login',
-  user:               null,       
-  syncFolder:         null,       
-  logoUrl:            null,       
-  packets:            [],         
-  currentPacket:      null,       
+  screen:          'dashboard',
+  user:            null,
+  syncFolder:      null,
+  logoUrl:         null,
+  orgProfile:      null,
+  currentCompany:  null,
+  currentEmployee: null,
+  pendingPacket:   null,
+  params:          {},
   
   // Dual booth support
-  activeSlot:         0,          // 0 = Slot A, 1 = Slot B
+  activeSlot:         0, // 0 = Slot A, 1 = Slot B
   slots: [
     {
       screen:             'dashboard',
@@ -44,58 +53,54 @@ export const state = {
       testData:           {},
       techNotes:          ''
     }
-  ],
-
-  // Convenience pointers for active slot
-  currentEmployee:    null,
-  testData:           {},
-  techNotes:          '',
-
-  lastSync:           null,       
-  helpReturnScreen:   null,       
-
-  // Practice mode
-  _inPracticeMode:    false,
-  _realPackets:       null,
-  _realUser:          null,
-  practiceHintsSeen:  {},
-  practiceCompleted:  false
+  ]
 }
 
 // ---------------------------------------------------------------------------
-// Screen registry (Consolidated to one 'test-entry' screen)
+// Screens
 // ---------------------------------------------------------------------------
 
 const SCREENS = {
-  'login':          renderLogin,
-  'dashboard':      renderDashboard,
-  'schedule':       renderSchedule,
-  'calendar':       renderCalendar,
-  'company':        renderCompany,
-  'employee-list':  renderEmployeeList,
-  'test-entry':     renderTestEntry, // Consolidated Screen
-  'sync':           renderSync,
-  'settings':       renderSettings,
-  'help':           renderHelp,
-  'training':       renderTraining,
-  'new-visit':      renderNewVisit
+  dashboard:         renderDashboard,
+  companies:         renderCompanies,
+  'company-detail':  renderCompanyDetail,
+  'employee-detail': renderEmployeeDetail,
+  employees:         renderEmployees,
+  'generate-packet': renderGeneratePacket,
+  packets:           renderPackets,
+  incoming:          renderIncoming,
+  'rejected-packets': renderRejectedPackets,
+  'import-confirm':  renderImportConfirm,
+  settings:          renderSettings,
+  'province-rules':  renderProvinceRules,
+  reports:           renderReports,
+  'legacy-import':   renderLegacyImport,
+  help:              renderHelp,
+  'location-detail': renderLocationDetail,
+  'data-tools':      renderDataTools,
 }
 
 const NAV_ITEMS = [
-  { screen: 'dashboard', label: 'Dashboard', icon: '⊞' },
-  { screen: 'schedule',  label: 'Packets',   icon: '📅' },
-  { screen: 'calendar',  label: 'Calendar',  icon: '🗓' },
-  { screen: 'settings',  label: 'Settings',  icon: '⚙'  },
-  { screen: 'help',      label: 'Help',      icon: '?'  }
+  { screen: 'dashboard',    label: 'Dashboard',     icon: '⊞' },
+  { screen: 'companies',    label: 'Companies',     icon: '🏭' },
+  { screen: 'employees',    label: 'Employees',     icon: '👷' },
+  { screen: 'packets',      label: 'Packets',       icon: '📦' },
+  { screen: 'reports',      label: 'Reports',       icon: '📊' },
+  { screen: 'settings',     label: 'Settings',      icon: '⚙' },
+  { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
+  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
 ]
 
 const NAV_PARENT = {
-  'company':        'schedule',
-  'employee-list':  'schedule',
-  'test-entry':     'schedule',
-  'sync':           'schedule',
-  'training':       'settings',
-  'new-visit':      'new-visit'
+  'company-detail':  'companies',
+  'employee-detail': 'companies',
+  'generate-packet': 'companies',
+  'incoming':        'packets',
+  'rejected-packets': 'packets',
+  'import-confirm':  'packets',
+  'province-rules':  'settings',
+  'location-detail': 'companies',
+  'data-tools':      'data-tools'
 }
 
 function isNavActive(current, navScreen) {
@@ -139,32 +144,9 @@ export function switchSlot(slotIndex) {
 // ---------------------------------------------------------------------------
 
 export function navigate(screen, params = {}) {
-  console.log(`Navigating to: ${screen}`, params);
-  
-  if (!SCREENS[screen]) {
-    console.error('Unknown screen:', screen)
-    return
-  }
-  
-  if (screen === 'help') {
-    state.helpReturnScreen = state.screen
-  }
-  
-  saveStateToSlot()
-
-  // Reset per-employee state when moving to a new test entry
-  if (screen === 'test-entry') {
-    state.testData               = {}
-    state.techNotes              = ''
-    const s = state.slots[state.activeSlot]
-    s.testData = {}
-    s.techNotes = ''
-  }
-
   state.screen = screen
+  state.params = params
   Object.assign(state, params)
-
-  saveStateToSlot()
   paint()
 }
 
@@ -177,13 +159,7 @@ function paint() {
     return
   }
 
-  if (state.screen === 'login') {
-    app.innerHTML = ''
-    renderFn(app, state, navigate)
-    return
-  }
-
-  const techName = state.user?.name ?? 'Tech'
+  // Only show the horizontal switcher on clinical screens
   const contextScreens = ['company', 'employee-list', 'test-entry']
   const showSwitcher = contextScreens.includes(state.screen)
 
@@ -196,26 +172,6 @@ function paint() {
             : `<div class="sidebar-logo-img">${BrandLogo}</div>`
           }
         </div>
-        
-        ${showSwitcher ? `
-          <div class="booth-switcher">
-            <button class="booth-btn ${state.activeSlot === 0 ? 'booth-btn--active' : ''}" data-slot="0">
-              <span class="booth-num">1</span>
-              <div class="booth-info">
-                <span class="booth-label">Booth 1</span>
-                <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
-            </button>
-            <button class="booth-btn ${state.activeSlot === 1 ? 'booth-btn--active' : ''}" data-slot="1">
-              <span class="booth-num">2</span>
-              <div class="booth-info">
-                <span class="booth-label">Booth 2</span>
-                <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
-            </button>
-          </div>
-        ` : ''}
-
         <ul class="sidebar-nav">
           ${NAV_ITEMS.map(item => `
             <li>
@@ -226,49 +182,52 @@ function paint() {
               </button>
             </li>
           `).join('')}
-          <li style="padding:8px 8px 2px">
-            <button class="nav-item nav-item--offline ${state.screen === 'new-visit' ? 'nav-item--active' : ''}"
-              id="btn-new-visit">
-              <span class="nav-icon">📋</span>
-              <span class="nav-label">New Offline Visit</span>
-            </button>
-          </li>
         </ul>
         <div class="sidebar-footer">
-          <span class="user-name">${techName}</span>
-          ${state._inPracticeMode
-            ? `<span class="folder-indicator" style="color:#7dd3fc">🎓 Practice</span>`
-            : `<span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}"
-                title="${state.syncFolder ? 'Sync folder connected' : 'No sync folder — go to Settings'}">
-                ${state.syncFolder ? '●' : '○'} Sync
-              </span>`
-          }
+          <span class="user-name">Admin</span>
+          <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}"
+            title="${state.syncFolder ? 'Sync folder connected' : 'No sync folder — go to Settings'}">
+            ${state.syncFolder ? '●' : '○'} Sync
+          </span>
         </div>
       </nav>
+
       <div class="main-area">
+        <!-- Horizontal Sticky Booth Switcher -->
+        ${showSwitcher ? `
+          <div class="booth-switcher-bar">
+            <button class="booth-tab ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
+              <span class="booth-indicator">1</span>
+              <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty Booth'}</span>
+            </button>
+            <button class="booth-tab ${state.activeSlot === 1 ? 'active' : ''}" data-slot="1">
+              <span class="booth-indicator">2</span>
+              <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty Booth'}</span>
+            </button>
+          </div>
+        ` : ''}
+
+        <button class="help-btn" id="btn-help" title="Help">?</button>
         <div id="main-content" class="main-content"></div>
       </div>
     </div>
   `
 
+  // Sidebar navigation handlers
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (state._inPracticeMode && !['settings','help'].includes(btn.dataset.screen)) {
-        if (!confirm('Exit practice mode? Your progress will be lost.')) return
-        const { exitPracticeMode } = await import('./screens/practice-overlay.js')
-        exitPracticeMode(state, navigate)
-        return
-      }
-      navigate(btn.dataset.screen)
-    })
+    btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
 
-  app.querySelector('#btn-new-visit')?.addEventListener('click', () => navigate('new-visit'))
-
-  app.querySelectorAll('.booth-btn').forEach(btn => {
+  // Horizontal Booth Switcher handlers
+  app.querySelectorAll('.booth-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       switchSlot(Number(btn.dataset.slot))
     })
+  })
+
+  app.querySelector('#btn-help')?.addEventListener('click', () => {
+    state.helpReturnScreen = state.screen
+    navigate('help')
   })
 
   renderFn(document.getElementById('main-content'), state, navigate)
@@ -279,28 +238,34 @@ function paint() {
 // ---------------------------------------------------------------------------
 
 async function boot() {
-  const techName       = await getSetting('tech_name')
-  const techInitials   = await getSetting('tech_initials')
-  const techFolderName = await getSetting('tech_folder_name')
-  const techIatNumber  = await getSetting('tech_iat_number')
+  setBootMsg('Loading database…')
+  await initDB()
+  await initSchema()
 
-  state.logoUrl = (await getSetting('logo_url')) ?? null
-  await loadAndApplyTheme()
+  state.syncFolder = await querySyncFolder()
+  state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null
 
-  if (techName && techInitials) {
-    state.user = {
-      name:        techName,
-      initials:    techInitials,
-      tech_id:     techInitials,
-      folder_name: techFolderName ?? null,
-      iat_number:  techIatNumber  ?? null
-    }
-    state.packets    = await getAllPackets()
-    state.syncFolder = await querySyncFolder()
-    navigate('dashboard')
-  } else {
-    navigate('login')
+  // Load org profile into state
+  const orgKeys = ['org_name','org_address','org_city','org_province','org_postal','org_phone','org_email','org_website']
+  state.orgProfile = Object.fromEntries(
+    orgKeys.map(k => [k, queryOne('SELECT value FROM settings WHERE key = ?', [k])?.value ?? ''])
+  )
+
+  applyTheme(loadThemeColor())
+  
+  // Start auto-backup interval (every 5 minutes)
+  if (state.syncFolder) {
+    setInterval(() => {
+      backupToSyncFolder(state.syncFolder)
+      exportExcelToSyncFolder(state.syncFolder)
+    }, 5 * 60 * 1000)
+    // Run once immediately on boot
+    backupToSyncFolder(state.syncFolder)
+    exportExcelToSyncFolder(state.syncFolder)
   }
+
+  setBootMsg('Ready.')
+  navigate('dashboard')
 }
 
 function setBootMsg(msg) {
@@ -314,16 +279,12 @@ if ('serviceWorker' in navigator) {
   )
 }
 
-openDB().then(boot).catch(err => {
+boot().catch(err => {
   document.getElementById('app').innerHTML = `
     <div class="error-screen">
       <h2>Startup Error</h2>
-      <p>TechTool could not initialize.</p>
+      <p>MasterDB could not initialize. This may happen if your browser does not support OPFS or WebAssembly.</p>
       <pre>${err.message}</pre>
     </div>
   `
 })
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}

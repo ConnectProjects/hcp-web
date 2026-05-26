@@ -2194,3 +2194,74 @@ select.thresh-cell {
     border: 2px dashed #eee;
     border-radius: 12px;
 }
+
+/* --- NEW: STICKY HORIZONTAL BOOTH SWITCHER --- */
+
+/* The bar that holds the buttons */
+.booth-switcher-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 10px 20px;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Individual Booth Tabs */
+.booth-tab {
+    flex: 1;
+    max-width: 300px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+}
+
+/* Style for the Active Booth */
+.booth-tab.active {
+    border-color: #76B214; /* Connect Hearing Green */
+    background: #f0f7e6;
+    box-shadow: inset 0 0 0 1px #76B214;
+}
+
+/* The circle number (1 or 2) */
+.booth-indicator {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #eee;
+    color: #666;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.booth-tab.active .booth-indicator {
+    background: #76B214;
+    color: white;
+}
+
+/* The name of the employee in the booth */
+.booth-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #444;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.booth-tab.active .booth-name {
+    color: #2c4d08;
+}
