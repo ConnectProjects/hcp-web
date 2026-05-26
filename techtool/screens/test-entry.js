@@ -284,7 +284,6 @@ function renderAudiogramSVG(ear) {
         
         <!-- STEP 3: THRESHOLD LINE & LABEL -->
         <line x1="40" y1="110" x2="280" y2="110" class="threshold-line" />
-        <text x="45" y="105" class="range-label">Normal Range</text>
 
         <!-- STEP 4: DATA PATHS -->
         <polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" />
