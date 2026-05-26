@@ -150,3 +150,16 @@ export async function archivePacket(packetId) {
     getReq.onerror = () => reject(getReq.error);
   });
 }
+
+/**
+ * Removes a specific setting from the local database.
+ */
+export async function removeSetting(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('settings', 'readwrite');
+    const req = tx.objectStore('settings').delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
