@@ -1,3 +1,4 @@
+import { renderUsers } from './screens/users.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { initDB, query, queryOne, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
@@ -59,6 +60,7 @@ const SCREENS = {
   help:              renderHelp,
   'location-detail': renderLocationDetail,
   'data-tools':      renderDataTools,
+  'users': renderUsers
 }
 
 const NAV_ITEMS = [
@@ -69,7 +71,8 @@ const NAV_ITEMS = [
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
   { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
-  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
+  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' },
+  { screen: 'users', label: 'Team', icon: '👥' }
 ]
 
 const NAV_PARENT = {
