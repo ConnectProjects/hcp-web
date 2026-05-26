@@ -24,10 +24,10 @@ export function renderTestEntry(container, state, navigate) {
         .section-title { color: #76B214; font-size: 1.5rem; border-bottom: 2px solid #eee; padding-bottom: 8px; margin: 45px 0 20px 0; font-weight: 700; }
         
         .audiogram-wrapper { background: white; border: 1px solid #ddd; border-radius: 8px; margin-top: 15px; position: relative; width: 100%; height: 260px; }
-        .chart-grid line { stroke: #eef0f2; stroke-width: 1; }
-        .chart-grid line.major { stroke: #d1d5db; }
+        .chart-grid line { stroke: #d1d5db; stroke-width: 1; } /* Darkened from #eef0f2 to be visible over green */
+        .chart-grid line.major { stroke: #9ca3af; stroke-width: 1.2; }
         .chart-axis-text { font-size: 10px; fill: #9ca3af; font-weight: 500; }
-        .normal-range { fill: #76B214; opacity: 0.12; }
+        .normal-range { fill: #76B214; opacity: 0.1; } /* Slightly lowered opacity for better grid contrast */
         .threshold-line { stroke: #76B214; stroke-width: 2; stroke-dasharray: 5,3; }
         .range-label { font-size: 9px; fill: #4d8a0b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
         
@@ -262,16 +262,34 @@ export function renderTestEntry(container, state, navigate) {
 function renderAudiogramSVG(ear) {
     return `
     <svg viewBox="0 0 300 240" style="width:100%; height:100%;">
+        <!-- STEP 1: BACKGROUND TINT (Drawn first) -->
         <rect x="40" y="40" width="240" height="70" class="normal-range" />
+        
+        <!-- STEP 2: THE GRID (Drawn second, so it sits ON TOP of the green) -->
+        <g class="chart-grid">
+            <!-- Frequencies (Vertical Lines) -->
+            ${[500, 1000, 2000, 3000, 4000, 6000, 8000].map((f, i) => {
+                const x = 40 + (i * 40);
+                return `<line x1="${x}" y1="20" x2="${x}" y2="220" />
+                        <text x="${x}" y="235" text-anchor="middle" class="chart-axis-text">${f >= 1000 ? (f/1000)+'k' : '.5k'}</text>`;
+            }).join('')}
+            
+            <!-- Decibels (Horizontal Lines) -->
+            ${[-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map((db) => {
+                const y = 40 + ((db + 10) * 2);
+                return `<line x1="40" y1="${y}" x2="280" y2="${y}" class="${db % 20 === 0 ? 'major' : ''}" />
+                        <text x="35" y="${y + 4}" text-anchor="end" class="chart-axis-text">${db}</text>`;
+            }).join('')}
+        </g>
+        
+        <!-- STEP 3: THRESHOLD LINE & LABEL -->
         <line x1="40" y1="110" x2="280" y2="110" class="threshold-line" />
         <text x="45" y="105" class="range-label">Normal Range</text>
-        <g class="chart-grid">
-            ${[500, 1000, 2000, 3000, 4000, 6000, 8000].map((f, i) => `<line x1="${40+(i*40)}" y1="20" x2="${40+(i*40)}" y2="220" />`).join('')}
-            ${[-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90].map((db) => `<line x1="40" y1="${40+((db+10)*2)}" x2="280" y2="${40+((db+10)*2)}" />`).join('')}
-        </g>
+
+        <!-- STEP 4: DATA PATHS -->
         <polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" />
         <g id="base-markers-${ear}" opacity="0.5"></g>
-        <polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" />
+        <polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" stroke-linejoin="round" />
         <g id="markers-${ear}"></g>
     </svg>`;
 }
