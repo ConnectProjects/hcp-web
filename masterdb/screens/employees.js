@@ -1,8 +1,11 @@
 import { getFilteredEmployees } from '../db/employees.js'
 import { query } from '../db/sqlite.js'
 
+import { getFilteredEmployees } from '../db/employees.js'
+import { query } from '../db/sqlite.js'
+
 export function renderEmployees(container, state, navigate) {
-  // 1. Initialize filters if they don't exist
+  // 1. Initialize filters
   state.empFilters = state.empFilters || {
     search: '',
     province: '',
@@ -13,13 +16,23 @@ export function renderEmployees(container, state, navigate) {
   };
 
   const render = () => {
-    // 2. Fetch Data for Dropdowns dynamically based on current filters
-    const companies = query("SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name ASC");
+    // --- STEP 2: DYNAMIC DATA FETCHING FOR DROPDOWNS ---
     
-    // BUILD DYNAMIC LOCATION QUERY
+    // A. Companies list: If province is selected, only show companies with locations in that province
+    let coSql = `SELECT DISTINCT c.company_id, c.name FROM companies c 
+                 JOIN locations l ON c.company_id = l.company_id 
+                 WHERE c.active = 1`;
+    let coParams = [];
+    if (state.empFilters.province) {
+        coSql += " AND l.province = ?";
+        coParams.push(state.empFilters.province);
+    }
+    coSql += " ORDER BY c.name ASC";
+    const companies = query(coSql, coParams);
+
+    // B. Locations list: Respect both Province and Company filters
     let locSql = "SELECT location_id, name FROM locations WHERE active = 1";
     let locParams = [];
-    
     if (state.empFilters.province) {
         locSql += " AND province = ?";
         locParams.push(state.empFilters.province);
@@ -30,11 +43,12 @@ export function renderEmployees(container, state, navigate) {
     }
     locSql += " ORDER BY name ASC";
     
+    // Only fetch locations if at least a Province or Company is selected
     const locations = (state.empFilters.province || state.empFilters.company_id) 
         ? query(locSql, locParams) 
         : [];
 
-    // 3. Fetch filtered employee results
+    // --- STEP 3: FETCH PAGINATED RESULTS ---
     const offset = state.empFilters.page * state.empFilters.limit;
     const { results, totalCount } = getFilteredEmployees({ ...state.empFilters, offset });
 
@@ -45,19 +59,20 @@ export function renderEmployees(container, state, navigate) {
           <span class="count-chip">${totalCount} total</span>
         </div>
 
-        <!-- FILTER BAR -->
+        <!-- CASCADING FILTER BAR -->
         <div class="toolbar" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: var(--shadow-sm);">
+          
           <input id="f-search" type="search" class="search-input" placeholder="Search by name..." value="${esc(state.empFilters.search)}">
           
           <select id="f-province" class="search-input">
             <option value="">All Provinces</option>
             <option value="AB" ${state.empFilters.province === 'AB' ? 'selected' : ''}>Alberta</option>
-            <option value="BC" ${state.empFilters.province === 'BC' ? 'selected' : ''}>BC</option>
+            <option value="BC" ${state.empFilters.province === 'BC' ? 'selected' : ''}>British Columbia</option>
             <option value="SK" ${state.empFilters.province === 'SK' ? 'selected' : ''}>Saskatchewan</option>
           </select>
 
           <select id="f-company" class="search-input">
-            <option value="">All Companies</option>
+            <option value="">All Companies ${state.empFilters.province ? 'in ' + state.empFilters.province : ''}</option>
             ${companies.map(c => `<option value="${c.company_id}" ${state.empFilters.company_id == c.company_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
 
@@ -94,7 +109,6 @@ export function renderEmployees(container, state, navigate) {
           </table>
         </div>
 
-        <!-- PAGINATION -->
         <div style="display:flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 10px;">
           <div style="font-size: 13px; color: #666;">
             Showing ${offset + 1} - ${Math.min(offset + state.empFilters.limit, totalCount)} of ${totalCount}
@@ -122,13 +136,16 @@ export function renderEmployees(container, state, navigate) {
         window.searchTimer = setTimeout(() => update('search', e.target.value.trim()), 300);
     };
 
+    // When Province changes, we must reset Company and Location if they are no longer valid
     container.querySelector('#f-province').onchange = (e) => {
-        state.empFilters.location_id = ''; // Reset location if province changes
+        state.empFilters.company_id = ''; 
+        state.empFilters.location_id = '';
         update('province', e.target.value);
     };
     
+    // When Company changes, we must reset Location
     container.querySelector('#f-company').onchange = (e) => {
-        state.empFilters.location_id = ''; // Reset location if company changes
+        state.empFilters.location_id = '';
         update('company_id', e.target.value);
     };
 
@@ -144,6 +161,8 @@ export function renderEmployees(container, state, navigate) {
 
   render();
 }
+
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
 function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
