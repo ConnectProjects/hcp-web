@@ -147,4 +147,3 @@ export function renderEmployees(container, state, navigate) {
 
 function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
-function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
