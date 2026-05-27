@@ -1,8 +1,11 @@
 import { getFilteredEmployees } from '../db/employees.js'
 import { query } from '../db/sqlite.js'
 
+import { getFilteredEmployees } from '../db/employees.js'
+import { query } from '../db/sqlite.js'
+
 export function renderEmployees(container, state, navigate) {
-  // 1. Initial State for filtering
+  // 1. Initialize filters if they don't exist
   state.empFilters = state.empFilters || {
     search: '',
     province: '',
@@ -12,14 +15,29 @@ export function renderEmployees(container, state, navigate) {
     limit: 100
   };
 
-  // 2. Fetch data for dropdowns
-  const companies = query("SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name ASC");
-  let locations = [];
-  if (state.empFilters.company_id) {
-    locations = query("SELECT location_id, name FROM locations WHERE company_id = ? ORDER BY name ASC", [state.empFilters.company_id]);
-  }
-
   const render = () => {
+    // 2. Fetch Data for Dropdowns dynamically based on current filters
+    const companies = query("SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name ASC");
+    
+    // BUILD DYNAMIC LOCATION QUERY
+    let locSql = "SELECT location_id, name FROM locations WHERE active = 1";
+    let locParams = [];
+    
+    if (state.empFilters.province) {
+        locSql += " AND province = ?";
+        locParams.push(state.empFilters.province);
+    }
+    if (state.empFilters.company_id) {
+        locSql += " AND company_id = ?";
+        locParams.push(state.empFilters.company_id);
+    }
+    locSql += " ORDER BY name ASC";
+    
+    const locations = (state.empFilters.province || state.empFilters.company_id) 
+        ? query(locSql, locParams) 
+        : [];
+
+    // 3. Fetch filtered employee results
     const offset = state.empFilters.page * state.empFilters.limit;
     const { results, totalCount } = getFilteredEmployees({ ...state.empFilters, offset });
 
@@ -46,7 +64,7 @@ export function renderEmployees(container, state, navigate) {
             ${companies.map(c => `<option value="${c.company_id}" ${state.empFilters.company_id == c.company_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
 
-          <select id="f-location" class="search-input" ${!state.empFilters.company_id ? 'disabled' : ''}>
+          <select id="f-location" class="search-input" ${(!state.empFilters.company_id && !state.empFilters.province) ? 'disabled' : ''}>
             <option value="">All Locations</option>
             ${locations.map(l => `<option value="${l.location_id}" ${state.empFilters.location_id == l.location_id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
           </select>
@@ -98,20 +116,22 @@ export function renderEmployees(container, state, navigate) {
   const attachHandlers = () => {
     const update = (key, val) => {
         state.empFilters[key] = val;
-        state.empFilters.page = 0; // Reset to page 1 on filter change
+        state.empFilters.page = 0; 
         render();
     };
 
     container.querySelector('#f-search').oninput = (e) => {
-        // Debounce search to avoid lag
         clearTimeout(window.searchTimer);
         window.searchTimer = setTimeout(() => update('search', e.target.value.trim()), 300);
     };
 
-    container.querySelector('#f-province').onchange = (e) => update('province', e.target.value);
+    container.querySelector('#f-province').onchange = (e) => {
+        state.empFilters.location_id = ''; // Reset location if province changes
+        update('province', e.target.value);
+    };
     
     container.querySelector('#f-company').onchange = (e) => {
-        state.empFilters.location_id = ''; // Clear location if company changes
+        state.empFilters.location_id = ''; // Reset location if company changes
         update('company_id', e.target.value);
     };
 
@@ -127,5 +147,7 @@ export function renderEmployees(container, state, navigate) {
 
   render();
 }
+
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
 function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
