@@ -1,6 +1,6 @@
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
-import { renderLogin }     from './screens/login.js' // NEW
+import { renderLogin }     from './screens/login.js'
 import { initDB, query, queryOne, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { querySyncFolder }    from '@shared/fs/sync-folder.js'
@@ -22,6 +22,7 @@ import { renderProvinceRules }from './screens/province-rules.js'
 import { renderReports }      from './screens/reports.js'
 import { renderHelp }         from './screens/help.js'
 import { renderLocationDetail } from './screens/location-detail.js'
+import { ROLES, PERMISSIONS } from '../shared/auth-utils.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -29,7 +30,7 @@ import { renderLocationDetail } from './screens/location-detail.js'
 
 export const state = {
   screen:          'login',
-  user:            null,
+  user:            null, // { user_id, name, role, ... }
   syncFolder:      null,
   logoUrl:         null,
   orgProfile:      null,
@@ -39,6 +40,7 @@ export const state = {
   params:          {}
 }
 
+// Expose state for console debugging and initialization scripts
 window.state = state;
 
 // ---------------------------------------------------------------------------
@@ -54,7 +56,7 @@ export function logout() {
 }
 
 // ---------------------------------------------------------------------------
-// Screens
+// Screen Registry
 // ---------------------------------------------------------------------------
 
 const SCREENS = {
@@ -79,13 +81,17 @@ const SCREENS = {
   'users':           renderUsers,
 }
 
+// ---------------------------------------------------------------------------
+// Navigation Items (Sidebar)
+// ---------------------------------------------------------------------------
+
 const NAV_ITEMS = [
   { screen: 'dashboard',    label: 'Dashboard',     icon: '⊞' },
   { screen: 'companies',    label: 'Companies',     icon: '🏭' },
   { screen: 'employees',    label: 'Employees',     icon: '👷' },
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
-  { screen: 'users',        label: 'Team',          icon: '👥' },
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
+  { screen: 'users',        label: 'Team',          icon: '👥' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙' },
   { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
   { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
@@ -93,7 +99,7 @@ const NAV_ITEMS = [
 
 const NAV_PARENT = {
   'company-detail':  'companies',
-  'employee-detail': 'companies',
+  'employee-detail': 'employees',
   'generate-packet': 'companies',
   'incoming':        'packets',
   'rejected-packets': 'packets',
@@ -109,15 +115,48 @@ function isNavActive(current, navScreen) {
 }
 
 // ---------------------------------------------------------------------------
-// Navigation
+// Navigation & Permission Guard
 // ---------------------------------------------------------------------------
 
 export function navigate(screen, params = {}) {
-  state.screen = screen
-  state.params = params
-  Object.assign(state, params)
-  paint()
+  // 1. If trying to go anywhere but login without a user, force login
+  if (!state.user && screen !== 'login') {
+      state.screen = 'login';
+      paint();
+      return;
+  }
+
+  // 2. Role-Based Permission Check
+  if (state.user && screen !== 'login') {
+    const role = state.user.role;
+    
+    // Technicians (aud-tech) are blocked from ALL MasterDB screens
+    if (role === ROLES.TECH) {
+        alert("Access Denied: Technicians do not have access to the MasterDB platform.");
+        logout();
+        return;
+    }
+
+    // Logistical Coordinators (LC) have a restricted list
+    if (role === ROLES.LC) {
+        const allowed = PERMISSIONS[ROLES.LC];
+        if (!allowed.includes(screen)) {
+            alert("Access Denied: You do not have permission to access this administrative tool.");
+            return;
+        }
+    }
+    // Admins fall through and are allowed everywhere
+  }
+
+  state.screen = screen;
+  state.params = params;
+  Object.assign(state, params);
+  paint();
 }
+
+// ---------------------------------------------------------------------------
+// UI Rendering
+// ---------------------------------------------------------------------------
 
 function paint() {
   const app = document.getElementById('app')
@@ -135,6 +174,12 @@ function paint() {
     return
   }
 
+  // Filter Sidebar based on Permissions
+  const filteredNavItems = NAV_ITEMS.filter(item => {
+    if (state.user?.role === ROLES.ADMIN) return true;
+    return PERMISSIONS[state.user?.role]?.includes(item.screen);
+  });
+
   app.innerHTML = `
     <div class="app-shell">
       <nav class="sidebar" id="sidebar">
@@ -145,7 +190,7 @@ function paint() {
           }
         </div>
         <ul class="sidebar-nav">
-          ${NAV_ITEMS.map(item => `
+          ${filteredNavItems.map(item => `
             <li>
               <button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}"
                 data-screen="${item.screen}">
@@ -157,7 +202,8 @@ function paint() {
         </ul>
         <div class="sidebar-footer">
           <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:8px;">
-            <span class="user-name">${state.user?.name || 'Admin'}</span>
+            <span class="user-name">${esc(state.user?.name)}</span>
+            <span style="font-size:9px; color:rgba(255,255,255,0.5); text-transform:uppercase; letter-spacing:1px;">${state.user?.role}</span>
             <button id="btn-logout" style="background:none; border:none; color:rgba(255,255,255,0.5); font-size:10px; text-align:left; cursor:pointer; padding:0; text-decoration:underline;">Logout</button>
           </div>
           <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}"
@@ -188,25 +234,24 @@ function paint() {
 }
 
 // ---------------------------------------------------------------------------
-// Boot
+// Boot Sequence
 // ---------------------------------------------------------------------------
 
 async function boot() {
-  setBootMsg('Loading database…')
   await initDB()
   await initSchema()
 
   state.syncFolder = await querySyncFolder()
   state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null
 
-  // Restore user session if it exists
+  // 1. Session Restoration
   const savedUserId = localStorage.getItem('masterdb_user_id');
   if (savedUserId) {
       const user = queryOne("SELECT * FROM users WHERE user_id = ?", [savedUserId]);
       if (user && user.active !== 0) state.user = user;
   }
 
-  // Load org profile
+  // 2. Load Org Profile
   const orgKeys = ['org_name','org_address','org_city','org_province','org_postal','org_phone','org_email','org_website']
   state.orgProfile = Object.fromEntries(
     orgKeys.map(k => [k, queryOne('SELECT value FROM settings WHERE key = ?', [k])?.value ?? ''])
@@ -223,9 +268,7 @@ async function boot() {
     exportExcelToSyncFolder(state.syncFolder)
   }
 
-  setBootMsg('Ready.')
-  
-  // If no user, force login
+  // 3. Initial Navigation
   if (!state.user) {
       navigate('login');
   } else {
@@ -233,16 +276,12 @@ async function boot() {
   }
 }
 
-function setBootMsg(msg) {
-  const el = document.getElementById('boot-msg')
-  if (el) el.textContent = msg
-}
-
 boot().catch(err => {
   document.getElementById('app').innerHTML = `
-    <div class="error-screen">
-      <h2>Startup Error</h2>
-      <pre>${err.message}</pre>
-    </div>
+    <div class="error-screen"><h2>Startup Error</h2><pre>${err.message}</pre></div>
   `
 })
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}

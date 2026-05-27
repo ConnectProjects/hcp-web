@@ -16,3 +16,27 @@ export async function hashPin(pin, userId) {
     
     return hashHex;
 }
+
+// Add this to shared/auth-utils.js
+
+export const ROLES = {
+  ADMIN: 'admin',
+  LC: 'lc',
+  TECH: 'aud-tech'
+};
+
+export const PERMISSIONS = {
+  [ROLES.ADMIN]: ['*'], // Full Access
+  [ROLES.LC]: [
+    'dashboard', 
+    'companies', 
+    'company-detail', 
+    'location-detail', 
+    'employees', 
+    'employee-detail', 
+    'packets', 
+    'reports', 
+    'help'
+  ],
+  [ROLES.TECH]: [] // No access to MasterDB screens
+};
