@@ -4,7 +4,6 @@
  * Employment history is in the employment table (see locations.js).
  */
 
-import { query, queryOne, run, lastInsertId } from './sqlite.js'
 import { query, queryOne } from './sqlite.js'
 
 const THRESHOLD_COLS = [
