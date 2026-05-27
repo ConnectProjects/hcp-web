@@ -1,9 +1,6 @@
 import { getFilteredEmployees } from '../db/employees.js'
 import { query } from '../db/sqlite.js'
 
-import { getFilteredEmployees } from '../db/employees.js'
-import { query } from '../db/sqlite.js'
-
 export function renderEmployees(container, state, navigate) {
   // 1. Initialize filters if they don't exist
   state.empFilters = state.empFilters || {
