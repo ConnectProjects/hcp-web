@@ -1,179 +1,131 @@
-import { searchEmployees } from '../db/employees.js'
-import { query }           from '../db/sqlite.js'
+import { getFilteredEmployees } from '../db/employees.js'
+import { query } from '../db/sqlite.js'
 
 export function renderEmployees(container, state, navigate) {
-  const filter = state.params?.filter ?? ''
+  // 1. Initial State for filtering
+  state.empFilters = state.empFilters || {
+    search: '',
+    province: '',
+    company_id: '',
+    location_id: '',
+    page: 0,
+    limit: 100
+  };
 
-  const ALL_EMPLOYEES_SQL = `
-    SELECT e.*,
-      l.name AS location_name, l.province,
-      c.name AS company_name,
-      (SELECT t.classification FROM tests t WHERE t.employee_id = e.employee_id ORDER BY t.test_date DESC LIMIT 1) AS last_classification,
-      (SELECT t.test_date     FROM tests t WHERE t.employee_id = e.employee_id ORDER BY t.test_date DESC LIMIT 1) AS last_test_date
-    FROM employees e
-    JOIN locations l ON l.location_id = e.location_id
-    JOIN companies c ON c.company_id  = l.company_id
-    WHERE e.status = 'active' AND l.active = 1
-    ORDER BY e.last_name, e.first_name
-  `
-
-  let currentFilter = filter
-  let currentSearch = ''
-  let sortCol       = 'last_name'
-  let sortDir       = 1
-
-  function getDisplayed() {
-    let base = currentSearch.length >= 2
-      ? searchEmployees(currentSearch)
-      : query(ALL_EMPLOYEES_SQL)
-
-    if (currentFilter) {
-      base = base.filter(e => {
-        const cat = parseClassification(e.last_classification)?.category
-        if (currentFilter === 'EW') return cat === 'EW' || cat === 'EWC'
-        if (currentFilter === 'A')  return cat === 'A'  || cat === 'AC'
-        if (currentFilter === 'N')  return cat === 'N'  || cat === 'NC'
-        return cat === currentFilter
-      })
-    }
-
-    base.sort((a, b) => {
-      let va = a[sortCol] ?? ''
-      let vb = b[sortCol] ?? ''
-      if (sortCol === 'name') {
-        va = `${a.last_name}, ${a.first_name}`.toLowerCase()
-        vb = `${b.last_name}, ${b.first_name}`.toLowerCase()
-      } else {
-        if (typeof va === 'string') va = va.toLowerCase()
-        if (typeof vb === 'string') vb = vb.toLowerCase()
-      }
-      if (va < vb) return -1 * sortDir
-      if (va > vb) return  1 * sortDir
-      return 0
-    })
-
-    return base
+  // 2. Fetch data for dropdowns
+  const companies = query("SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name ASC");
+  let locations = [];
+  if (state.empFilters.company_id) {
+    locations = query("SELECT location_id, name FROM locations WHERE company_id = ? ORDER BY name ASC", [state.empFilters.company_id]);
   }
 
-  function refresh() {
-    const displayed = getDisplayed()
-    const tbody = container.querySelector('#emp-tbody')
-    if (tbody) tbody.innerHTML = renderRows(displayed)
-    const count = container.querySelector('#result-count')
-    if (count) count.textContent = `${displayed.length} employee${displayed.length !== 1 ? 's' : ''}`
-    attachRowHandlers(container, navigate)
-  }
+  const render = () => {
+    const offset = state.empFilters.page * state.empFilters.limit;
+    const { results, totalCount } = getFilteredEmployees({ ...state.empFilters, offset });
 
-  const initialDisplayed = getDisplayed()
+    container.innerHTML = `
+      <div class="page">
+        <div class="page-header">
+          <h1>Employees</h1>
+          <span class="count-chip">${totalCount} total</span>
+        </div>
 
-  container.innerHTML = `
-    <div class="page">
-      <div class="page-header">
-        <h1>Employees</h1>
-        <div class="header-actions">
-          <select id="filter-cat" class="select-sm">
-            <option value="">All classifications</option>
-            <option value="A"  ${currentFilter === 'A'  ? 'selected' : ''}>Abnormal / AC</option>
-            <option value="EW" ${currentFilter === 'EW' ? 'selected' : ''}>Early Warning</option>
-            <option value="N"  ${currentFilter === 'N'  ? 'selected' : ''}>Normal / NC</option>
+        <!-- FILTER BAR -->
+        <div class="toolbar" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: var(--shadow-sm);">
+          <input id="f-search" type="search" class="search-input" placeholder="Search by name..." value="${esc(state.empFilters.search)}">
+          
+          <select id="f-province" class="search-input">
+            <option value="">All Provinces</option>
+            <option value="AB" ${state.empFilters.province === 'AB' ? 'selected' : ''}>Alberta</option>
+            <option value="BC" ${state.empFilters.province === 'BC' ? 'selected' : ''}>BC</option>
+            <option value="SK" ${state.empFilters.province === 'SK' ? 'selected' : ''}>Saskatchewan</option>
+          </select>
+
+          <select id="f-company" class="search-input">
+            <option value="">All Companies</option>
+            ${companies.map(c => `<option value="${c.company_id}" ${state.empFilters.company_id == c.company_id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select>
+
+          <select id="f-location" class="search-input" ${!state.empFilters.company_id ? 'disabled' : ''}>
+            <option value="">All Locations</option>
+            ${locations.map(l => `<option value="${l.location_id}" ${state.empFilters.location_id == l.location_id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
           </select>
         </div>
+
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>Province</th>
+                <th>Job Title</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${results.map(e => `
+                <tr class="table-row" data-id="${e.employee_id}">
+                  <td><strong>${esc(e.last_name)}, ${esc(e.first_name)}</strong></td>
+                  <td class="td-muted" style="font-size:12px;">${esc(e.company_name)}</td>
+                  <td class="td-muted" style="font-size:12px;">${esc(e.location_name)}</td>
+                  <td><span class="province-badge">${e.province}</span></td>
+                  <td>${esc(e.job_title || '—')}</td>
+                  <td style="text-align:right;"><button class="btn btn-sm btn-outline">Open</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- PAGINATION -->
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-top: 20px; padding: 10px;">
+          <div style="font-size: 13px; color: #666;">
+            Showing ${offset + 1} - ${Math.min(offset + state.empFilters.limit, totalCount)} of ${totalCount}
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-sm btn-outline" id="btn-prev" ${state.empFilters.page === 0 ? 'disabled' : ''}>« Previous</button>
+            <button class="btn btn-sm btn-outline" id="btn-next" ${(offset + state.empFilters.limit) >= totalCount ? 'disabled' : ''}>Next »</button>
+          </div>
+        </div>
       </div>
+    `;
 
-      <div class="toolbar">
-        <input id="emp-search" type="search" class="search-input" placeholder="Search by name, company, or location…" />
-        <span class="result-count" id="result-count">${initialDisplayed.length} employee${initialDisplayed.length !== 1 ? 's' : ''}</span>
-      </div>
+    attachHandlers();
+  };
 
-      <table class="data-table">
-        <thead id="emp-thead">
-          <tr>
-            <th data-col="name"          class="sortable">Name</th>
-            <th data-col="company_name"  class="sortable">Company</th>
-            <th data-col="location_name" class="sortable">Location</th>
-            <th data-col="province"      class="sortable">Province</th>
-            <th data-col="last_test_date" class="sortable">Last Test</th>
-            <th>Classification</th>
-          </tr>
-        </thead>
-        <tbody id="emp-tbody">
-          ${renderRows(initialDisplayed)}
-        </tbody>
-      </table>
-    </div>
-  `
+  const attachHandlers = () => {
+    const update = (key, val) => {
+        state.empFilters[key] = val;
+        state.empFilters.page = 0; // Reset to page 1 on filter change
+        render();
+    };
 
-  const HEADERS = {
-    name:          'Name',
-    company_name:  'Company',
-    location_name: 'Location',
-    province:      'Province',
-    last_test_date:'Last Test'
-  }
+    container.querySelector('#f-search').oninput = (e) => {
+        // Debounce search to avoid lag
+        clearTimeout(window.searchTimer);
+        window.searchTimer = setTimeout(() => update('search', e.target.value.trim()), 300);
+    };
 
-  container.querySelector('#emp-thead').addEventListener('click', e => {
-    const th = e.target.closest('th[data-col]')
-    if (!th) return
-    const col = th.dataset.col
-    sortDir = (sortCol === col) ? sortDir * -1 : 1
-    sortCol = col
-    container.querySelectorAll('th[data-col]').forEach(t => {
-      t.textContent = `${HEADERS[t.dataset.col]} ${sortCol === t.dataset.col ? (sortDir === 1 ? '↑' : '↓') : ''}`
-    })
-    refresh()
-  })
+    container.querySelector('#f-province').onchange = (e) => update('province', e.target.value);
+    
+    container.querySelector('#f-company').onchange = (e) => {
+        state.empFilters.location_id = ''; // Clear location if company changes
+        update('company_id', e.target.value);
+    };
 
-  container.querySelector('#filter-cat').addEventListener('change', e => {
-    currentFilter = e.target.value
-    refresh()
-  })
+    container.querySelector('#f-location').onchange = (e) => update('location_id', e.target.value);
 
-  container.querySelector('#emp-search').addEventListener('input', e => {
-    currentSearch = e.target.value.trim()
-    refresh()
-  })
+    container.querySelector('#btn-prev').onclick = () => { state.empFilters.page--; render(); };
+    container.querySelector('#btn-next').onclick = () => { state.empFilters.page++; render(); };
 
-  attachRowHandlers(container, navigate)
+    container.querySelectorAll('.table-row').forEach(row => {
+        row.onclick = () => navigate('employee-detail', { id: row.dataset.id });
+    });
+  };
+
+  render();
 }
 
-function renderRows(employees) {
-  if (employees.length === 0) {
-    return '<tr><td colspan="6" class="empty-cell">No employees found.</td></tr>'
-  }
-  return employees.map(e => {
-    const cls = parseClassification(e.last_classification)?.category
-    return `
-      <tr class="table-row" data-emp-id="${e.employee_id}" data-location-id="${e.location_id}">
-        <td class="td-primary">${esc(e.last_name)}, ${esc(e.first_name)}</td>
-        <td>${esc(e.company_name)}</td>
-        <td>${esc(e.location_name)}</td>
-        <td><span class="province-badge">${esc(e.province)}</span></td>
-        <td>${e.last_test_date ?? '—'}</td>
-        <td>${cls ? classBadge(cls) : '—'}</td>
-      </tr>
-    `
-  }).join('')
-}
-
-function attachRowHandlers(container, navigate) {
-  container.querySelectorAll('.table-row[data-emp-id]').forEach(row => {
-    row.addEventListener('click', () =>
-      navigate('employee-detail', { currentEmployee: { employee_id: Number(row.dataset.empId) } })
-    )
-  })
-}
-
-function classBadge(cat) {
-  const m = { N: 'n', EW: 'ew', A: 'a', NC: 'nc', EWC: 'ewc', AC: 'ac' }
-  const l = { N: 'Normal', EW: 'Early Warning', A: 'Abnormal', NC: 'No Change', EWC: 'EW Change', AC: 'Abn Change' }
-  return `<span class="class-badge class-${m[cat] ?? ''}">${l[cat] ?? cat}</span>`
-}
-
-function parseClassification(val) {
-  if (!val) return null
-  try { return typeof val === 'string' ? JSON.parse(val) : val } catch { return null }
-}
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
+function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }

@@ -5,6 +5,7 @@
  */
 
 import { query, queryOne, run, lastInsertId } from './sqlite.js'
+import { query, queryOne } from './sqlite.js'
 
 const THRESHOLD_COLS = [
   'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
@@ -157,4 +158,66 @@ function thresholdValues(t) {
     t.right_500 ?? null, t.right_1k ?? null, t.right_2k ?? null, t.right_3k ?? null,
     t.right_4k  ?? null, t.right_6k ?? null, t.right_8k ?? null
   ]
+}
+
+/**
+ * Gets a filtered, paginated list of employees.
+ */
+export function getFilteredEmployees(filters = {}) {
+  const { 
+    search = '', 
+    company_id = '', 
+    location_id = '', 
+    province = '', 
+    limit = 100, 
+    offset = 0 
+  } = filters;
+
+  let sql = `
+    SELECT 
+      e.*, 
+      l.name as location_name, 
+      l.province, 
+      c.name as company_name,
+      c.company_id
+    FROM employees e
+    JOIN locations l ON e.location_id = l.location_id
+    JOIN companies c ON l.company_id = c.company_id
+    WHERE e.status = 'active'
+  `;
+
+  const params = [];
+
+  if (search) {
+    sql += ` AND (e.first_name LIKE ? OR e.last_name LIKE ?) `;
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (province) {
+    sql += ` AND l.province = ? `;
+    params.push(province);
+  }
+
+  if (company_id) {
+    sql += ` AND c.company_id = ? `;
+    params.push(company_id);
+  }
+
+  if (location_id) {
+    sql += ` AND l.location_id = ? `;
+    params.push(location_id);
+  }
+
+  // Get total count for pagination info
+  const countSql = `SELECT COUNT(*) as total FROM (${sql})`;
+  const totalCount = queryOne(countSql, params).total;
+
+  // Add sorting and pagination
+  sql += ` ORDER BY e.last_name ASC, e.first_name ASC LIMIT ? OFFSET ?`;
+  params.push(limit, offset);
+
+  return {
+    results: query(sql, params),
+    totalCount
+  };
 }
