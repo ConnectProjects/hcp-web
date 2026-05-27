@@ -1,9 +1,6 @@
 import { getFilteredEmployees } from '../db/employees.js'
 import { query } from '../db/sqlite.js'
 
-import { getFilteredEmployees } from '../db/employees.js'
-import { query } from '../db/sqlite.js'
-
 export function renderEmployees(container, state, navigate) {
   // 1. Initialize filters
   state.empFilters = state.empFilters || {
@@ -164,5 +161,4 @@ export function renderEmployees(container, state, navigate) {
 
 function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
-function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 
