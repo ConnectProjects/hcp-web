@@ -2263,3 +2263,90 @@ select.thresh-cell {
 .booth-tab.active .booth-name {
     color: #2c4d08;
 }
+
+/* --- Header Navigation Styling --- */
+.main-header {
+    background: white;
+    border-bottom: 1px solid #eee;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.header-back-btn {
+    background: none;
+    border: none;
+    color: #76B214; /* Connect Hearing Green */
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.header-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #999;
+    letter-spacing: 1px;
+}
+
+.logout-link {
+    background: none; 
+    border: none; 
+    color: rgba(255,255,255,0.6); 
+    font-size: 11px; 
+    text-align: left; 
+    cursor: pointer; 
+    padding: 0; 
+    text-decoration: underline;
+}
+
+/* --- Color-Coded Booth Switcher --- */
+.booth-switcher-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    background: #fff;
+    border-bottom: 2px solid #eee;
+    padding: 8px;
+    gap: 8px;
+}
+
+.booth-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 10px 16px;
+    background: #fdfdfd;
+    border: 2px solid #eee;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.booth-info { display: flex; flex-direction: column; text-align: left; margin-left: 12px; }
+.booth-label { font-size: 9px; font-weight: bold; color: #999; }
+.booth-name { font-size: 14px; font-weight: 700; color: #333; }
+
+/* Booth 1: Medium Blue */
+.booth-tab.b1.active {
+    border-color: #0056b3;
+    background: #eef6ff;
+}
+.booth-tab.b1.active .booth-indicator { background: #0056b3; color: white; }
+.booth-tab.b1.active .booth-name { color: #0056b3; }
+
+/* Booth 2: Medium Red */
+.booth-tab.b2.active {
+    border-color: #c0392b;
+    background: #fff5f4;
+}
+.booth-tab.b2.active .booth-indicator { background: #c0392b; color: white; }
+.booth-tab.b2.active .booth-name { color: #c0392b; }
+
+.booth-indicator {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #eee; color: #999; line-height: 28px;
+    text-align: center; font-weight: bold; font-size: 14px;
+}
