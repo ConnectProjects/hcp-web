@@ -250,6 +250,7 @@ function empRow(emp) {
 }
 
 function attachRowHandlers(container, employees, packet, state, navigate) {
+  // 1. Row click → Navigate to test
   container.querySelectorAll('.emp-row').forEach(row => {
     const empId = row.dataset.empId
     const emp = employees.find(e => e.employee_id == empId)
@@ -260,39 +261,45 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
       const slot = state.slots[state.activeSlot]
       slot.currentEmployee = emp
       slot.currentPacket = packet
-      navigate('test-entry', {
-        currentEmployee: emp,
-        currentPacket: packet
-      })
+      navigate('test-entry', { currentEmployee: emp, currentPacket: packet })
     })
   })
 
+  // 2. Skip button — Toggle the confirmation row
   container.querySelectorAll('.emp-row__skip').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
       const empId = btn.dataset.skipId
-      const row   = container.querySelector(`#skip-confirm-${empId}`)
+      const row = container.querySelector(`#skip-confirm-${empId}`)
       if (row) row.style.display = row.style.display === 'none' ? 'flex' : 'none'
     })
   })
 
+  // 3. THE FIX: Confirm skip button
   container.querySelectorAll('[data-confirm-skip]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const empId  = btn.dataset.confirmSkip
-      const reason = container.querySelector(`#skip-reason-${empId}`)?.value ?? null
-      markEmployeeSkipped(packet, empId, reason)
-      await savePacket(packet)
-      navigate('employee-list')
-    })
-  })
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      const empId  = btn.dataset.confirmSkip;
+      const reason = container.querySelector(`#skip-reason-${empId}`)?.value ?? 'Not present today';
+      
+      console.log(`Skipping employee ${empId} for reason: ${reason}`);
+      
+      markEmployeeSkipped(packet, empId, reason);
+      await savePacket(packet);
+      // Re-render the list to show the "Skipped" status immediately
+      renderEmployeeList(container, state, navigate);
+    };
+  });
 
+  // 4. Cancel skip button
   container.querySelectorAll('[data-cancel-skip]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const empId = btn.dataset.cancelSkip
-      const row   = container.querySelector(`#skip-confirm-${empId}`)
-      if (row) row.style.display = 'none'
-    })
-  })
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const empId = btn.dataset.cancelSkip;
+      const row = container.querySelector(`#skip-confirm-${empId}`);
+      if (row) row.style.display = 'none';
+    };
+  });
 }
 
 function fullName(emp) { return `${emp.first_name} ${emp.last_name}` }

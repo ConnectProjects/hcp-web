@@ -147,9 +147,9 @@ function paint() {
   const renderFn = SCREENS[state.screen]
 
   if (state.screen === 'login') {
-    app.innerHTML = ''
-    renderFn(app, state, navigate)
-    return
+    app.innerHTML = '';
+    renderFn(app, state, navigate);
+    return;
   }
 
   const techName = state.user?.name ?? 'Tech'
@@ -179,7 +179,7 @@ function paint() {
         <div class="sidebar-footer">
           <div style="display:flex; flex-direction:column; gap:4px">
             <span class="user-name">${techName}</span>
-            <button id="btn-logout" style="background:none; border:none; color:rgba(255,255,255,0.6); font-size:11px; text-align:left; cursor:pointer; padding:0; text-decoration:underline;">Logout</button>
+            <button id="btn-logout" class="logout-link">Logout</button>
           </div>
           <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
             ${state.syncFolder ? '●' : '○'} Sync
@@ -188,23 +188,40 @@ function paint() {
       </nav>
 
       <div class="main-area">
+        <!-- STANDARDIZED HEADER NAVIGATION -->
+        <header class="main-header">
+           <div class="header-nav-left">
+             ${state.screen !== 'dashboard' ? `<button class="header-back-btn" id="btn-header-back">❮ Back</button>` : ''}
+           </div>
+           <div class="header-title">${state.screen.replace('-', ' ').toUpperCase()}</div>
+        </header>
+
+        <!-- COLOR-CODED STICKY BOOTH SWITCHER -->
         ${showSwitcher ? `
           <div class="booth-switcher-bar">
-            <button class="booth-tab ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
+            <button class="booth-tab b1 ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
               <span class="booth-indicator">1</span>
-              <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
+              <div class="booth-info">
+                <span class="booth-label">LEFT BOOTH</span>
+                <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
+              </div>
             </button>
-            <button class="booth-tab ${state.activeSlot === 1 ? 'active' : ''}" data-slot="1">
+            <button class="booth-tab b2 ${state.activeSlot === 1 ? 'active' : ''}" data-slot="1">
               <span class="booth-indicator">2</span>
-              <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
+              <div class="booth-info">
+                <span class="booth-label">RIGHT BOOTH</span>
+                <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
+              </div>
             </button>
           </div>
         ` : ''}
+
         <div id="main-content" class="main-content"></div>
       </div>
     </div>
   `
 
+  // --- Global Listeners ---
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
@@ -213,8 +230,8 @@ function paint() {
     btn.addEventListener('click', () => switchSlot(Number(btn.dataset.slot)))
   })
 
-  // NEW: Logout listener
-  app.querySelector('#btn-logout').addEventListener('click', logout);
+  app.querySelector('#btn-header-back')?.addEventListener('click', () => window.history.back());
+  app.querySelector('#btn-logout')?.addEventListener('click', logout);
 
   renderFn(document.getElementById('main-content'), state, navigate)
 }
