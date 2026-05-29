@@ -172,12 +172,17 @@ export function appendTestResult(packet, employeeId, testResult) {
  * @returns {object} Updated packet (mutates in place)
  */
 export function markEmployeeSkipped(packet, employeeId, reason) {
-  const emp = packet.employees.find(e => e.employee_id === employeeId)
-  if (!emp) throw new Error(`Employee ${employeeId} not found in packet`)
-  emp.skipped_at  = new Date().toISOString()
-  emp.skip_reason = reason ?? null
-  packet.updated_at = new Date().toISOString()
-  return packet
+  // Use == instead of === to allow String/Number matches
+  const emp = packet.employees.find(e => e.employee_id == employeeId);
+  
+  if (!emp) {
+    throw new Error(`Employee ${employeeId} not found in packet`);
+  }
+
+  emp.skipped_at = new Date().toISOString();
+  emp.skip_reason = reason;
+  // Clear any partial test data if they were skipped
+  emp.completed_tests = []; 
 }
 
 /**
