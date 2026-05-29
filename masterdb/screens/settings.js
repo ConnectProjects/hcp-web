@@ -1,14 +1,10 @@
 import { query, run, queryOne } from '../db/sqlite.js'
-import { getTechs, createTech, updateTech, deleteTech } from '../db/packets.js'
 import { exportDB }             from '../db/sqlite.js'
 import { pickSyncFolder, getSyncFolder } from '@shared/fs/sync-folder.js'
 import { isDemoLoaded, clearDemoData }   from '../db/demo.js'
 import { applyTheme, saveThemeColor, loadThemeColor, DEFAULT_COLOR } from '../theme.js'
 
 export function renderSettings(container, state, navigate) {
-  const allStaff  = getTechs()
-  const techs     = allStaff.filter(t => t.role !== 'admin')
-  const admins    = allStaff.filter(t => t.role === 'admin')
   const provinces = query('SELECT * FROM provinces ORDER BY province_code')
 
   // Load org profile from settings table
@@ -77,10 +73,10 @@ export function renderSettings(container, state, navigate) {
         <!-- Company Logo -->
         <section class="settings-section">
           <h2>Company Logo</h2>
-          <p class="section-desc">Displayed at the top of the sidebar and on printed forms and reports. PNG or SVG recommended. For best results, use a <strong>black logo on a white or transparent background</strong> — it will be converted to white automatically on the colored sidebar.</p>
+          <p class="section-desc">Displayed at the top of the sidebar and on printed forms and reports. PNG or SVG recommended.</p>
           ${state.logoUrl ? `
             <div class="logo-preview">
-              <img src="${state.logoUrl}" alt="Company logo" />
+              <img src="${state.logoUrl}" alt="Company logo" style="max-height: 100px; margin-bottom: 10px;" />
             </div>
             <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
               <label class="btn btn-outline btn-sm logo-upload-label">
@@ -101,7 +97,7 @@ export function renderSettings(container, state, navigate) {
         <!-- Theme Color -->
         <section class="settings-section">
           <h2>Theme Color</h2>
-          <p class="section-desc">Brand color used throughout the app — sidebar, buttons, and active states. Changes apply instantly.</p>
+          <p class="section-desc">Brand color used for the sidebar and button highlights.</p>
           <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
             <input type="color" id="theme-color-input" value="${loadThemeColor()}"
               style="width:48px;height:36px;border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;padding:2px" />
@@ -115,8 +111,7 @@ export function renderSettings(container, state, navigate) {
         <section class="settings-section">
           <h2>OneDrive Sync Folder</h2>
           <p class="section-desc">
-            Select the shared folder that is synced via OneDrive desktop.
-            MasterDB will write new packets to <code>outbox/</code> and read completed packets from <code>inbox/</code>.
+            Connect the shared folder used to exchange data with field technicians.
           </p>
           <div class="folder-status-row">
             <span id="folder-status-label" class="${state.syncFolder ? 'status-online' : 'status-offline'}">
@@ -136,59 +131,12 @@ export function renderSettings(container, state, navigate) {
           <div id="folder-msg" class="alert hidden" style="margin-top:8px"></div>
         </section>
 
-        <!-- Technicians -->
-        <section class="settings-section">
-          <h2>Technicians</h2>
-          <p class="section-desc">
-            The <strong>Folder Name</strong> is the tech's subfolder under <code>techs/</code> in the
-            shared drive (e.g. <code>Norm</code>, <code>Cal</code>). It must match
-            what the tech entered in their TechTool setup. The <strong>IAT #</strong> is the tech's
-            Industrial Audiometric Technician certification number — printed on referral forms.
-          </p>
-          <table class="data-table" id="techs-table">
-            <thead><tr><th>Name</th><th>Short Name</th><th>Folder</th><th>IAT #</th><th>Email</th><th></th></tr></thead>
-            <tbody>
-              ${techs.length === 0
-                ? '<tr><td colspan="6" class="empty-cell">No technicians on file.</td></tr>'
-                : techs.map(t => staffRow(t)).join('')}
-            </tbody>
-          </table>
-          <div class="inline-form" style="margin-top:12px">
-            <input id="t-name"     type="text"  placeholder="Full name" />
-            <input id="t-initials" type="text"  placeholder="Short name (e.g. NORM)" maxlength="6" style="width:120px;text-transform:uppercase" />
-            <input id="t-folder"   type="text"  placeholder="Folder name (e.g. Norm)" style="width:130px" />
-            <input id="t-iat"      type="text"  placeholder="IAT # (optional)" style="width:120px" />
-            <input id="t-email"    type="email" placeholder="Email (optional)" />
-            <button class="btn btn-primary btn-sm" id="btn-add-tech">Add Technician</button>
-          </div>
-        </section>
-
-        <!-- Administrators -->
-        <section class="settings-section">
-          <h2>Administrators</h2>
-          <p class="section-desc">Administrators have full access to MasterDB.</p>
-          <table class="data-table" id="admins-table">
-            <thead><tr><th>Name</th><th>Short Name</th><th>Email</th><th></th></tr></thead>
-            <tbody>
-              ${admins.length === 0
-                ? '<tr><td colspan="4" class="empty-cell">No administrators on file.</td></tr>'
-                : admins.map(t => staffRow(t, true)).join('')}
-            </tbody>
-          </table>
-          <div class="inline-form" style="margin-top:12px">
-            <input id="a-name"     type="text"  placeholder="Full name" />
-            <input id="a-initials" type="text"  placeholder="Short name (e.g. NORM)" maxlength="6" style="width:120px;text-transform:uppercase" />
-            <input id="a-email"    type="email" placeholder="Email (optional)" />
-            <button class="btn btn-primary btn-sm" id="btn-add-admin">Add Administrator</button>
-          </div>
-        </section>
-
         <!-- Province rules -->
         <section class="settings-section">
           <h2>Province Rules</h2>
-          <p class="section-desc">Read-only reference. Click a province to see its full classification rules and counsel templates.</p>
+          <p class="section-desc">Read-only reference of classification rules and templates.</p>
           <table class="data-table">
-            <thead><tr><th>Province</th><th>Regulation</th><th>Rules</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Province</th><th>Regulation</th><th>Rules</th><th></th></tr></thead>
             <tbody>
               ${provinces.map(p => {
                 const ruleCount = query('SELECT COUNT(*) AS n FROM classification_rules WHERE province_code = ?', [p.province_code])[0]?.n ?? 0
@@ -196,7 +144,6 @@ export function renderSettings(container, state, navigate) {
                   <td><strong>${esc(p.province_code)}</strong> — ${esc(p.province_name)}</td>
                   <td class="td-muted">${esc(p.regulation_ref ?? '—')}</td>
                   <td>${ruleCount}</td>
-                  <td><span class="badge ${p.active ? 'badge-success' : 'badge-neutral'}">${p.active ? 'Active' : 'Inactive'}</span></td>
                   <td><button class="btn btn-link btn-sm btn-view-rules" data-province="${esc(p.province_code)}">View Rules →</button></td>
                 </tr>`
               }).join('')}
@@ -204,31 +151,26 @@ export function renderSettings(container, state, navigate) {
           </table>
         </section>
 
-        <!-- Demo data -->
-        ${isDemoLoaded() ? `
-        <section class="settings-section">
-          <h2>Demo Data</h2>
-          <p class="section-desc">Demo companies, employees, and test records are currently loaded.</p>
-          <button class="btn btn-outline btn-sm" id="btn-clear-demo" style="color:var(--red);border-color:var(--red)">
-            Clear Demo Data
-          </button>
-        </section>
-        ` : ''}
-
         <!-- Database -->
         <section class="settings-section">
-          <h2>Database</h2>
-          <p class="section-desc">The MasterDB SQLite database is stored in your browser's Origin Private File System. It never leaves this machine.</p>
-          <button class="btn btn-outline btn-sm" id="btn-export-db">Export Backup (.sqlite)</button>
+          <h2>Maintenance & Backup</h2>
+          <p class="section-desc">Export a copy of the internal database or clear demo data.</p>
+          <div style="display:flex; gap:10px;">
+            <button class="btn btn-outline btn-sm" id="btn-export-db">Export Backup (.sqlite)</button>
+            ${isDemoLoaded() ? `
+              <button class="btn btn-outline btn-sm" id="btn-clear-demo" style="color:var(--red);border-color:var(--red)">
+                Clear Demo Data
+              </button>
+            ` : ''}
+          </div>
         </section>
 
       </div>
     </div>
   `
 
-  // ---------------------------------------------------------------------------
-  // Organization profile
-  // ---------------------------------------------------------------------------
+  // --- Handlers ---
+
   container.querySelector('#btn-save-org').addEventListener('click', () => {
     const fields = {
       org_name:     container.querySelector('#org-name').value.trim(),
@@ -242,295 +184,78 @@ export function renderSettings(container, state, navigate) {
     }
     const msg = container.querySelector('#org-msg')
     if (!fields.org_name) {
-      msg.className   = 'alert alert-error'
-      msg.textContent = 'Organization name is required.'
-      msg.classList.remove('hidden')
-      return
+      msg.className = 'alert alert-error'; msg.textContent = 'Name required.'; msg.classList.remove('hidden'); return
     }
     for (const [key, value] of Object.entries(fields)) {
       run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value])
     }
     state.orgProfile = fields
-    msg.className   = 'alert alert-success'
-    msg.textContent = '✓ Organization profile saved.'
-    msg.classList.remove('hidden')
-    setTimeout(() => msg.classList.add('hidden'), 2500)
+    msg.className = 'alert alert-success'; msg.textContent = '✓ Saved.'; msg.classList.remove('hidden')
+    setTimeout(() => msg.classList.add('hidden'), 2000)
   })
 
-  // ---------------------------------------------------------------------------
-  // Logo upload — saves to SQLite and pushes to sync folder
-  // ---------------------------------------------------------------------------
   container.querySelector('#logo-input')?.addEventListener('change', async e => {
-    const file = e.target.files[0]
-    if (!file) return
+    const file = e.target.files[0]; if (!file) return
     const msg = container.querySelector('#logo-msg')
     try {
       const dataUrl = await resizeImage(file, 400, 160)
       run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('company_logo', ?)`, [dataUrl])
       state.logoUrl = dataUrl
-
-      if (state.syncFolder) {
-        try {
-          const fh       = await state.syncFolder.getFileHandle('logo.json', { create: true })
-          const writable = await fh.createWritable()
-          await writable.write(JSON.stringify({ logo_url: dataUrl }, null, 2))
-          await writable.close()
-          msg.className   = 'alert alert-success'
-          msg.textContent = '✓ Logo saved and synced to sync folder.'
-        } catch (syncErr) {
-          msg.className   = 'alert alert-warn'
-          msg.textContent = `✓ Logo saved locally. Sync folder write failed: ${syncErr.message}`
-        }
-        msg.classList.remove('hidden')
-      }
-      setTimeout(() => navigate('settings'), 1800)
-    } catch (err) {
-      msg.className   = 'alert alert-error'
-      msg.textContent = `Could not load image: ${err.message}`
-      msg.classList.remove('hidden')
-    }
+      setTimeout(() => navigate('settings'), 1000)
+    } catch (err) { alert(err.message) }
   })
 
   container.querySelector('#btn-remove-logo')?.addEventListener('click', () => {
-    if (!confirm('Remove the company logo?')) return
-    run(`DELETE FROM settings WHERE key = 'company_logo'`)
-    state.logoUrl = null
-    navigate('settings')
-  })
-
-  // ---------------------------------------------------------------------------
-  // Theme color
-  // ---------------------------------------------------------------------------
-  const colorInput = container.querySelector('#theme-color-input')
-  const colorHex   = container.querySelector('#theme-color-hex')
-  const themeMsg   = container.querySelector('#theme-msg')
-
-  colorInput.addEventListener('input', () => {
-    const hex = colorInput.value
-    colorHex.textContent = hex
-    applyTheme(hex)
-  })
-
-  colorInput.addEventListener('change', () => {
-    const hex = colorInput.value
-    saveThemeColor(hex)
-    themeMsg.className   = 'alert alert-success'
-    themeMsg.textContent = `✓ Theme color saved (${hex})`
-    themeMsg.classList.remove('hidden')
-    setTimeout(() => themeMsg.classList.add('hidden'), 2500)
-  })
-
-  container.querySelector('#btn-reset-color').addEventListener('click', () => {
-    colorInput.value     = DEFAULT_COLOR
-    colorHex.textContent = DEFAULT_COLOR
-    applyTheme(DEFAULT_COLOR)
-    saveThemeColor(DEFAULT_COLOR)
-    themeMsg.className   = 'alert alert-success'
-    themeMsg.textContent = `✓ Reset to default (${DEFAULT_COLOR})`
-    themeMsg.classList.remove('hidden')
-    setTimeout(() => themeMsg.classList.add('hidden'), 2500)
-  })
-
-  // ---------------------------------------------------------------------------
-  // Sync folder
-  // ---------------------------------------------------------------------------
-  const folderMsg = container.querySelector('#folder-msg')
-
-  function showFolderMsg(type, msg) {
-    folderMsg.className   = `alert alert-${type}`
-    folderMsg.textContent = msg
-    folderMsg.classList.remove('hidden')
-  }
-
-  function updateFolderStatus(connected) {
-    const lbl = container.querySelector('#folder-status-label')
-    if (!lbl) return
-    lbl.textContent = connected ? '● Sync folder connected' : '○ No sync folder selected'
-    lbl.className   = connected ? 'status-online' : 'status-offline'
-  }
-
-  container.querySelector('#btn-pick-folder').addEventListener('click', async () => {
-    const btn = container.querySelector('#btn-pick-folder')
-    btn.disabled    = true
-    btn.textContent = 'Opening…'
-    try {
-      const handle     = await pickSyncFolder()
-      state.syncFolder = handle
-      showFolderMsg('success', '✓ Sync folder selected.')
-      updateFolderStatus(true)
-      btn.textContent = 'Change Sync Folder'
-      
-      // Start auto-backup since we now have a folder
-      const { backupToSyncFolder, exportExcelToSyncFolder } = await import('../db/sqlite.js')
-      setInterval(() => {
-        backupToSyncFolder(state.syncFolder)
-        exportExcelToSyncFolder(state.syncFolder)
-      }, 5 * 60 * 1000)
-      backupToSyncFolder(state.syncFolder)
-      exportExcelToSyncFolder(state.syncFolder)
-    } catch (e) {
-      if (e.name !== 'AbortError') showFolderMsg('error', `Could not open folder: ${e.message}`)
+    if (confirm('Remove logo?')) {
+      run(`DELETE FROM settings WHERE key = 'company_logo'`)
+      state.logoUrl = null; navigate('settings')
     }
-    btn.disabled = false
   })
+
+  const colorInput = container.querySelector('#theme-color-input')
+  colorInput.addEventListener('input', () => {
+    applyTheme(colorInput.value)
+    container.querySelector('#theme-color-hex').textContent = colorInput.value
+  })
+  colorInput.addEventListener('change', () => saveThemeColor(colorInput.value))
+
+  container.querySelector('#btn-reset-color').onclick = () => {
+    applyTheme(DEFAULT_COLOR); saveThemeColor(DEFAULT_COLOR); navigate('settings')
+  }
+
+  container.querySelector('#btn-pick-folder').onclick = async () => {
+    try {
+      state.syncFolder = await pickSyncFolder(); navigate('settings')
+    } catch (e) { console.error(e) }
+  }
 
   container.querySelector('#btn-reauth-folder')?.addEventListener('click', async () => {
-    const btn = container.querySelector('#btn-reauth-folder')
-    btn.disabled    = true
-    btn.textContent = 'Authorizing…'
     try {
-      const handle = await getSyncFolder()
-      if (handle) {
-        state.syncFolder = handle
-        showFolderMsg('success', '✓ Folder access re-authorized.')
-        updateFolderStatus(true)
-      } else {
-        showFolderMsg('error', 'Access denied. Use "Select Sync Folder" to pick the folder again.')
-        updateFolderStatus(false)
-      }
-    } catch (e) {
-      showFolderMsg('error', `Error: ${e.message}`)
-    }
-    btn.disabled    = false
-    btn.textContent = 'Re-authorize Access'
+      state.syncFolder = await getSyncFolder(); navigate('settings')
+    } catch (e) { alert(e.message) }
   })
-
-  // ---------------------------------------------------------------------------
-  // Technicians / Admins
-  // ---------------------------------------------------------------------------
-  container.querySelector('#btn-add-tech').addEventListener('click', () => {
-    const name        = container.querySelector('#t-name').value.trim()
-    const initials    = container.querySelector('#t-initials').value.trim().toUpperCase()
-    const folder_name = container.querySelector('#t-folder').value.trim() || null
-    const iat_number  = container.querySelector('#t-iat').value.trim() || null
-    const email       = container.querySelector('#t-email').value.trim() || null
-    if (!name || !initials) { alert('Name and initials are required.'); return }
-    createTech({ tech_id: initials + '_' + Date.now(), name, initials, folder_name, iat_number, email, role: 'tech' })
-    navigate('settings')
-  })
-
-  container.querySelector('#btn-add-admin').addEventListener('click', () => {
-    const name     = container.querySelector('#a-name').value.trim()
-    const initials = container.querySelector('#a-initials').value.trim().toUpperCase()
-    const email    = container.querySelector('#a-email').value.trim() || null
-    if (!name || !initials) { alert('Name and initials are required.'); return }
-    createTech({ tech_id: initials + '_' + Date.now(), name, initials, email, role: 'admin' })
-    navigate('settings')
-  })
-
-  attachStaffEditing(container, navigate)
 
   container.querySelectorAll('.btn-view-rules').forEach(btn => {
-    btn.addEventListener('click', () =>
-      navigate('province-rules', { params: { province: btn.dataset.province } })
-    )
+    btn.onclick = () => navigate('province-rules', { params: { province: btn.dataset.province } })
   })
 
   container.querySelector('#btn-clear-demo')?.addEventListener('click', () => {
-    if (!confirm('Remove all demo companies, employees, and test records?')) return
-    clearDemoData()
-    navigate('settings')
+    if (confirm('Remove demo data?')) { clearDemoData(); navigate('settings') }
   })
 
-  container.querySelector('#btn-export-db').addEventListener('click', () => exportDB())
+  container.querySelector('#btn-export-db').onclick = () => exportDB()
 }
 
-// ---------------------------------------------------------------------------
-// Staff table row
-// ---------------------------------------------------------------------------
-
-function staffRow(t, isAdmin = false) {
-  const d = {
-    'data-tech-id':    t.tech_id,
-    'data-name':       t.name,
-    'data-initials':   t.initials,
-    'data-folder':     t.folder_name  ?? '',
-    'data-iat':        t.iat_number   ?? '',
-    'data-email':      t.email        ?? ''
-  }
-  const attrs = Object.entries(d).map(([k, v]) => `${k}="${esc(String(v))}"`).join(' ')
-
-  return `
-    <tr ${attrs}>
-      <td>${esc(t.name)}</td>
-      <td><strong>${esc(t.initials)}</strong></td>
-      ${isAdmin ? '' : `<td><code>${esc(t.folder_name ?? '—')}</code></td>`}
-      ${isAdmin ? '' : `<td class="td-muted">${esc(t.iat_number ?? '—')}</td>`}
-      <td class="td-muted">${esc(t.email ?? '—')}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-ghost btn-sm btn-edit-staff" data-tech-id="${esc(t.tech_id)}" style="color:var(--navy-mid)">Edit</button>
-        <button class="btn btn-ghost btn-sm btn-del-staff"  data-tech-id="${esc(t.tech_id)}" style="color:var(--red)">Delete</button>
-      </td>
-    </tr>
-  `
-}
-
-function attachStaffEditing(container, navigate) {
-  container.querySelectorAll('.btn-edit-staff').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const techId    = btn.dataset.techId
-      const row       = container.querySelector(`tr[data-tech-id="${techId}"]`)
-      if (!row) return
-
-      const name       = row.dataset.name
-      const initials   = row.dataset.initials
-      const folderName = row.dataset.folder ?? ''
-      const iatNumber  = row.dataset.iat    ?? ''
-      const email      = row.dataset.email  ?? ''
-      const hasFolder  = row.querySelector('td code') !== null
-
-      row.innerHTML = `
-        <td><input class="et-name" value="${esc(name)}" style="width:100%" /></td>
-        <td><input class="et-initials" value="${esc(initials)}" maxlength="6"
-          style="width:80px;text-transform:uppercase" /></td>
-        ${hasFolder ? `<td><input class="et-folder" value="${esc(folderName)}" style="width:90px" /></td>` : ''}
-        ${hasFolder ? `<td><input class="et-iat" value="${esc(iatNumber)}" placeholder="IAT #" style="width:100px" /></td>` : ''}
-        <td><input class="et-email" type="email" value="${esc(email)}" style="width:100%" /></td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-primary btn-sm btn-save-edit">Save</button>
-          <button class="btn btn-ghost   btn-sm btn-cancel-edit">Cancel</button>
-        </td>
-      `
-
-      row.querySelector('.btn-save-edit').addEventListener('click', () => {
-        const newName   = row.querySelector('.et-name').value.trim()
-        const newInit   = row.querySelector('.et-initials').value.trim().toUpperCase()
-        const newFolder = row.querySelector('.et-folder')?.value.trim() || null
-        const newIat    = row.querySelector('.et-iat')?.value.trim()    || null
-        const newEmail  = row.querySelector('.et-email').value.trim()   || null
-        if (!newName || !newInit) { alert('Name and initials are required.'); return }
-        updateTech(techId, { name: newName, initials: newInit, folder_name: newFolder, iat_number: newIat, email: newEmail })
-        navigate('settings')
-      })
-
-      row.querySelector('.btn-cancel-edit').addEventListener('click', () => navigate('settings'))
-    })
-  })
-
-  container.querySelectorAll('.btn-del-staff').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const techId = btn.dataset.techId
-      const row    = container.querySelector(`tr[data-tech-id="${techId}"]`)
-      const name   = row?.dataset.name ?? techId
-      if (!confirm(`Remove ${name}?\n\nThis hides them from new packets. Existing test records are unaffected.`)) return
-      deleteTech(techId)
-      navigate('settings')
-    })
-  })
-}
-
+// --- Image Resize Utility ---
 function resizeImage(file, maxW, maxH) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Could not read file'))
-    reader.onload  = e => {
-      const img    = new Image()
-      img.onerror  = () => reject(new Error('Could not decode image'))
-      img.onload   = () => {
-        const scale  = Math.min(maxW / img.width, maxH / img.height, 1)
+    reader.onload = e => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(maxW / img.width, maxH / img.height, 1)
         const canvas = document.createElement('canvas')
-        canvas.width  = Math.round(img.width  * scale)
-        canvas.height = Math.round(img.height * scale)
+        canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale)
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
         resolve(canvas.toDataURL('image/png'))
       }
