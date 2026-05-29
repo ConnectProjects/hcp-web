@@ -279,7 +279,8 @@ function attachRowHandlers(container, employees, packet, state, navigate) {
   container.querySelectorAll('[data-confirm-skip]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-      const empId  = btn.dataset.confirmSkip;
+       // Force the ID to a Number to match the database type
+      const empId  = Number(btn.dataset.confirmSkip); 
       const reason = container.querySelector(`#skip-reason-${empId}`)?.value ?? 'Not present today';
       
       console.log(`Skipping employee ${empId} for reason: ${reason}`);
