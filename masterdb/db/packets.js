@@ -57,6 +57,12 @@ export function updatePacketStatus(packetId, status) {
     [status, packetId])
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Techs
+// ---------------------------------------------------------------------------
+
 /**
  * Gets all users capable of performing tests (Admins and Technicians).
  * Points to the new 'users' table instead of the legacy 'techs' table.
@@ -68,20 +74,12 @@ export function getTechs() {
       name, 
       initials, 
       folder_name, 
-      role 
+      role
     FROM users 
     WHERE active = 1 
     AND (role = 'admin' OR role = 'aud-tech')
     ORDER BY name ASC
   `);
-}
-
-// ---------------------------------------------------------------------------
-// Techs
-// ---------------------------------------------------------------------------
-
-export function getTechs() {
-  return query("SELECT * FROM techs WHERE active = 1 ORDER BY name ASC")
 }
 
 export function createTech(data) {
