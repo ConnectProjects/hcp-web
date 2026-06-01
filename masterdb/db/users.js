@@ -3,7 +3,8 @@ import { hashPin } from '../../shared/auth-utils.js'
 import { writeJsonFile } from '@shared/fs/sync-folder.js'
 
 export function getAllUsers() {
-  return query("SELECT * FROM users ORDER BY name ASC");
+  // Only return users where active is 1 (true)
+  return query("SELECT * FROM users WHERE active = 1 ORDER BY name ASC");
 }
 
 /**

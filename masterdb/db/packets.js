@@ -57,8 +57,23 @@ export function updatePacketStatus(packetId, status) {
     [status, packetId])
 }
 
-export function getPacket(packetId) {
-  return queryOne('SELECT * FROM packets WHERE packet_id = ?', [packetId])
+/**
+ * Gets all users capable of performing tests (Admins and Technicians).
+ * Points to the new 'users' table instead of the legacy 'techs' table.
+ */
+export function getTechs() {
+  return query(`
+    SELECT 
+      user_id as tech_id, 
+      name, 
+      initials, 
+      folder_name, 
+      role 
+    FROM users 
+    WHERE active = 1 
+    AND (role = 'admin' OR role = 'aud-tech')
+    ORDER BY name ASC
+  `);
 }
 
 // ---------------------------------------------------------------------------
