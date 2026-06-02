@@ -14,11 +14,10 @@ export function renderImportConfirm(container, state, navigate) {
   let packet
   try { packet = JSON.parse(row.value) } catch { navigate('incoming'); return }
 
-  // 1. Resolve Company (by ID or by Name)
+  // 1. Resolve Company
   let company = getCompany(packet.company?.company_id) ??
                 queryOne('SELECT * FROM companies WHERE name = ? COLLATE NOCASE', [packet.company?.name])
 
-  // 2. If not found, look for similar names to suggest
   const fuzzyMatches = !company
     ? query(`SELECT * FROM companies WHERE active = 1 AND name LIKE ? LIMIT 5`, [`%${packet.company?.name ?? ''}%`])
     : []
@@ -27,13 +26,11 @@ export function renderImportConfirm(container, state, navigate) {
   const testedEmps     = employees.filter(e => e.completed_tests?.length > 0)
   const totalTests     = testedEmps.reduce((acc, e) => acc + (e.completed_tests?.length ?? 0), 0)
 
-  // Maintain selection in state
   if (!state._importCoId && company) state._importCoId = company.company_id
 
   render()
 
   function render() {
-    // Button is enabled if we have a company ID selected
     const canImport = !!state._importCoId;
 
     container.innerHTML = `
@@ -61,7 +58,6 @@ export function renderImportConfirm(container, state, navigate) {
           </div>
         </div>
 
-        <!-- COMPANY MATCHING SECTION (Now shows whenever company is missing) -->
         ${!company ? `
           <div class="form-card" style="margin-bottom:20px; border: 2px solid var(--orange);">
             <div class="form-card-header">
@@ -75,7 +71,7 @@ export function renderImportConfirm(container, state, navigate) {
                 ${fuzzyMatches.map(co => `
                   <label class="nv-emp-row" style="cursor:pointer; display:flex; gap:10px; padding:10px; border:1px solid #eee; margin-bottom:5px;">
                     <input type="radio" name="co-match" value="${co.company_id}" ${state._importCoId == co.company_id ? 'checked' : ''} />
-                    <div><strong>${esc(co.name)}</strong> <small>(${co.province})</small></div>
+                    <div><strong>${esc(co.name)}</strong></div>
                   </label>
                 `).join('')}
                 
@@ -89,12 +85,6 @@ export function renderImportConfirm(container, state, navigate) {
 
         <div class="import-results">
           ${testedEmps.map((emp, i) => empResultCard(emp, i)).join('')}
-          ${employees.filter(e => !e.completed_tests?.length).map(e => `
-            <div class="import-emp-row import-emp-row--skipped">
-              <span>${esc(e.last_name)}, ${esc(e.first_name)}</span>
-              <span class="td-muted">Not tested this visit</span>
-            </div>
-          `).join('')}
         </div>
 
         <div id="import-error" class="alert alert-error hidden"></div>
@@ -151,13 +141,13 @@ async function doImport(container, packet, packetId, navigate, state) {
     const safe = (v) => (v === undefined || v === "") ? null : v;
 
     transaction(() => {
-      // 1. Handle New Company Creation
+      // 1. Handle New Company Creation (SCHEMA 2.0: No province column)
       if (resolvedCompanyId === 'new') {
-        run(`INSERT INTO companies (name, province, active) VALUES (?, ?, 1)`, [packet.company.name, province])
+        run(`INSERT INTO companies (name, active) VALUES (?, 1)`, [packet.company.name])
         resolvedCompanyId = queryOne(`SELECT last_insert_rowid() as id`).id
       }
 
-      // 2. Ensure Location exists
+      // 2. Ensure Location exists (SCHEMA 2.0: Province lives here)
       let location = queryOne(`SELECT location_id FROM locations WHERE company_id = ? LIMIT 1`, [resolvedCompanyId])
       if (!location) {
         run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, 'Main Office', ?, 1)`, [resolvedCompanyId, province])
@@ -206,11 +196,14 @@ async function doImport(container, packet, packetId, navigate, state) {
     updatePacketStatus(packetId, 'imported')
     run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
     alert(`Success! Imported ${imported} tests.`);
-    navigate('incoming')
-  } catch (e) {
-    errEl.textContent = `Import failed: ${e.message}`; errEl.classList.remove('hidden')
-    btn.disabled = false; btn.textContent = 'Import Tests'
-  }
+    navigate('packets');
+ } catch (e) {
+    console.error(e);
+    errEl.textContent = `Import failed: ${e.message}`;
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Import Tests';
+ }
 }
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
