@@ -99,6 +99,13 @@ export function renderDataTools(container, state, navigate) {
           </div>
         </div>
       </div>
+
+      // Inside renderDataTools HTML string, add this section:
+<div class="form-card" style="margin-top: 20px;">
+    <h3>Legacy Data</h3>
+    <p class="td-muted" style="font-size: 12px;">Import historical records from standardized CSV files.</p>
+    <button class="btn btn-outline" onclick="navigate('legacy-import')">📥 Launch Legacy Importer</button>
+</div>
     `;
 
     setupEventListeners();

@@ -142,9 +142,9 @@ const NAV_ITEMS = [
   { screen: 'packets',      label: 'Packets',       icon: '📦' },
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'users',        label: 'Team',          icon: '👥' },
-  { screen: 'settings',     label: 'Settings',      icon: '⚙' },
-  { screen: 'legacy-import',label: 'Import Legacy', icon: '📥' },
-  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' }
+  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' },
+  { screen: 'help',         label: 'Help',          icon: '❓' } // Moved here
+  // 'legacy-import' removed from here
 ]
 
 const NAV_PARENT = {
