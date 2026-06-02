@@ -193,3 +193,22 @@ export function getDashboardStats() {
     incomingPackets: queryOne("SELECT COUNT(*) AS n FROM packets WHERE status = 'submitted'")?.n ?? 0
   }
 }
+
+/**
+ * Gets full details for a single test, including worker and HPD info.
+ */
+export function getTestById(id) {
+  return queryOne(`
+    SELECT t.*, 
+           e.first_name, e.last_name, e.dob, e.job_title,
+           l.name as location_name, l.province,
+           c.name as company_name,
+           h.hpd_make_model, h.rated_nrr, h.adequacy
+    FROM tests t
+    JOIN employees e ON t.employee_id = e.employee_id
+    JOIN locations l ON t.location_id = l.location_id
+    JOIN companies c ON l.company_id = c.company_id
+    LEFT JOIN hpd_assessments h ON t.test_id = h.test_id
+    WHERE t.test_id = ?
+  `, [id]);
+}
