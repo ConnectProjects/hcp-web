@@ -86,44 +86,57 @@ export function getComingSoonCompanies(monthsThreshold = 6) {
   `, [cutoffStr])
 }
 
-export function createTest(data) {
-  const classJson = data.classification ? JSON.stringify(data.classification) : null
-  const qJson     = data.questionnaire  ? JSON.stringify(data.questionnaire)  : null
-  const stsFlag   = data.classification?.category === 'EW'  ||
-                    data.classification?.category === 'EWC' ||
-                    data.classification?.category === 'A'   ||
-                    data.classification?.category === 'AC'  ? 1 : 0
+/**
+ * Helper to ensure we never send 'undefined' to the SQLite engine.
+ * SQLite accepts null, but crashes on JavaScript undefined.
+ */
+const nullify = (v) => (v === undefined || v === "" ? null : v);
 
-  run(`INSERT INTO tests
-    (employee_id, location_id, test_date, tech_id, test_type, province,
-     left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
-     right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
-     classification, triggered_rule_id, triggering_freq_hz, triggering_ear,
-     shift_db, sts_flag, counsel_text, tech_notes, questionnaire, packet_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [data.employee_id,
-     data.location_id ?? null,
-     data.test_date,
-     data.tech_id   ?? null,
-     data.test_type ?? 'Periodic',
-     data.province,
-     data.left_500  ?? null, data.left_1k  ?? null, data.left_2k  ?? null, data.left_3k  ?? null,
-     data.left_4k   ?? null, data.left_6k  ?? null, data.left_8k  ?? null,
-     data.right_500 ?? null, data.right_1k ?? null, data.right_2k ?? null, data.right_3k ?? null,
-     data.right_4k  ?? null, data.right_6k ?? null, data.right_8k ?? null,
-     classJson,
-     data.classification?.triggered_rule_id ?? null,
-     data.classification?.triggering_freq_hz != null
-       ? String(data.classification.triggering_freq_hz) : null,
-     data.classification?.triggering_ear ?? null,
-     data.classification?.shift_db ?? null,
-     stsFlag,
-     data.counsel_text ?? null,
-     data.tech_notes   ?? null,
-     qJson,
-     data.packet_id ?? null]
-  )
-  return lastInsertId()
+export function createTest(data) {
+  // 1. Prepare JSON strings safely
+  const classJson = data.classification ? JSON.stringify(data.classification) : null;
+  const qJson     = data.questionnaire  ? JSON.stringify(data.questionnaire)  : null;
+  
+  // 2. Determine STS Flag safely
+  const cat = (data.classification?.category || data.classification || '').toUpperCase();
+  const stsFlag = ['EW', 'EWC', 'A', 'AC'].includes(cat) ? 1 : 0;
+
+  // 3. Execute Insert with sanitized values
+  run(`INSERT INTO tests (
+      employee_id, location_id, test_date, tech_id, test_type, province,
+      left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+      right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
+      classification, triggered_rule_id, triggering_freq_hz, triggering_ear,
+      shift_db, sts_flag, counsel_text, tech_notes, questionnaire, packet_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      nullify(data.employee_id),
+      nullify(data.location_id),
+      nullify(data.test_date),
+      nullify(data.tech_id),
+      nullify(data.test_type || 'Periodic'),
+      nullify(data.province),
+      // Left Ear
+      nullify(data.left_500), nullify(data.left_1k), nullify(data.left_2k), 
+      nullify(data.left_3k), nullify(data.left_4k), nullify(data.left_6k), nullify(data.left_8k),
+      // Right Ear
+      nullify(data.right_500), nullify(data.right_1k), nullify(data.right_2k), 
+      nullify(data.right_3k), nullify(data.right_4k), nullify(data.right_6k), nullify(data.right_8k),
+      // Metadata
+      nullify(classJson),
+      nullify(data.classification?.triggered_rule_id),
+      nullify(data.classification?.triggering_freq_hz),
+      nullify(data.classification?.triggering_ear),
+      nullify(data.classification?.shift_db),
+      stsFlag,
+      nullify(data.counsel_text),
+      nullify(data.tech_notes),
+      nullify(qJson),
+      nullify(data.packet_id)
+    ]
+  );
+  
+  return lastInsertId();
 }
 
 export function updateTest(testId, data) {
