@@ -98,14 +98,12 @@ export function renderDataTools(container, state, navigate) {
             <button class="btn btn-primary" id="btn-execute-loc-move" style="width: 100%; margin-top: 10px; background: #d9534f;">Move Entire Location</button>
           </div>
         </div>
-      </div>
-
-      // Inside renderDataTools HTML string, add this section:
-<div class="form-card" style="margin-top: 20px;">
+      </div> 
+      <div class="form-card" style="margin-top: 20px;">
     <h3>Legacy Data</h3>
     <p class="td-muted" style="font-size: 12px;">Import historical records from standardized CSV files.</p>
     <button class="btn btn-outline" onclick="navigate('legacy-import')">📥 Launch Legacy Importer</button>
-</div>
+    </div>
     `;
 
     setupEventListeners();
