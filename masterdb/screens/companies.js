@@ -7,7 +7,6 @@ export function renderCompanies(container, state, navigate) {
   let companies = getAllCompanies();
 
   const render = () => {
-    // 2. Sort the data before rendering
     const sortedCompanies = sortData(companies, state.companiesSort.key, state.companiesSort.order);
 
     container.innerHTML = `
@@ -18,7 +17,7 @@ export function renderCompanies(container, state, navigate) {
         </div>
 
         <div class="toolbar">
-          <input id="company-search" type="search" class="search-input" placeholder="Search companies…" />
+          <input id="company-search" type="search" class="search-input" placeholder="Search companies…" autocomplete="off" />
           <span class="result-count" id="result-count">${companies.length} companies</span>
         </div>
 
@@ -64,12 +63,21 @@ export function renderCompanies(container, state, navigate) {
   };
 
   const attachHandlers = () => {
-    // Search logic
-    container.querySelector('#company-search').addEventListener('input', e => {
+    const searchInput = container.querySelector('#company-search');
+    const tbody = container.querySelector('#companies-tbody');
+    const countLabel = container.querySelector('#result-count');
+
+    // FIX: Search logic updates ONLY the table body to prevent losing focus
+    searchInput.addEventListener('input', e => {
       const q = e.target.value.trim();
       companies = q ? searchCompanies(q) : getAllCompanies();
-      // Re-render to apply current sort to search results
-      render(); 
+      
+      // Re-sort the filtered results
+      const sorted = sortData(companies, state.companiesSort.key, state.companiesSort.order);
+      
+      tbody.innerHTML = renderRows(sorted);
+      countLabel.textContent = `${companies.length} companies`;
+      attachRowHandlers(container, navigate);
     });
 
     // Header Sort logic
@@ -77,20 +85,18 @@ export function renderCompanies(container, state, navigate) {
       th.style.cursor = 'pointer';
       th.addEventListener('click', () => {
         const key = th.dataset.key;
-        // Toggle order if same key, otherwise default to asc
         if (state.companiesSort.key === key) {
             state.companiesSort.order = state.companiesSort.order === 'asc' ? 'desc' : 'asc';
         } else {
             state.companiesSort.key = key;
             state.companiesSort.order = 'asc';
         }
-        render();
+        render(); // Full render is fine for sorting clicks
       });
     });
 
     attachRowHandlers(container, navigate);
 
-    // Modal logic
     const modal = container.querySelector('#modal-add');
     container.querySelector('#btn-add-company').onclick = () => modal.classList.remove('hidden');
     container.querySelector('#modal-close-add').onclick = () => modal.classList.add('hidden');
@@ -125,16 +131,13 @@ function sortData(data, key, order) {
     let valA = a[key];
     let valB = b[key];
 
-    // Handle nulls
     if (valA === null || valA === undefined) valA = '';
     if (valB === null || valB === undefined) valB = '';
 
-    // Numeric comparison
     if (typeof valA === 'number' && typeof valB === 'number') {
       return order === 'asc' ? valA - valB : valB - valA;
     }
 
-    // String/Date comparison
     valA = String(valA).toLowerCase();
     valB = String(valB).toLowerCase();
 
