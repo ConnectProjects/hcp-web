@@ -6,7 +6,7 @@ import { openReferralPrintWindow } from '@shared/referral-form.js'
 const REFERRAL_CATS = new Set(['A', 'AC', 'EW'])
 
 export function renderEmployeeDetail(container, state, navigate) {
-  const empId = state.currentEmployee?.employee_id
+  const empId = state.currentEmployee?.employee_id || state.params?.id
   if (!empId) { navigate('companies'); return }
 
   redraw(container, state, navigate, empId)
@@ -107,10 +107,12 @@ function redraw(container, state, navigate, empId) {
           <h2>Test History</h2>
           <button class="btn btn-outline btn-sm" id="btn-manual-test" style="margin-left:auto">+ Manual Entry</button>
         </div>
-        ${tests.length === 0
-          ? '<p class="empty-note" style="padding:16px">No test records on file.</p>'
-          : tests.map(t => renderTestCard(t, baseline, emp, location, orgProfile)).join('')
-        }
+        <div class="test-history-list">
+          ${tests.length === 0
+            ? '<p class="empty-note" style="padding:16px">No test records on file.</p>'
+            : tests.map(t => renderTestCard(t, baseline, emp, location, orgProfile)).join('')
+          }
+        </div>
       </div>
     </div>
 
@@ -180,6 +182,16 @@ function redraw(container, state, navigate, empId) {
   container.querySelector('#btn-back-location').addEventListener('click', () =>
     navigate('location-detail', { currentLocation: { location_id: locationId } })
   )
+
+  // Test Detail Navigation (Clicking a card)
+  container.querySelectorAll('.test-card').forEach(card => {
+    card.addEventListener('click', e => {
+      // Don't navigate if clicking a button inside the card
+      if (e.target.closest('button')) return;
+      const testId = Number(card.dataset.testId)
+      navigate('test-detail', { id: testId })
+    })
+  })
 
   // Referral buttons
   container.querySelectorAll('.btn-print-referral').forEach(btn => {
@@ -302,15 +314,18 @@ function renderTestCard(test, baseline, emp, location, orgProfile) {
   const questionnaire = test.questionnaire ? parseJson(test.questionnaire) : null
 
   return `
-    <div class="test-card ${test.sts_flag ? 'test-card--flagged' : ''}">
+    <div class="test-card ${test.sts_flag ? 'test-card--flagged' : ''} clickable-card" data-test-id="${test.test_id}">
       <div class="test-card-header">
         <div class="test-card-meta">
           <span class="test-date">${esc(test.test_date)}</span>
           <span class="test-type">${esc(test.test_type)}</span>
-          ${cls ? `<span class="class-badge class-${(cat ?? 'n').toLowerCase()}">${esc(cat)}</span>` : ''}
+          ${cat ? `<span class="class-badge class-${(cat ?? 'n').toLowerCase()}">${esc(cat)}</span>` : ''}
           ${test.sts_flag ? '<span class="sts-chip">STS</span>' : ''}
-          <button class="btn btn-link btn-sm btn-edit-test" data-test-id="${test.test_id}" style="text-decoration:none">Edit</button>
-          <button class="btn btn-link btn-sm btn-delete-test" data-test-id="${test.test_id}" style="color:var(--red);text-decoration:none">Remove</button>
+          <div style="margin-left: auto; display: flex; gap: 8px; align-items: center;">
+            <button class="btn btn-link btn-sm btn-edit-test" data-test-id="${test.test_id}" style="text-decoration:none">Edit</button>
+            <button class="btn btn-link btn-sm btn-delete-test" data-test-id="${test.test_id}" style="color:var(--red);text-decoration:none">Remove</button>
+            <span class="td-muted" style="font-size: 18px; margin-left: 4px;">›</span>
+          </div>
         </div>
         ${needsRef ? `
           <div class="referral-status-row">
@@ -328,48 +343,10 @@ function renderTestCard(test, baseline, emp, location, orgProfile) {
 
       ${buildAudiogramCard(test, baseline ? extractThresholds(baseline) : null, test.test_type !== 'Baseline')}
 
-      ${questionnaire?.pre ? `
-        <div class="test-questionnaire">
-          <div class="test-counsel-label">Pre-Test Questionnaire</div>
-          <div class="q-grid">
-            <div class="q-item"><span class="q-label">Noise &lt; 2h:</span>
-              <span class="q-val">${questionnaire.pre.noise_2h === true ? `Yes (${questionnaire.pre.noise_2h_duration})` : questionnaire.pre.noise_2h === false ? 'No' : '—'}</span>
-            </div>
-            <div class="q-item"><span class="q-label">Wears HPD:</span>
-              <span class="q-val">${questionnaire.pre.wear_hpd === true ? 'Yes' : questionnaire.pre.wear_hpd === false ? 'No' : '—'}</span>
-            </div>
-            ${questionnaire.pre.wear_hpd === true ? `
-              <div class="q-item"><span class="q-label">HPD Class:</span><span class="q-val">${esc(questionnaire.pre.hpd_class || '—')}</span></div>
-              <div class="q-item"><span class="q-label">HPD Style:</span><span class="q-val">${esc(questionnaire.pre.hpd_style || '—')}</span></div>
-            ` : ''}
-            <div class="q-item"><span class="q-label">Employer Info:</span>
-              <span class="q-val">${questionnaire.pre.employer_info ? 'Yes' : 'No'}</span>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      ${test.counsel_text ? `
-        <div class="test-counsel">
-          <div class="test-counsel-label">Counsel</div>
-          <div class="test-counsel-text">${esc(test.counsel_text)}</div>
-        </div>
-      ` : ''}
-
       ${test.tech_notes ? `
-        <div class="test-counsel">
+        <div class="test-counsel" style="border-top: none; padding-top: 0;">
           <div class="test-counsel-label">Tech Notes</div>
           <div class="test-counsel-text td-muted">${esc(test.tech_notes)}</div>
-        </div>
-      ` : ''}
-
-      ${test.hpd_make_model ? `
-        <div class="test-hpd-row">
-          <span class="test-hpd-label">HPD:</span>
-          <span>${esc(test.hpd_make_model)}</span>
-          <span class="td-muted">NRR ${test.rated_nrr} dB → ${test.derated_nrr?.toFixed(1)} dB derating</span>
-          <span class="td-muted">LEX: ${test.lex8hr} dB(A)</span>
-          <span class="badge ${adequacyClass(test.adequacy)}">${esc(test.adequacy ?? '—')}</span>
         </div>
       ` : ''}
     </div>
@@ -412,26 +389,6 @@ function buildAudiogramCard(test, baselineThresholds, showShifts) {
         <tbody>
           <tr class="ear-right"><td class="th-ear">R</td>${row('right')}</tr>
           <tr class="ear-left" ><td class="th-ear">L</td>${row('left')}</tr>
-          ${showShifts && baselineThresholds ? `
-            <tr class="shift-row">
-              <td class="th-ear td-muted" style="font-size:10px">Δ R</td>
-              ${FREQ_KEYS.right.map(key => {
-                const cur = test[key]; const base = baselineThresholds[key]
-                if (cur == null || base == null) return '<td>—</td>'
-                const s = Number(cur) - Number(base)
-                return `<td class="${s > 0 ? 'shift-worse' : s < 0 ? 'shift-better' : ''}">${s > 0 ? '+' : ''}${s}</td>`
-              }).join('')}
-            </tr>
-            <tr class="shift-row">
-              <td class="th-ear td-muted" style="font-size:10px">Δ L</td>
-              ${FREQ_KEYS.left.map(key => {
-                const cur = test[key]; const base = baselineThresholds[key]
-                if (cur == null || base == null) return '<td>—</td>'
-                const s = Number(cur) - Number(base)
-                return `<td class="${s > 0 ? 'shift-worse' : s < 0 ? 'shift-better' : ''}">${s > 0 ? '+' : ''}${s}</td>`
-              }).join('')}
-            </tr>
-          ` : ''}
         </tbody>
       </table>
     </div>
@@ -454,7 +411,8 @@ function loadOrgProfile() {
 
 function getTechForTest(techId) {
   if (!techId) return { name: '', iat_number: '' }
-  return queryOne('SELECT name, iat_number FROM techs WHERE tech_id = ?', [techId]) ?? { name: '', iat_number: '' }
+  // Updated to join from users table
+  return queryOne('SELECT name, iat_number FROM users WHERE user_id = ?', [techId]) ?? { name: '', iat_number: '' }
 }
 
 function extractThresholds(record) {
@@ -481,4 +439,23 @@ function adequacyClass(a) {
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+// Add CSS for clickable cards if not already in style.css
+const styleId = 'employee-detail-styles';
+if (!document.getElementById(styleId)) {
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = `
+    .clickable-card {
+      transition: transform 0.1s, box-shadow 0.1s;
+      cursor: pointer;
+    }
+    .clickable-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--navy-light);
+    }
+  `;
+  document.head.appendChild(style);
 }
