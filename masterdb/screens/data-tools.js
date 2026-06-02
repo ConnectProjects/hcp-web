@@ -1,5 +1,5 @@
 import { query, queryOne, run, transaction } from '../db/sqlite.js'
-import { JsonDatabase } from '../shared/fs/json-database.js'
+import { JsonDatabase } from '../../shared/fs/json-database.js'
 import { createTest } from '../db/tests.js'
 import { createBaseline } from '../db/employees.js'
 
