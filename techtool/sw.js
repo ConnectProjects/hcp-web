@@ -1,4 +1,4 @@
-const CACHE_NAME = 'techtool-v1';
+const CACHE_NAME = 'techtool-v2';
 
 // Add only the absolute essentials here
 const ASSETS_TO_CACHE = [
