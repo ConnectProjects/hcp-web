@@ -2,7 +2,7 @@
  * screens/help.js
  *
  * Full Technical Manual for MasterDB.
- * Features: Admin-editable sections synced via OneDrive.
+ * Features: Admin-editable sections, Side-nav layout, and OneDrive Sync.
  */
 
 import { query, queryOne, run } from '../db/sqlite.js'
@@ -44,8 +44,8 @@ export function renderHelp(container, state, navigate) {
           <button class="help-nav-item" data-section="troubleshooting">Troubleshooting</button>
         </nav>
 
-        <div class="help-content-wrap" style="position:relative;">
-          ${isAdmin ? `<button class="btn btn-sm btn-primary" id="btn-edit-help" style="position:absolute; top:10px; right:10px; z-index:10; background:var(--navy-mid);">Edit Section</button>` : ''}
+        <div class="help-content-wrap">
+          ${isAdmin ? `<button class="btn btn-sm btn-primary" id="btn-edit-help">Edit Section</button>` : ''}
           <div class="help-content" id="help-content"></div>
         </div>
       </div>
@@ -57,8 +57,8 @@ export function renderHelp(container, state, navigate) {
       <div class="modal-box modal-box--wide">
         <div class="modal-header"><h2>Edit Help Content (HTML)</h2></div>
         <div class="modal-body">
-          <textarea id="help-editor" style="width:100%; height:400px; font-family:monospace; font-size:12px; padding:10px; border:1px solid #ccc;"></textarea>
-          <p style="font-size:11px; color:#666; margin-top:10px;">Note: Use standard HTML tags. Changes will sync to all users on OneDrive.</p>
+          <textarea id="help-editor" style="width:100%; height:450px; font-family:monospace; font-size:12px; padding:15px; border:1px solid #ccc; border-radius:8px;"></textarea>
+          <p style="font-size:11px; color:#666; margin-top:10px;">Note: Changes will sync to all users via OneDrive.</p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" id="btn-edit-cancel">Cancel</button>
@@ -74,18 +74,16 @@ export function renderHelp(container, state, navigate) {
   const editModal = container.querySelector('#modal-edit-help');
   const editor    = container.querySelector('#help-editor');
 
-  // Load content from DB with Fallback to hardcoded SECTIONS
   function showSection(id) {
     currentSection = id;
     navBtns.forEach(b => b.classList.toggle('active', b.dataset.section === id));
     
-    // Check if we have a custom version in the database
     let content = '';
     try {
         const row = queryOne("SELECT content FROM help_content WHERE section_id = ?", [id]);
         content = row ? row.content : SECTIONS[id];
     } catch (e) {
-        content = SECTIONS[id]; // Table doesn't exist yet
+        content = SECTIONS[id];
     }
 
     contentEl.innerHTML = content || '<p>Section not found.</p>';
@@ -93,7 +91,6 @@ export function renderHelp(container, state, navigate) {
   }
 
   // --- Handlers ---
-
   container.querySelector('#btn-back-help').onclick = () => navigate(state.helpReturnScreen || 'dashboard');
 
   navBtns.forEach(btn => {
@@ -102,37 +99,32 @@ export function renderHelp(container, state, navigate) {
 
   if (isAdmin) {
     container.querySelector('#btn-edit-help').onclick = () => {
-        editor.value = contentEl.innerHTML;
+        editor.value = contentEl.innerHTML.trim();
         editModal.classList.remove('hidden');
     };
 
     container.querySelector('#btn-edit-cancel').onclick = () => editModal.classList.add('hidden');
 
     container.querySelector('#btn-edit-save').onclick = async () => {
-        const newContent = editor.value;
-        
-        // 1. Save to local SQLite
-        run("INSERT OR REPLACE INTO help_content (section_id, content) VALUES (?, ?)", [currentSection, newContent]);
-        
-        // 2. Push to OneDrive so others see it
+        run("INSERT OR REPLACE INTO help_content (section_id, content) VALUES (?, ?)", [currentSection, editor.value]);
         if (state.syncFolder) {
-            const allHelp = query("SELECT * FROM help_content");
-            await JsonDatabase.pushTable(state.syncFolder, 'help_content', allHelp);
+            await JsonDatabase.pushTable(state.syncFolder, 'help_content', query("SELECT * FROM help_content"));
         }
-
         editModal.classList.add('hidden');
         showSection(currentSection);
-        alert("Help section updated and synced.");
     };
   }
 
   showSection('overview');
 }
 
+// ---------------------------------------------------------------------------
+// THE ENCYCLOPEDIA CONTENT (Default Fallback)
+// ---------------------------------------------------------------------------
 const SECTIONS = {
 overview: `
   <h2>What is MasterDB?</h2>
-  <p>MasterDB is the administrative hub of the Hearing Conservation Platform. It operates on a <strong>Shared Database Model</strong>, where data is stored as secure JSON files on OneDrive.</p>
+  <p>MasterDB is the administrative hub of the Hearing Conservation Platform. It operates on a <strong>Shared Database Model</strong>, where data is stored as secure JSON files on your organization's OneDrive.</p>
   <h3>The 4-Tier Hierarchy (Schema 2.0)</h3>
   <ul>
     <li><strong>Company:</strong> The parent entity (e.g. Kal Tire).</li>
@@ -163,7 +155,32 @@ troubleshooting: `
   <h2>Troubleshooting</h2>
   <p>If data is missing, ensure the Sync Dot is Solid Green (●). Use <strong>Clear Site Data</strong> in DevTools if the app hangs.</p>
 `
-// ... You can add your full technical tables back here ...
+};
+
+// ---------------------------------------------------------------------------
+// STYLES (Restored for the Sidebar Layout)
+// ---------------------------------------------------------------------------
+const HELP_STYLES = `
+  .help-layout { display: grid; grid-template-columns: 220px 1fr; gap: 20px; align-items: start; margin-top: 20px; }
+  .help-nav { background: #fff; border: 1px solid var(--grey-200); border-radius: 8px; padding: 8px 0; position: sticky; top: 16px; }
+  .help-nav-section { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--grey-500); padding: 12px 14px 4px; }
+  .help-nav-item { display: block; width: 100%; text-align: left; padding: 8px 14px; font-size: 13px; background: none; border: none; cursor: pointer; color: var(--grey-700); transition: background .1s; }
+  .help-nav-item:hover { background: var(--grey-50); }
+  .help-nav-item.active { background: var(--navy-light); color: var(--navy-mid); font-weight: 600; border-left: 4px solid var(--navy-mid); }
+  
+  .help-content-wrap { position: relative; min-height: 600px; }
+  .help-content { background: #fff; border: 1px solid var(--grey-200); border-radius: 8px; padding: 30px 40px; overflow-y: auto; }
+  .help-content h2 { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 15px; border-bottom: 2px solid var(--grey-200); padding-bottom: 10px; }
+  .help-content p { font-size: 14px; line-height: 1.8; color: var(--grey-700); margin-bottom: 15px; }
+  
+  #btn-edit-help { position: absolute; top: 15px; right: 15px; z-index: 5; }
+`;
+
+if (!document.getElementById('help-styles')) {
+  const style = document.createElement('style');
+  style.id = 'help-styles';
+  style.textContent = HELP_STYLES;
+  document.head.appendChild(style);
 }
 
 function esc(s) {
