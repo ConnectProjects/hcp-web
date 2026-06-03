@@ -134,6 +134,7 @@ const SCREENS = {
   'location-detail': renderLocationDetail,
   'data-tools':      renderDataTools,
   'users':           renderUsers,
+  'test-detail':     renderTestDetail,
 }
 
 const NAV_ITEMS = [
@@ -158,7 +159,8 @@ const NAV_PARENT = {
   'province-rules':  'settings',
   'location-detail': 'companies',
   'data-tools':      'data-tools',
-  'users':           'users'
+  'users':           'users',
+  'test-detail':     'employees'
 }
 
 function isNavActive(current, navScreen) {
