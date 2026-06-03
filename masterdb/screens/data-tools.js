@@ -127,40 +127,39 @@ export function renderDataTools(container, state, navigate) {
     btn.textContent = "Importing...";
 
     try {
-        transaction(() => {
-            for (const row of parsedRows) {
-                // 1. Resolve Company/Location IDs (Same logic as we built before)
-                let co = queryOne("SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE", [row.rowCompany]);
-                if (!co) {
-                    run("INSERT INTO companies (name, active) VALUES (?, 1)", [row.rowCompany]);
-                    co = { company_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-                
-                let loc = queryOne("SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE", [co.company_id, row.rowLocation]);
-                if (!loc) {
-                    run("INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)", [co.company_id, row.rowLocation, row.province]);
-                    loc = { location_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-
-                // 2. Resolve Employee
-                let emp = queryOne("SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ?", [loc.location_id, row.firstName, row.lastName]);
-                if (!emp) {
-                    run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status) VALUES (?, ?, ?, ?, ?, 'active')", 
-                        [loc.location_id, row.firstName, row.lastName, row.dob, row.occupation]);
-                    emp = { employee_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-
-                // 3. Create Test
-                createTest({ ...row, employee_id: emp.employee_id, location_id: loc.location_id });
-
-                // 4. NEW: Auto-Baseline Logic
-                // If this is the ONLY test for this person, make it a baseline too
-                const count = queryOne("SELECT COUNT(*) as n FROM tests WHERE employee_id = ?", [emp.employee_id]).n;
-                if (count === 1) {
-                    createBaseline(emp.employee_id, loc.location_id, row.testDate, row);
-                }
+    transaction(() => {
+        for (const row of parsedRows) {
+            // 1. Resolve Company/Location (Logic remains same)
+            let co = queryOne("SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE", [row.rowCompany]);
+            if (!co) {
+                run("INSERT INTO companies (name, active) VALUES (?, 1)", [row.rowCompany]);
+                co = { company_id: queryOne("SELECT last_insert_rowid() as id").id };
             }
-        });
+            let loc = queryOne("SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE", [co.company_id, row.rowLocation]);
+            if (!loc) {
+                run("INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)", [co.company_id, row.rowLocation, row.province]);
+                loc = { location_id: queryOne("SELECT last_insert_rowid() as id").id };
+            }
+
+            // 2. Resolve Employee
+            let emp = queryOne("SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ?", [loc.location_id, row.firstName, row.lastName]);
+            if (!emp) {
+                run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status) VALUES (?, ?, ?, ?, ?, 'active')", 
+                    [loc.location_id, row.firstName, row.lastName, row.dob, row.occupation]);
+                emp = { employee_id: queryOne("SELECT last_insert_rowid() as id").id };
+            }
+
+            // 3. Create Test
+            createTest({ ...row, employee_id: emp.employee_id, location_id: loc.location_id });
+
+            // 4. NEW: AUTO-BASELINE CHECK
+            // Count tests for this employee. If this was the first one, mirror it to baselines.
+            const testCount = queryOne("SELECT COUNT(*) as n FROM tests WHERE employee_id = ?", [emp.employee_id]).n;
+            if (testCount === 1) {
+                createBaseline(emp.employee_id, loc.location_id, row.testDate, row);
+            }
+        }
+    });
 
         alert("Import successful!");
         if (state.syncFolder) await JsonDatabase.pushMaster(state.syncFolder, query);
