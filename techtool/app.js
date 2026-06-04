@@ -78,11 +78,32 @@ function loadStateFromSlot() {
 }
 
 export function navigate(screen, params = {}) {
+  console.log(`🚀 Navigating to: ${screen}`, params);
+  
   if (!SCREENS[screen]) return;
+  
+  // 1. Save whatever is currently happening in the active booth
   saveStateToSlot();
+
+  // 2. Update the main state with the new screen and parameters
   state.screen = screen;
+  state.params = params;
   Object.assign(state, params);
-  saveStateToSlot();
+
+  // 3. CRITICAL: If we are going to a test, make sure the active booth slot
+  // is immediately updated with the new employee.
+  if (screen === 'test-entry' && params.currentEmployee) {
+    const slot = state.slots[state.activeSlot];
+    slot.currentEmployee = params.currentEmployee;
+    slot.currentPacket   = state.currentPacket;
+    // Reset data for a fresh test unless 'keepData' is specified
+    if (!params.keepData) {
+        slot.testData = {};
+        slot.techNotes = '';
+    }
+  }
+
+  // 4. Draw the UI
   paint();
 }
 

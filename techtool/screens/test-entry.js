@@ -1,12 +1,24 @@
 import { savePacket } from '../db/idb.js'
 
 export function renderTestEntry(container, state, navigate) {
+  // 1. Try to get the employee from the state parameters first, 
+  // then fall back to the active slot.
+  const emp = state.currentEmployee || state.slots[state.activeSlot].currentEmployee;
+  const packet = state.currentPacket || state.slots[state.activeSlot].currentPacket;
   const slot = state.slots[state.activeSlot];
-  const emp = slot.currentEmployee;
-  const packet = state.currentPacket;
+  
   const baseline = emp?.baseline || null;
 
-  if (!emp || !packet) { navigate('employee-list'); return; }
+  // 2. If we still don't have an employee, we can't show the form.
+  if (!emp) {
+    console.error("❌ renderTestEntry: No employee found in state or slot.");
+    container.innerHTML = `
+        <div class="page">
+            <div class="alert alert-error">Error: No worker selected for this booth.</div>
+            <button class="btn btn-primary" onclick="navigate('employee-list')">Return to Employee List</button>
+        </div>`;
+    return;
+  }
 
   container.innerHTML = `
     <div class="tech-tool-container">
