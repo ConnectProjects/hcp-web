@@ -1,3 +1,4 @@
+import { TimeService }         from '../../shared/time-utils.js'
 import { openDB, getSetting, getAllPackets } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
@@ -141,6 +142,6 @@ const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule'
 const NAV_ITEMS = [ { screen: 'dashboard', label: 'Dashboard', icon: '⊞' }, { screen: 'schedule', label: 'Packets', icon: '📅' }, { screen: 'calendar', label: 'Calendar', icon: '🗓' }, { screen: 'settings', label: 'Settings', icon: '⚙' }, { screen: 'help', label: 'Help', icon: '?' } ];
 const NAV_PARENT = { 'company': 'schedule', 'employee-list': 'schedule', 'test-entry': 'schedule', 'sync': 'schedule', 'training': 'settings', 'new-visit': 'new-visit' };
 function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen; }
-async function boot() { const techName = await getSetting('tech_name'); const techInitials = await getSetting('tech_initials'); state.logoUrl = (await getSetting('logo_url')) ?? null; await loadAndApplyTheme(); if (techName && techInitials) { state.user = { name: techName, initials: techInitials, tech_id: techInitials, folder_name: await getSetting('tech_folder_name') }; state.packets = await getAllPackets(); state.syncFolder = await querySyncFolder(); navigate('dashboard'); } else { navigate('login'); } }
+async function boot() { await TimeService.sync(); const techName = await getSetting('tech_name'); const techInitials = await getSetting('tech_initials'); state.logoUrl = (await getSetting('logo_url')) ?? null; await loadAndApplyTheme(); if (techName && techInitials) { state.user = { name: techName, initials: techInitials, tech_id: techInitials, folder_name: await getSetting('tech_folder_name') }; state.packets = await getAllPackets(); state.syncFolder = await querySyncFolder(); navigate('dashboard'); } else { navigate('login'); } }
 openDB().then(boot);
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

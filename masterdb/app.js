@@ -1,3 +1,4 @@
+import { TimeService } from '../shared/time-utils.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
@@ -176,6 +177,7 @@ const NAV_PARENT = {
 function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen }
 
 async function boot() {
+  await TimeService.sync(); // Sync with network time immediately
   await initDB(); await initSchema();
   state.syncFolder = await querySyncFolder();
   state.logoUrl = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;
