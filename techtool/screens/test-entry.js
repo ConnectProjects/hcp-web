@@ -1,4 +1,5 @@
 import { savePacket } from '../db/idb.js'
+import { TimeService } from '../../shared/time-utils.js'
 
 export function renderTestEntry(container, state, navigate) {
   const slot = state.slots[state.activeSlot];
@@ -210,6 +211,9 @@ export function renderTestEntry(container, state, navigate) {
     if (!container.querySelector('#chk-confirm').checked) return alert("Please check the confirmation box.");
 
     const testResult = {
+        const testResult = {
+        test_date: TimeService.getTimestamp(), // Full ISO timestamp
+        timezone: TimeService.getTimezone(),   // Store the timezone name
         test_date: new Date().toISOString().split('T')[0],
         tech_id: state.user.tech_id,
         history: {},
