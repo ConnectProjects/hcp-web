@@ -1,9 +1,9 @@
-import { renderLogs } from './screens/logs.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
-import { renderTestDetail } from './screens/test-detail.js'
-import { initDB, query, queryOne, run, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
+import { renderLogs }      from './screens/logs.js' // NEW
+import { renderTestDetail }from './screens/test-detail.js'
+import { initDB, query, queryOne, run, logAction, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { getSyncFolder, querySyncFolder, pickSyncFolder } from '@shared/fs/sync-folder.js'
 import { JsonDatabase }       from '@shared/fs/json-database.js'
@@ -27,54 +27,38 @@ import { renderHelp }         from './screens/help.js'
 import { renderLocationDetail } from './screens/location-detail.js'
 import { ROLES, PERMISSIONS } from '../shared/auth-utils.js'
 
-// ---------------------------------------------------------------------------
-// App state
-// ---------------------------------------------------------------------------
-
 export const state = {
-  screen:          'login',
-  user:            null, 
-  syncFolder:      null,
-  logoUrl:         null,
-  orgProfile:      null,
-  currentCompany:  null,
+  screen: 'login',
+  user: null, 
+  syncFolder: null,
+  logoUrl: null,
+  orgProfile: null,
+  currentCompany: null,
   currentEmployee: null,
-  pendingPacket:   null,
-  params:          {},
+  pendingPacket: null,
+  params: {},
   cloudTimestamps: {},
-  isOutofSync:     false
+  isOutofSync: false
 }
-
-// Expose state to window for console access/debugging
 window.state = state;
 
-// ---------------------------------------------------------------------------
-// Navigation & Role Guard
-// ---------------------------------------------------------------------------
-
 export function navigate(screen, params = {}) {
-  // 1. Force Login if no user
   if (!state.user && screen !== 'login') {
     state.screen = 'login';
     paint();
     return;
   }
 
-  // 2. Permission Check (Guard)
   if (state.user && screen !== 'login') {
     const role = state.user.role;
-    
-    // Block Technicians from MasterDB entirely
     if (role === ROLES.TECH) {
-        alert("Access Denied: Technicians are restricted to TechTool.");
+        alert("Access Denied.");
         logout();
         return;
     }
-
-    // Check against PERMISSIONS map in shared/auth-utils.js
     const allowed = PERMISSIONS[role] || [];
     if (role !== ROLES.SUPER_ADMIN && role !== ROLES.ADMIN && !allowed.includes(screen)) {
-        alert("Access Denied: You do not have permission to view this screen.");
+        alert("Access Denied: Restricted screen.");
         return;
     }
   }
@@ -83,32 +67,23 @@ export function navigate(screen, params = {}) {
   state.params = params;
   Object.assign(state, params);
   
-  // Log the action (Audit Trail)
-  logActivity(`Navigated to ${screen}`);
+  // NEW: Automatically log every screen transition
+  logAction(state, "NAVIGATE", `Viewed ${screen}`);
   
   paint();
 }
 
-// ---------------------------------------------------------------------------
-// UI Rendering
-// ---------------------------------------------------------------------------
-
 function paint() {
   const app = document.getElementById('app')
   const renderFn = SCREENS[state.screen]
-  
-  if (!renderFn) {
-    app.innerHTML = `<div class="error-screen"><h2>Unknown screen: ${state.screen}</h2></div>`
-    return
-  }
+  if (!renderFn) return;
 
   if (state.screen === 'login') {
-    app.innerHTML = ''
-    renderFn(app, state, navigate)
-    return
+    app.innerHTML = '';
+    renderFn(app, state, navigate);
+    return;
   }
 
-  // Filter Sidebar based on Permissions
   const filteredNavItems = NAV_ITEMS.filter(item => {
     if (state.user?.role === ROLES.SUPER_ADMIN || state.user?.role === ROLES.ADMIN) return true;
     return PERMISSIONS[state.user?.role]?.includes(item.screen);
@@ -117,9 +92,7 @@ function paint() {
   app.innerHTML = `
     <div class="app-shell">
       <nav class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-          <div class="sidebar-logo-img">${BrandLogo}</div>
-        </div>
+        <div class="sidebar-brand"><div class="sidebar-logo-img">${BrandLogo}</div></div>
         <ul class="sidebar-nav">
           ${filteredNavItems.map(item => `
             <li>
@@ -134,13 +107,10 @@ function paint() {
         <div class="sidebar-footer">
           <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:8px;">
             <span class="user-name">${esc(state.user?.name)}</span>
-            <span class="user-role-tag">${state.user?.role.replace('-', ' ').toUpperCase()}</span>
+            <span class="user-role-tag">${state.user?.role.toUpperCase()}</span>
             <button id="btn-logout" class="logout-link">Logout</button>
           </div>
-          
-          <!-- Folder Persistence Indicator -->
-          <div id="sync-trigger" class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}" 
-               title="${state.syncFolder ? 'OneDrive Connected' : 'OneDrive Disconnected - Click to Reconnect'}">
+          <div id="sync-trigger" class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
             ${state.syncFolder ? '●' : '○'} Sync
           </div>
         </div>
@@ -151,136 +121,69 @@ function paint() {
     </div>
   `
 
-  // Event Listeners
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
-
   app.querySelector('#btn-logout').onclick = logout;
-
-  // Persistence Handshake: Click to re-authorize
   app.querySelector('#sync-trigger').onclick = async () => {
     const handle = await getSyncFolder();
-    if (handle) {
-        state.syncFolder = handle;
-        state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run);
-        paint();
-    } else {
-        const newHandle = await pickSyncFolder();
-        if (newHandle) location.reload();
-    }
+    if (handle) { state.syncFolder = handle; paint(); }
+    else { const newH = await pickSyncFolder(); if (newH) location.reload(); }
   };
 
   renderFn(document.getElementById('main-content'), state, navigate)
 }
 
-// ---------------------------------------------------------------------------
-// System Actions
-// ---------------------------------------------------------------------------
-
-async function logActivity(action) {
-  if (!state.user) return;
-  try {
-    run(`INSERT INTO system_log (log_id, user_id, user_name, action, details) VALUES (?, ?, ?, ?, ?)`,
-        [self.crypto.randomUUID(), state.user.user_id, state.user.name, action, ""]);
-  } catch (e) { console.warn("Log failed", e); }
-}
-
 export function logout() {
-  if (confirm("Logout of MasterDB?")) {
-    localStorage.removeItem('masterdb_user_id');
-    state.user = null;
-    navigate('login');
-  }
+  localStorage.removeItem('masterdb_user_id');
+  state.user = null;
+  navigate('login');
 }
-
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
 
 const SCREENS = {
-  login:             renderLogin,
-  dashboard:         renderDashboard,
-  companies:         renderCompanies,
-  'company-detail':  renderCompanyDetail,
-  'employee-detail': renderEmployeeDetail,
-  'test-detail':     renderTestDetail,
-  employees:         renderEmployees,
-  'generate-packet': renderGeneratePacket,
-  packets:           renderPackets,
-  incoming:          renderIncoming,
-  'rejected-packets': renderRejectedPackets,
-  'import-confirm':  renderImportConfirm,
-  settings:          renderSettings,
-  'province-rules':  renderProvinceRules,
-  reports:           renderReports,
-  'legacy-import':   renderLegacyImport,
-  help:              renderHelp,
-  'location-detail': renderLocationDetail,
-  'data-tools':      renderDataTools,
-  'users':           renderUsers,
-  'logs':            renderLogs,
+  login: renderLogin, dashboard: renderDashboard, companies: renderCompanies,
+  'company-detail': renderCompanyDetail, 'employee-detail': renderEmployeeDetail,
+  'test-detail': renderTestDetail, employees: renderEmployees,
+  'generate-packet': renderGeneratePacket, packets: renderPackets,
+  incoming: renderIncoming, 'rejected-packets': renderRejectedPackets,
+  'import-confirm': renderImportConfirm, settings: renderSettings,
+  'province-rules': renderProvinceRules, reports: renderReports,
+  'legacy-import': renderLegacyImport, help: renderHelp,
+  'location-detail': renderLocationDetail, 'data-tools': renderDataTools,
+  'users': renderUsers, 'logs': renderLogs // REGISTERED
 }
 
 const NAV_ITEMS = [
-  { screen: 'dashboard',    label: 'Dashboard',     icon: '⊞' },
-  { screen: 'companies',    label: 'Companies',     icon: '🏭' },
-  { screen: 'employees',    label: 'Employees',     icon: '👷' },
-  { screen: 'packets',      label: 'Packets',       icon: '📦' },
-  { screen: 'reports',      label: 'Reports',       icon: '📊' },
-  { screen: 'users',        label: 'Team',          icon: '👥' },
-  { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' },
-  { screen: 'logs',         label: 'System Logs',   icon: '📜' },
-  { screen: 'settings',     label: 'Settings',      icon: '⚙️' },
-  { screen: 'help',         label: 'Help',          icon: '❓' }
+  { screen: 'dashboard', label: 'Dashboard', icon: '⊞' },
+  { screen: 'companies', label: 'Companies', icon: '🏭' },
+  { screen: 'employees', label: 'Employees', icon: '👷' },
+  { screen: 'packets',   label: 'Packets',   icon: '📦' },
+  { screen: 'reports',   label: 'Reports',   icon: '📊' },
+  { screen: 'users',     label: 'Team',      icon: '👥' },
+  { screen: 'data-tools',label: 'Data Tools',icon: '🛠️' },
+  { screen: 'logs',      label: 'Logs',      icon: '📜' }, // ADDED TO SIDEBAR
+  { screen: 'settings',  label: 'Settings',  icon: '⚙️' },
+  { screen: 'help',      label: 'Help',      icon: '❓' }
 ]
 
 const NAV_PARENT = {
-  'company-detail':  'companies',
-  'employee-detail': 'employees',
-  'test-detail':     'employees',
-  'generate-packet': 'companies',
-  'incoming':        'packets',
-  'rejected-packets': 'packets',
-  'import-confirm':  'packets',
-  'province-rules':  'settings',
-  'location-detail': 'companies',
-  'data-tools':      'data-tools',
-  'users':           'users',
-  'help':            'help',
-  'legacy-import':   'data-tools'
+  'company-detail': 'companies', 'employee-detail': 'employees', 'test-detail': 'employees',
+  'generate-packet': 'companies', 'incoming': 'packets', 'rejected-packets': 'packets',
+  'import-confirm': 'packets', 'province-rules': 'settings', 'location-detail': 'companies',
+  'data-tools': 'data-tools', 'users': 'users', 'logs': 'logs', 'help': 'help'
 }
 
-function isNavActive(current, navScreen) {
-  return current === navScreen || NAV_PARENT[current] === navScreen
-}
-
-// ---------------------------------------------------------------------------
-// Boot
-// ---------------------------------------------------------------------------
+function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen }
 
 async function boot() {
-  await initDB()
-  await initSchema()
-
-  state.syncFolder = await querySyncFolder()
-  state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null
-
-  const savedUserId = localStorage.getItem('masterdb_user_id');
-  if (savedUserId) {
-      const user = queryOne("SELECT * FROM users WHERE user_id = ?", [savedUserId]);
-      if (user && user.active !== 0) state.user = user;
-  }
-
-  applyTheme(loadThemeColor())
-  
-  if (state.syncFolder) {
-    state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run);
-    startHeartbeat();
-  }
-
-  if (!state.user) navigate('login');
-  else navigate('dashboard');
+  await initDB(); await initSchema();
+  state.syncFolder = await querySyncFolder();
+  state.logoUrl = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;
+  const savedId = localStorage.getItem('masterdb_user_id');
+  if (savedId) { const u = queryOne("SELECT * FROM users WHERE user_id = ?", [savedId]); if (u && u.active !== 0) state.user = u; }
+  applyTheme(loadThemeColor());
+  if (state.syncFolder) { state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run); startHeartbeat(); }
+  if (!state.user) navigate('login'); else navigate('dashboard');
 }
 
 async function startHeartbeat() {
@@ -288,11 +191,9 @@ async function startHeartbeat() {
   setInterval(async () => {
     if (!state.user || state.isOutofSync || state.screen === 'login') return;
     try {
-      const newTimestamps = await JsonDatabase.getCloudTimestamps(state.syncFolder);
+      const newT = await JsonDatabase.getCloudTimestamps(state.syncFolder);
       let changed = false;
-      for (const table of JsonDatabase.tables) {
-        if (newTimestamps[table] > (state.cloudTimestamps[table] || 0)) { changed = true; break; }
-      }
+      for (const table of JsonDatabase.tables) { if (newT[table] > (state.cloudTimestamps[table] || 0)) { changed = true; break; } }
       if (changed) { state.isOutofSync = true; showSyncWarning(); }
     } catch (e) {}
   }, 30000);
@@ -303,15 +204,10 @@ function showSyncWarning() {
   const banner = document.createElement('div');
   banner.id = 'sync-warning-banner';
   banner.className = 'sync-alert-banner';
-  banner.innerHTML = `<span>⚠️ Database updated by another user.</span><button id="btn-sync-now">📥 Refresh Now</button>`;
+  banner.innerHTML = `<span>⚠️ Database updated by another user.</span><button id="btn-sync-now">Refresh Now</button>`;
   document.body.prepend(banner);
   document.getElementById('btn-sync-now').onclick = () => location.reload();
 }
 
-boot().catch(err => {
-  document.getElementById('app').innerHTML = `<div class="error-screen"><h2>Startup Error</h2><pre>${err.message}</pre></div>`
-})
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-}
+boot().catch(err => { document.getElementById('app').innerHTML = `<div class="error-screen"><h2>Startup Error</h2><pre>${err.message}</pre></div>` });
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
