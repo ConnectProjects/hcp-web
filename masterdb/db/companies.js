@@ -53,22 +53,13 @@ export function searchCompanies(q) {
 export function createCompany(data) {
   let newCompanyId;
   transaction(({ run }) => {
-    run(`
-      INSERT INTO companies (
-        name, address, contact_name, contact_phone, 
-        contact_email, sticky_notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-    `, [data.name, data.address, data.contact_name, data.contact_phone, data.contact_email, data.sticky_notes]);
-
+    // Only insert name (and auto-timestamps)
+    run(`INSERT INTO companies (name) VALUES (?)`, [data.name]);
     newCompanyId = queryOne("SELECT last_insert_rowid() AS id").id;
 
-    run(`
-      INSERT INTO locations (
-        company_id, name, province, address, 
-        contact_name, contact_phone, contact_email, 
-        active, created_at, updated_at
-      ) VALUES (?, 'Main Office', ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))
-    `, [newCompanyId, data.province, data.address, data.contact_name, data.contact_phone, data.contact_email]);
+    // Create default location
+    run(`INSERT INTO locations (company_id, name, province) VALUES (?, 'Main Office', ?)`, 
+        [newCompanyId, data.province]);
   });
   return newCompanyId;
 }
