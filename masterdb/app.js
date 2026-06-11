@@ -1,3 +1,4 @@
+import { renderLogs } from './screens/logs.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
@@ -218,6 +219,7 @@ const SCREENS = {
   'location-detail': renderLocationDetail,
   'data-tools':      renderDataTools,
   'users':           renderUsers,
+  'logs':            renderLogs,
 }
 
 const NAV_ITEMS = [
@@ -228,6 +230,7 @@ const NAV_ITEMS = [
   { screen: 'reports',      label: 'Reports',       icon: '📊' },
   { screen: 'users',        label: 'Team',          icon: '👥' },
   { screen: 'data-tools',   label: 'Data Tools',    icon: '🛠️' },
+  { screen: 'logs',         label: 'System Logs',   icon: '📜' },
   { screen: 'settings',     label: 'Settings',      icon: '⚙️' },
   { screen: 'help',         label: 'Help',          icon: '❓' }
 ]
