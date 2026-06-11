@@ -11,6 +11,9 @@
  *   run('INSERT INTO companies (name, province) VALUES (?, ?)', ['Acme', 'AB'])
  */
 
+
+import { TimeService } from '../../shared/time-utils.js'
+
 const OPFS_FILENAME = 'masterdb.sqlite'
 
 let _db   = null
@@ -253,9 +256,14 @@ async function cleanupOldBackups(backupDir) {
  */
 export function logAction(state, action, details = "") {
   if (!state.user) return;
+  
+  const timestamp = TimeService.getTimestamp();
+  const timezone = TimeService.getTimezone();
+
   try {
-    run(`INSERT INTO system_log (log_id, user_id, user_name, action, details) VALUES (?, ?, ?, ?, ?)`,
-        [self.crypto.randomUUID(), state.user.user_id, state.user.name, action, details]);
+    run(`INSERT INTO system_log (log_id, user_id, user_name, action, details, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [self.crypto.randomUUID(), state.user.user_id, state.user.name, action, `${details} (${timezone})`, timestamp]);
   } catch (e) {
     console.warn("Audit logging failed:", e);
   }
