@@ -17,26 +17,11 @@ export const ROLES = {
 // 2. Define screen-level permissions for MasterDB
 // Note: 'super-admin' and 'admin' are handled as "Full Access" in app.js logic
 export const PERMISSIONS = {
-  [ROLES.BILLING]: [
-    'dashboard', 
-    'companies', 
-    'company-detail', 
-    'location-detail', 
-    'employees', 
-    'employee-detail', 
-    'packets', 
-    'reports', 
-    'help'
-  ],
-  [ROLES.LC]: [
-    'dashboard', 
-    'companies', 
-    'company-detail', 
-    'location-detail', 
-    'packets', 
-    'help'
-  ],
-  [ROLES.TECH]: [] // No screens allowed in MasterDB
+  [ROLES.SUPER_ADMIN]: ['*'],
+  [ROLES.ADMIN]: ['*'],
+  [ROLES.BILLING]: ['dashboard', 'companies', 'company-detail', 'location-detail', 'employees', 'employee-detail', 'packets', 'reports', 'help'],
+  [ROLES.LC]: ['dashboard', 'companies', 'company-detail', 'location-detail', 'packets', 'help'],
+  [ROLES.TECH]: [] 
 };
 
 /**
