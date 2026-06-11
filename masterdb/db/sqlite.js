@@ -247,3 +247,16 @@ async function cleanupOldBackups(backupDir) {
     console.warn('Backup cleanup failed:', e)
   }
 }
+
+/**
+ * Records a user action into the system_log table.
+ */
+export function logAction(state, action, details = "") {
+  if (!state.user) return;
+  try {
+    run(`INSERT INTO system_log (log_id, user_id, user_name, action, details) VALUES (?, ?, ?, ?, ?)`,
+        [self.crypto.randomUUID(), state.user.user_id, state.user.name, action, details]);
+  } catch (e) {
+    console.warn("Audit logging failed:", e);
+  }
+}
