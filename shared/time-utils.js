@@ -6,54 +6,27 @@
 let clockOffset = 0; // Difference in milliseconds
 
 export const TimeService = {
+  // ... existing sync, now, and getTimestamp functions ...
+
   /**
-   * Syncs local clock with a network time server.
-   * Call this on app boot.
+   * Turns 2026-06-11T09:49:57-07:00 into "Jun 11, 09:49 AM"
    */
-  async sync() {
+  formatNice(isoString) {
+    if (!isoString) return "—";
     try {
-      // Fetch from a reliable public time API
-      const response = await fetch('https://worldtimeapi.org/api/ip');
-      const data = await response.json();
-      const networkTime = new Date(data.datetime).getTime();
-      const localTime = Date.now();
-      
-      clockOffset = networkTime - localTime;
-      console.log(`🕒 Time synced. Offset: ${clockOffset}ms`);
+        const d = new Date(isoString);
+        return d.toLocaleString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+        });
     } catch (e) {
-      console.warn("🕒 Could not sync time with network. Using system clock.");
+        return isoString; // Fallback to raw if it fails
     }
   },
 
-  /**
-   * Returns a Date object corrected by the network offset.
-   */
-  now() {
-    return new Date(Date.now() + clockOffset);
-  },
-
-  /**
-   * Returns a full timestamp with timezone offset: 2026-06-11T10:48:00-07:00
-   */
-  getTimestamp() {
-    const d = this.now();
-    const tzo = -d.getTimezoneOffset();
-    const dif = tzo >= 0 ? '+' : '-';
-    const pad = (num) => String(Math.floor(Math.abs(num))).padStart(2, '0');
-    
-    return d.getFullYear() +
-      '-' + pad(d.getMonth() + 1) +
-      '-' + pad(d.getDate()) +
-      'T' + pad(d.getHours()) +
-      ':' + pad(d.getMinutes()) +
-      ':' + pad(d.getSeconds()) +
-      dif + pad(tzo / 60) +
-      ':' + pad(tzo % 60);
-  },
-
-  /**
-   * Returns the timezone name (e.g. "America/Vancouver")
-   */
   getTimezone() {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   }
