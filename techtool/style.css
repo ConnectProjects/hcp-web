@@ -2350,3 +2350,21 @@ select.thresh-cell {
     background: #eee; color: #999; line-height: 28px;
     text-align: center; font-weight: bold; font-size: 14px;
 }
+
+.audio-entry-container {
+    display: flex;
+    flex-direction: row; /* Force side-by-side */
+    gap: 20px;
+    width: 100%;
+}
+
+@media (max-width: 600px) {
+    .audio-entry-container {
+        flex-direction: column; /* Stack only on very small phones */
+    }
+}
+
+.audiogram-wrapper {
+    flex: 1;
+    min-width: 300px;
+}
