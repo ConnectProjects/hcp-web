@@ -14,19 +14,18 @@ export function renderEmployeeList(container, state, navigate) {
   container.innerHTML = `
     <div class="screen">
       <header class="app-header">
-        <button class="btn btn-ghost" id="btn-back">‹ ${esc(packet?.company?.name ?? 'Company')}</button>
+        <button class="btn btn-ghost" id="btn-back">‹ ${esc(packet?.company?.name ?? 'Dashboard')}</button>
         <h1 class="app-title">Employees</h1>
         <span class="count-chip">${employees.length}</span>
       </header>
 
       <div class="search-wrap">
-        <input id="emp-search" type="search" class="search-input"
-          placeholder="Search by name…" autocomplete="off" autocorrect="off" />
+        <input id="emp-search" type="search" class="search-input" placeholder="Search by name…" />
       </div>
 
       ${allResolved ? `
         <div class="emp-complete-banner">
-          <p>✓ All employees resolved — ready to submit</p>
+          <p>✓ All workers resolved. Ready to submit visit.</p>
           <button class="btn btn-primary btn-sm" id="btn-submit-packet">Submit Packet to Office →</button>
         </div>
       ` : ''}
@@ -38,44 +37,12 @@ export function renderEmployeeList(container, state, navigate) {
       <button class="add-emp-toggle" id="btn-add-emp-toggle">+ Add Employee</button>
       <div id="add-emp-form" class="add-emp-form" style="display:none">
         <div class="form-row">
-          <div class="form-group">
-            <label for="new-first">First Name <span style="color:var(--red)">*</span></label>
-            <input id="new-first" type="text" placeholder="First name" autocomplete="off" />
-          </div>
-          <div class="form-group">
-            <label for="new-last">Last Name <span style="color:var(--red)">*</span></label>
-            <input id="new-last" type="text" placeholder="Last name" autocomplete="off" />
-          </div>
+          <div class="form-group"><label>First Name *</label><input id="new-first" type="text" /></div>
+          <div class="form-group"><label>Last Name *</label><input id="new-last" type="text" /></div>
         </div>
         <div class="form-row">
-          <div class="form-group">
-            <label for="new-dob">Birthdate <span style="color:var(--red)">*</span></label>
-            <input id="new-dob" type="date" />
-          </div>
-          <div class="form-group">
-            <label for="new-sin">SIN (Last 4)</label>
-            <input id="new-sin" type="text" maxlength="4" placeholder="1234" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="new-phone">Phone</label>
-            <input id="new-phone" type="tel" placeholder="555-0100" />
-          </div>
-          <div class="form-group">
-            <label for="new-email">Email</label>
-            <input id="new-email" type="email" placeholder="email@example.com" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="new-title">Job Title</label>
-            <input id="new-title" type="text" placeholder="e.g. Welder" autocomplete="off" />
-          </div>
-          <div class="form-group">
-            <label for="new-tenure">Tenure (at position)</label>
-            <input id="new-tenure" type="text" placeholder="e.g. 2 years" />
-          </div>
+          <div class="form-group"><label>Birthdate *</label><input id="new-dob" type="date" /></div>
+          <div class="form-group"><label>Job Title</label><input id="new-title" type="text" /></div>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-primary btn-sm" id="btn-add-emp-submit">Add to Packet</button>
@@ -85,237 +52,99 @@ export function renderEmployeeList(container, state, navigate) {
     </div>
   `
 
-  container.querySelector('#btn-back').addEventListener('click', () => navigate('company'))
+  // --- Handlers ---
+  container.querySelector('#btn-back').onclick = () => navigate('dashboard')
 
-  // --- UPDATED SUBMIT PACKET LOGIC ---
   if (allResolved) {
-    const btnSubmit = container.querySelector('#btn-submit-packet');
-    btnSubmit.addEventListener('click', async () => {
-        if (!state.syncFolder) {
-            alert("OneDrive folder not connected. Please connect via the Sync screen.");
-            return;
-        }
-
-        btnSubmit.disabled = true;
-        btnSubmit.textContent = "Uploading...";
-
+    container.querySelector('#btn-submit-packet').onclick = async () => {
+        if (!state.syncFolder) return alert("Connect OneDrive first.");
         try {
-            // 1. Update packet status
             packet.status = 'submitted';
-            packet.submitted_at = new Date().toISOString();
-            packet.submitted_by = state.user?.name || 'Unknown Tech';
-
-            // 2. Write the FINAL file to the 'inbox' folder
-            const filename = `FINAL_${packet.filename}`;
-            await writeJsonFile(state.syncFolder, 'inbox', filename, packet);
-
-            // 3. THE FIX: Delete the ORIGINAL assignment file from the tech's folder
-            // This prevents it from being re-downloaded during the next Sync
-            if (state.user?.folder_name) {
-                const techSubfolder = `techs/${state.user.folder_name}`;
-                await deleteJsonFile(state.syncFolder, techSubfolder, packet.filename);
-                console.log(`Original packet ${packet.filename} deleted from ${techSubfolder}`);
-            }
-
-            // 4. Save to local IndexedDB and exit
+            await writeJsonFile(state.syncFolder, 'inbox', `FINAL_${packet.filename}`, packet);
+            if (state.user?.folder_name) await deleteJsonFile(state.syncFolder, `techs/${state.user.folder_name}`, packet.filename);
             await savePacket(packet);
-            alert("Packet successfully submitted! The assignment has been removed from your sync list.");
+            alert("Visit submitted successfully!");
             navigate('dashboard');
-        } catch (err) {
-            console.error(err);
-            alert("Failed to submit: " + err.message);
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = "Submit Packet to Office →";
-        }
-    });
+        } catch (err) { alert("Error: " + err.message); }
+    };
   }
-
-  const searchEl = container.querySelector('#emp-search')
-  searchEl.addEventListener('input', e => {
-    const q = e.target.value.toLowerCase().trim()
-    const filtered = q
-      ? employees.filter(emp => fullName(emp).toLowerCase().includes(q))
-      : employees
-    container.querySelector('#emp-list').innerHTML = buildList(filtered)
-    attachRowHandlers(container, filtered, packet, state, navigate)
-  })
 
   attachRowHandlers(container, employees, packet, state, navigate)
 
-  // Add employee toggle
-  const addToggle = container.querySelector('#btn-add-emp-toggle')
-  const addForm   = container.querySelector('#add-emp-form')
-  addToggle.addEventListener('click', () => {
-    addForm.style.display = addForm.style.display === 'none' ? 'block' : 'none'
-    if (addForm.style.display === 'block') {
-      container.querySelector('#new-first').focus()
-    }
-  })
+  container.querySelector('#btn-add-emp-toggle').onclick = () => {
+    const f = container.querySelector('#add-emp-form');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+  }
 
-  container.querySelector('#btn-add-emp-cancel').addEventListener('click', () => {
-    addForm.style.display = 'none'
-  })
-
-  container.querySelector('#btn-add-emp-submit').addEventListener('click', async () => {
-    const firstName = container.querySelector('#new-first').value.trim()
-    const lastName  = container.querySelector('#new-last').value.trim()
-    const dob       = container.querySelector('#new-dob').value
-    const sin       = container.querySelector('#new-sin').value.trim()
-    const phone     = container.querySelector('#new-phone').value.trim()
-    const email     = container.querySelector('#new-email').value.trim()
-    const jobTitle  = container.querySelector('#new-title').value.trim() || null
-    const tenure    = container.querySelector('#new-tenure').value.trim() || null
-
-    if (!firstName || !lastName || !dob) {
-      alert('First name, last name, and birthdate are required.')
-      return
-    }
-
-    addNewEmployee(packet, {
-      first_name: firstName,
-      last_name: lastName,
-      dob,
-      sin_last_4: sin,
-      phone,
-      email,
-      job_title: jobTitle,
-      tenure
-    })
-    await savePacket(packet)
-    navigate('employee-list')
-  })
-
-  searchEl.focus()
+  container.querySelector('#btn-add-emp-submit').onclick = async () => {
+    const f = container.querySelector('#new-first').value.trim();
+    const l = container.querySelector('#new-last').value.trim();
+    const d = container.querySelector('#new-dob').value;
+    if (!f || !l || !d) return alert("Required fields missing.");
+    addNewEmployee(packet, { first_name: f, last_name: l, dob: d, job_title: container.querySelector('#new-title').value });
+    await savePacket(packet);
+    renderEmployeeList(container, state, navigate);
+  }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function buildList(employees) {
-  if (employees.length === 0) {
-    return '<div class="empty-state">No employees match.</div>'
-  }
-  return employees.map(emp => empRow(emp)).join('')
-}
-
-function empRow(emp) {
-  const done     = emp.completed_tests?.length > 0
-  const skipped  = !!emp.skipped_at
-  const isNew    = !!emp.new_employee
-  const lastCat  = emp.prior_tests?.[0]?.classification?.category ?? null
-  const age      = emp.dob ? calcAge(emp.dob) : null
-  const baseline = !!emp.baseline
-  const isPending = !done && !skipped
-
-  return `
-    <div class="emp-row ${done ? 'emp-row--done' : ''} ${skipped ? 'emp-row--skipped' : ''}"
-         data-emp-id="${esc(emp.employee_id)}"
-         style="${skipped ? 'cursor:default;' : ''}">
-      <div class="emp-row__info">
-        <div class="emp-row__name">${esc(emp.last_name)}, ${esc(emp.first_name)}</div>
-        <div class="emp-row__meta">
-          ${age ? `Age ${age}` : ''}
-          ${emp.job_title ? `· ${esc(emp.job_title)}` : ''}
-          ${!baseline && !emp.prior_tests?.length && !isNew ? '<em>· No baseline on file</em>' : ''}
-          ${isNew ? '<em>· New</em>' : ''}
-          ${skipped ? `· Skipped: ${esc(emp.skip_reason ?? '')}` : ''}
+  return employees.map(emp => {
+    const done = emp.completed_tests?.length > 0;
+    const skipped = !!emp.skipped_at;
+    return `
+      <div class="emp-row ${done ? 'emp-row--done' : ''} ${skipped ? 'emp-row--skipped' : ''}" data-emp-id="${emp.employee_id}">
+        <div class="emp-row__info">
+          <div class="emp-row__name">${esc(emp.last_name)}, ${esc(emp.first_name)}</div>
+          <div class="emp-row__meta">${esc(emp.job_title || '')} ${skipped ? '· SKIPPED' : ''}</div>
+        </div>
+        <div class="emp-row__right">
+          ${done ? '<span class="badge badge-success">✓ Done</span>' : skipped ? '<span class="badge">Skipped</span>' : '<span class="badge badge-neutral">Pending</span>'}
+          ${!done && !skipped ? `<button class="emp-row__skip" data-skip-id="${emp.employee_id}">Skip</button>` : ''}
         </div>
       </div>
-      <div class="emp-row__right">
-        ${lastCat ? `<span class="class-badge class-${lastCat.toLowerCase()}">${lastCat}</span>` : ''}
-        ${done
-          ? '<span class="badge badge-success">✓ Tested</span>'
-          : skipped
-            ? '<span class="badge badge-neutral">Skipped</span>'
-            : '<span class="badge badge-neutral">Pending</span>'}
-        ${isPending ? `<button class="emp-row__skip" data-skip-id="${esc(emp.employee_id)}">Skip</button>` : ''}
-      </div>
-      ${!skipped ? '<div class="emp-row__chevron">›</div>' : ''}
-    </div>
-    ${isPending ? `
-      <div class="skip-confirm-row" id="skip-confirm-${esc(emp.employee_id)}" style="display:none">
-        <label>Skip this employee?</label>
-        <select id="skip-reason-${esc(emp.employee_id)}">
-          <option value="Not present today">Not present today</option>
-          <option value="Left company">Left company</option>
-          <option value="Declined to test">Declined to test</option>
-          <option value="Other">Other</option>
-        </select>
-        <button class="btn btn-sm btn-secondary" data-confirm-skip="${esc(emp.employee_id)}">Confirm Skip</button>
-        <button class="btn btn-sm btn-ghost" data-cancel-skip="${esc(emp.employee_id)}">Cancel</button>
-      </div>
-    ` : ''}
-  `
+    `;
+  }).join('');
 }
 
 function attachRowHandlers(container, employees, packet, state, navigate) {
-  // 1. Row click → Navigate to test
   container.querySelectorAll('.emp-row').forEach(row => {
-    const empId = row.dataset.empId
-    const emp = employees.find(e => e.employee_id == empId)
-    if (!emp || emp.skipped_at) return
+    row.onclick = (e) => {
+      if (e.target.closest('.emp-row__skip')) return;
+      const emp = employees.find(e => e.employee_id == row.dataset.empId);
+      if (!emp || emp.skipped_at) return;
 
-    row.addEventListener('click', e => {
-      if (e.target.closest('.emp-row__skip')) return
-      const slot = state.slots[state.activeSlot]
-      slot.currentEmployee = emp
-      slot.currentPacket = packet
-      navigate('test-entry', { currentEmployee: emp, currentPacket: packet })
-    })
-  })
+      const slot = state.slots[state.activeSlot];
+      slot.currentEmployee = emp;
+      slot.currentPacket = packet;
 
-  // 2. Skip button — Toggle the confirmation row
+      // EDIT LOGIC: If already tested, load previous values into the slot
+      if (emp.completed_tests?.length > 0) {
+          const test = emp.completed_tests[0];
+          slot.testData = { ...test.history };
+          slot.techNotes = test.notes || '';
+          // Map DB keys (left_1k) back to UI keys (l1000)
+          Object.entries(test.thresholds || {}).forEach(([k, v]) => {
+              const uiKey = k.replace('left_', 'l').replace('right_', 'r').replace('1k','1000').replace('2k','2000').replace('3k','3000').replace('4k','4000').replace('6k','6000').replace('8k','8000');
+              slot.testData[uiKey] = v;
+          });
+      } else {
+          slot.testData = {}; slot.techNotes = '';
+      }
+
+      navigate('test-entry');
+    };
+  });
+
   container.querySelectorAll('.emp-row__skip').forEach(btn => {
-    btn.addEventListener('click', e => {
-      e.stopPropagation()
-      const empId = btn.dataset.skipId
-      const row = container.querySelector(`#skip-confirm-${empId}`)
-      if (row) row.style.display = row.style.display === 'none' ? 'flex' : 'none'
-    })
-  })
-
-  // 3. THE FIX: Confirm skip button
-  container.querySelectorAll('[data-confirm-skip]').forEach(btn => {
     btn.onclick = async (e) => {
       e.stopPropagation();
-       // Force the ID to a Number to match the database type
-      const empId  = Number(btn.dataset.confirmSkip); 
-      const reason = container.querySelector(`#skip-reason-${empId}`)?.value ?? 'Not present today';
-      
-      console.log(`Skipping employee ${empId} for reason: ${reason}`);
-      
-      markEmployeeSkipped(packet, empId, reason);
-      await savePacket(packet);
-      // Re-render the list to show the "Skipped" status immediately
-      renderEmployeeList(container, state, navigate);
-    };
-  });
-
-  // 4. Cancel skip button
-  container.querySelectorAll('[data-cancel-skip]').forEach(btn => {
-    btn.onclick = (e) => {
-      e.stopPropagation();
-      const empId = btn.dataset.cancelSkip;
-      const row = container.querySelector(`#skip-confirm-${empId}`);
-      if (row) row.style.display = 'none';
+      if (confirm("Skip this worker?")) {
+        markEmployeeSkipped(packet, btn.dataset.skipId, "Not present");
+        await savePacket(packet);
+        renderEmployeeList(container, state, navigate);
+      }
     };
   });
 }
 
-function fullName(emp) { return `${emp.first_name} ${emp.last_name}` }
-
-function calcAge(dob) {
-  const today = new Date()
-  const birth = new Date(dob)
-  let age = today.getFullYear() - birth.getFullYear()
-  const m = today.getMonth() - birth.getMonth()
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
-  return age
-}
-
-function esc(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
