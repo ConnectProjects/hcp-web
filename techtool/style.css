@@ -2368,3 +2368,36 @@ select.thresh-cell {
     flex: 1;
     min-width: 300px;
 }
+
+/* --- TechTool Training Refinements --- */
+
+/* Side-by-Side Audiogram Layout */
+.audio-entry-container {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    width: 100%;
+    margin-top: 20px;
+}
+
+.audiogram-wrapper {
+    flex: 1;
+    min-width: 300px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    height: 260px;
+}
+
+/* Booth Themes */
+.booth-tab.b1.active { border-color: #0056b3; background: #eef6ff; }
+.booth-tab.b1.active .booth-indicator { background: #0056b3; color: white; }
+.booth-tab.b1.active .booth-name { color: #0056b3; }
+
+.booth-tab.b2.active { border-color: #c0392b; background: #fff5f4; }
+.booth-tab.b2.active .booth-indicator { background: #c0392b; color: white; }
+.booth-tab.b2.active .booth-name { color: #c0392b; }
+
+@media (max-width: 800px) {
+    .audio-entry-container { flex-direction: column; }
+}
