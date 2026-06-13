@@ -25,12 +25,12 @@ export const state = {
   syncFolder: null, 
   logoUrl: null, 
   packets: [], 
-  currentPacket: null, // THIS IS NOW GLOBAL (Persists across booth switches)
+  currentPacket: null, 
   
   activeSlot: 0,
   slots: [
     { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
-    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
+    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
   ],
   
   currentEmployee:    null,
@@ -49,7 +49,7 @@ function saveStateToSlot() {
   s.screen = state.screen;
   s.currentEmployee = state.currentEmployee;
 
-  // 1. Scrape form data into slot memory
+  // Scrape form data into slot memory
   const inputs = document.querySelectorAll('.q-input, .audio-input, #tech-notes');
   inputs.forEach(el => {
     if (el.id === 'tech-notes') s.techNotes = el.value;
@@ -58,16 +58,11 @@ function saveStateToSlot() {
       s.testData[(el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq] = el.value;
     }
   });
-
-  // 2. Save Scroll
-  const scrollContainer = document.querySelector('.main-area');
-  if (scrollContainer) s.scrollPos = scrollContainer.scrollTop;
 }
 
 function loadStateFromSlot() {
   const s = state.slots[state.activeSlot];
   
-  // 3. Restore slot data to global pointers
   state.screen = s.screen;
   state.currentEmployee = s.currentEmployee;
   state.testData = s.testData;
@@ -75,15 +70,13 @@ function loadStateFromSlot() {
 
   paint();
 
-  // 4. Double-Frame Scroll Restoration
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const scrollContainer = document.querySelector('.main-area');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = s.scrollPos || 0;
-      }
-    });
-  });
+  // Restore Scroll Position after a tiny delay to ensure the browser has finished layout
+  setTimeout(() => {
+    const scrollContainer = document.querySelector('.main-area');
+    if (scrollContainer) {
+      scrollContainer.scrollTop = s.scrollPos || 0;
+    }
+  }, 10);
 }
 
 export function switchSlot(slotIndex) {
@@ -94,8 +87,6 @@ export function switchSlot(slotIndex) {
   state.activeSlot = slotIndex;
   
   const targetSlot = state.slots[state.activeSlot];
-
-  // FIX: If we have a packet open but this booth is empty, force the employee list
   if (!targetSlot.currentEmployee && state.currentPacket) {
       targetSlot.screen = 'employee-list';
   }
@@ -107,15 +98,10 @@ export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
   
   saveStateToSlot();
-  
   state.screen = screen;
   
-  // Update Global Packet Context (Only changes when entering from Dashboard/Schedule)
-  if (params.currentPacket) {
-      state.currentPacket = params.currentPacket;
-  }
+  if (params.currentPacket) state.currentPacket = params.currentPacket;
   
-  // If moving to a test, update the current slot's employee
   if (screen === 'test-entry' && params.currentEmployee) {
       const s = state.slots[state.activeSlot];
       s.currentEmployee = params.currentEmployee;
@@ -142,6 +128,7 @@ function paint() {
     return;
   }
 
+  // 1. Build the persistent shell if it doesn't exist
   if (!document.querySelector('.app-shell')) {
     app.innerHTML = `
       <div class="app-shell">
@@ -151,8 +138,15 @@ function paint() {
           <div id="main-content" class="main-content"></div>
         </div>
       </div>`;
+
+    // 2. NEW: Attach the real-time scroll listener once
+    const scrollArea = document.getElementById('main-scroll-container');
+    scrollArea.addEventListener('scroll', () => {
+        state.slots[state.activeSlot].scrollPos = scrollArea.scrollTop;
+    });
   }
 
+  // 3. Update Sidebar
   const techName = state.user?.name ?? 'Tech';
   document.getElementById('sidebar-target').innerHTML = `
     <div class="sidebar-brand">
@@ -174,6 +168,7 @@ function paint() {
     </div>
   `;
 
+  // 4. Update Switcher Bar
   const switcherTarget = document.getElementById('switcher-target');
   const showSwitcher = ['employee-list', 'test-entry'].includes(state.screen);
   
@@ -199,7 +194,6 @@ function paint() {
 
   document.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.onclick = () => {
-        // Only clear packet context if actually leaving the visit (Dashboard)
         if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
         navigate(btn.dataset.screen);
     };
