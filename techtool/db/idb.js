@@ -163,3 +163,17 @@ export async function removeSetting(key) {
     req.onerror = () => reject(req.error);
   });
 }
+
+/**
+ * Permanently deletes a packet from the local device database.
+ */
+export async function deletePacket(packetId) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('packets', 'readwrite');
+    const store = tx.objectStore('packets');
+    const req = store.delete(packetId);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
