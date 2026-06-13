@@ -21,16 +21,25 @@ import { renderNewVisit }       from './screens/new-visit.js'
 
 export const state = {
   screen: 'login',
-  user: null, syncFolder: null, logoUrl: null, packets: [], currentPacket: null,
+  user: null, 
+  syncFolder: null, 
+  logoUrl: null, 
+  packets: [], 
+  currentPacket: null, // THIS IS NOW GLOBAL (Persists across booth switches)
+  
   activeSlot: 0,
   slots: [
-    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
-    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
-  ]
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
+  ],
+  
+  currentEmployee:    null,
+  testData:           {},
+  techNotes:          ''
 }
 
 // ---------------------------------------------------------------------------
-// Slot & Scroll Persistence
+// Slot & Scroll Persistence Engine
 // ---------------------------------------------------------------------------
 
 function saveStateToSlot() {
@@ -38,10 +47,9 @@ function saveStateToSlot() {
   if (!s) return;
 
   s.screen = state.screen;
-  s.currentPacket = state.currentPacket;
   s.currentEmployee = state.currentEmployee;
 
-  // 1. Scrape data from screen into memory before we leave
+  // 1. Scrape form data into slot memory
   const inputs = document.querySelectorAll('.q-input, .audio-input, #tech-notes');
   inputs.forEach(el => {
     if (el.id === 'tech-notes') s.techNotes = el.value;
@@ -51,21 +59,23 @@ function saveStateToSlot() {
     }
   });
 
-  // 2. Capture exactly where the user is scrolled
+  // 2. Save Scroll
   const scrollContainer = document.querySelector('.main-area');
   if (scrollContainer) s.scrollPos = scrollContainer.scrollTop;
 }
 
 function loadStateFromSlot() {
   const s = state.slots[state.activeSlot];
+  
+  // 3. Restore slot data to global pointers
   state.screen = s.screen;
-  state.currentPacket = s.currentPacket;
   state.currentEmployee = s.currentEmployee;
+  state.testData = s.testData;
+  state.techNotes = s.techNotes;
 
   paint();
 
-  // 3. Restore Scroll Position with a double-frame delay
-  // This gives the browser time to render the HTML AND calculate its height
+  // 4. Double-Frame Scroll Restoration
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       const scrollContainer = document.querySelector('.main-area');
@@ -84,7 +94,8 @@ export function switchSlot(slotIndex) {
   state.activeSlot = slotIndex;
   
   const targetSlot = state.slots[state.activeSlot];
-  // If switching to an empty booth while in a packet, default to the employee list
+
+  // FIX: If we have a packet open but this booth is empty, force the employee list
   if (!targetSlot.currentEmployee && state.currentPacket) {
       targetSlot.screen = 'employee-list';
   }
@@ -98,21 +109,26 @@ export function navigate(screen, params = {}) {
   saveStateToSlot();
   
   state.screen = screen;
-  if (params.currentPacket) state.currentPacket = params.currentPacket;
   
-  // If moving to a test, lock the employee into the slot
+  // Update Global Packet Context (Only changes when entering from Dashboard/Schedule)
+  if (params.currentPacket) {
+      state.currentPacket = params.currentPacket;
+  }
+  
+  // If moving to a test, update the current slot's employee
   if (screen === 'test-entry' && params.currentEmployee) {
-      state.slots[state.activeSlot].currentEmployee = params.currentEmployee;
-      state.slots[state.activeSlot].screen = 'test-entry';
-      // Reset scroll for a new worker
-      state.slots[state.activeSlot].scrollPos = 0; 
+      const s = state.slots[state.activeSlot];
+      s.currentEmployee = params.currentEmployee;
+      state.currentEmployee = params.currentEmployee;
+      s.screen = 'test-entry';
+      s.scrollPos = 0; // Reset scroll for new worker
   }
 
   paint();
 }
 
 // ---------------------------------------------------------------------------
-// UI Painting (The "Smart Shell" Logic)
+// UI Painting
 // ---------------------------------------------------------------------------
 
 function paint() {
@@ -120,14 +136,12 @@ function paint() {
   const renderFn = SCREENS[state.screen];
   if (!renderFn) return;
 
-  // Login is the only screen that doesn't use the shell
   if (state.screen === 'login') {
     app.innerHTML = '';
     renderFn(app, state, navigate);
     return;
   }
 
-  // 1. If the Shell doesn't exist, build it
   if (!document.querySelector('.app-shell')) {
     app.innerHTML = `
       <div class="app-shell">
@@ -139,7 +153,6 @@ function paint() {
       </div>`;
   }
 
-  // 2. Update Sidebar (highlights and info)
   const techName = state.user?.name ?? 'Tech';
   document.getElementById('sidebar-target').innerHTML = `
     <div class="sidebar-brand">
@@ -161,7 +174,6 @@ function paint() {
     </div>
   `;
 
-  // 3. Update Switcher Bar (only on clinical screens)
   const switcherTarget = document.getElementById('switcher-target');
   const showSwitcher = ['employee-list', 'test-entry'].includes(state.screen);
   
@@ -185,20 +197,19 @@ function paint() {
     switcherTarget.innerHTML = '';
   }
 
-  // 4. Wire Sidebar Listeners
   document.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.onclick = () => {
+        // Only clear packet context if actually leaving the visit (Dashboard)
         if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
         navigate(btn.dataset.screen);
     };
   });
 
-  // 5. Render the actual screen content
   renderFn(document.getElementById('main-content'), state, navigate);
 }
 
 // ---------------------------------------------------------------------------
-// Registry & Boot
+// Logic & Boot
 // ---------------------------------------------------------------------------
 
 const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule': renderSchedule, 'calendar': renderCalendar, 'company': renderCompany, 'employee-list': renderEmployeeList, 'test-entry': renderTestEntry, 'sync': renderSync, 'settings': renderSettings, 'help': renderHelp, 'training': renderTraining, 'new-visit': renderNewVisit };
