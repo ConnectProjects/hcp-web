@@ -2520,3 +2520,27 @@ select.thresh-cell {
     gap: 4px;
     margin-bottom: 10px;
 }
+
+.app-shell {
+    display: flex;
+    height: 100vh;
+    overflow: hidden; /* Prevent the body from scrolling */
+}
+
+.main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow-y: auto; /* This makes the main area the scrollable container */
+    background: #f3f4f6;
+    position: relative;
+}
+
+.booth-switcher-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1000; /* Ensure it stays above form cards */
+    background: white;
+    /* ... existing styles ... */
+}

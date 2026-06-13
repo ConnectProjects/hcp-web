@@ -20,8 +20,8 @@ export const state = {
   user: null, syncFolder: null, logoUrl: null, packets: [], currentPacket: null,
   activeSlot: 0,
   slots: [
-    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
-    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
+    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
+    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
   ]
 }
 
@@ -31,53 +31,51 @@ function saveStateToSlot() {
   const s = state.slots[state.activeSlot];
   if (!s) return;
 
-  // 1. Save navigation state
   s.screen = state.screen;
 
-  // 2. SCRAPE LIVE DOM VALUES (This prevents data loss on switch)
+  // 1. Scrape live data from the current form
   const inputs = document.querySelectorAll('.q-input, .audio-input, #tech-notes');
   inputs.forEach(el => {
-    if (el.id === 'tech-notes') {
-      s.techNotes = el.value;
-    } else if (el.classList.contains('q-input')) {
-      s.testData[el.dataset.id] = el.value;
-    } else if (el.classList.contains('audio-input')) {
-      const key = (el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq;
-      s.testData[key] = el.value;
+    if (el.id === 'tech-notes') s.techNotes = el.value;
+    else if (el.classList.contains('q-input')) s.testData[el.dataset.id] = el.value;
+    else if (el.classList.contains('audio-input')) {
+      s.testData[(el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq] = el.value;
     }
   });
 
-  // 3. Save Scroll
+  // 2. Capture Scroll Position of the .main-area
   const mainArea = document.querySelector('.main-area');
-  s.scrollPos = mainArea ? mainArea.scrollTop : 0;
+  if (mainArea) {
+    s.scrollPos = mainArea.scrollTop;
+  }
 }
 
 function loadStateFromSlot() {
   const s = state.slots[state.activeSlot];
-  
-  // Restore state pointers
   state.screen = s.screen;
   state.currentEmployee = s.currentEmployee;
-  
+
+  // Render the page
   paint();
 
-  // Restore Scroll
-  setTimeout(() => {
+  // 3. Restore Scroll Position
+  // We use requestAnimationFrame to wait for the browser to finish the "Paint"
+  requestAnimationFrame(() => {
     const mainArea = document.querySelector('.main-area');
-    if (mainArea) mainArea.scrollTop = s.scrollPos || 0;
-  }, 0);
+    if (mainArea) {
+        mainArea.scrollTop = s.scrollPos || 0;
+    }
+  });
 }
 
 export function switchSlot(slotIndex) {
   if (slotIndex < 0 || slotIndex > 1) return;
   if (state.activeSlot === slotIndex) return;
 
-  saveStateToSlot(); // Capture what tech is doing now
+  saveStateToSlot(); 
   state.activeSlot = slotIndex;
   
   const targetSlot = state.slots[state.activeSlot];
-
-  // If target booth is empty, but we are in a visit, show the list
   if (!targetSlot.currentEmployee && state.currentPacket) {
       targetSlot.screen = 'employee-list';
   }
@@ -87,19 +85,11 @@ export function switchSlot(slotIndex) {
 
 export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
-  
   saveStateToSlot();
-
-  // If navigating to a new screen, update the state
   state.screen = screen;
-  
-  // If params has a packet, lock it in (prevents "Empty List" bug)
   if (params.currentPacket) state.currentPacket = params.currentPacket;
   if (params.currentEmployee) state.slots[state.activeSlot].currentEmployee = params.currentEmployee;
-
-  // Ensure current slot knows its screen
   state.slots[state.activeSlot].screen = screen;
-
   paint();
 }
 
@@ -111,7 +101,6 @@ function paint() {
   if (!renderFn) return;
   if (state.screen === 'login') { app.innerHTML = ''; renderFn(app, state, navigate); return; }
 
-  const techName = state.user?.name ?? 'Tech';
   const showSwitcher = ['employee-list', 'test-entry'].includes(state.screen);
 
   app.innerHTML = `
@@ -121,12 +110,9 @@ function paint() {
         <ul class="sidebar-nav">
           ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
         </ul>
-        <div class="sidebar-footer">
-          <span class="user-name">${techName}</span>
-          <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">${state.syncFolder ? '●' : '○'} Sync</span>
-        </div>
       </nav>
-      <div class="main-area">
+      <!-- Ensure .main-area is the scrollable container -->
+      <div class="main-area" id="main-scroll-container">
         ${showSwitcher ? `
           <div class="booth-switcher-bar">
             <button class="booth-tab b1 ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
@@ -142,10 +128,7 @@ function paint() {
       </div>
     </div>`;
 
-  app.querySelectorAll('.nav-item[data-screen]').forEach(btn => btn.onclick = () => {
-      if (btn.dataset.screen === 'dashboard') state.currentPacket = null; // Clear packet context only on dashboard
-      navigate(btn.dataset.screen);
-  });
+  app.querySelectorAll('.nav-item[data-screen]').forEach(btn => btn.onclick = () => navigate(btn.dataset.screen));
   app.querySelectorAll('.booth-tab').forEach(btn => btn.onclick = () => switchSlot(Number(btn.dataset.slot)));
   renderFn(document.getElementById('main-content'), state, navigate);
 }
