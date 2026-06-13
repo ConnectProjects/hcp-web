@@ -2,18 +2,19 @@ import { savePacket } from '../db/idb.js'
 import { TimeService } from '@shared/time-utils.js'
 
 export function renderTestEntry(container, state, navigate) {
-  // 1. Robust data retrieval
+  // 1. Get the current active booth slot data
   const slot = state.slots[state.activeSlot];
-  const emp = state.currentEmployee || slot.currentEmployee;
-  const packet = state.currentPacket || slot.currentPacket;
+  const emp = slot.currentEmployee;
+  const packet = state.currentPacket;
   const baseline = emp?.baseline || null;
 
-  // 2. Visual Error Catching (Instead of silent exit)
   if (!emp) {
-    container.innerHTML = `<div class="page"><div class="alert alert-error">Error: No worker loaded into Booth ${state.activeSlot + 1}.</div><button class="btn btn-primary" onclick="location.reload()">Reload App</button></div>`;
+    navigate('employee-list');
     return;
   }
 
+  // 2. RENDER THE FORM
+  // Note: Every input now takes its value from 'slot.testData'
   container.innerHTML = `
     <style>
         .tech-tool-container { max-width: 1000px; margin: 0 auto; padding: 20px; font-family: system-ui, sans-serif; }
@@ -35,7 +36,7 @@ export function renderTestEntry(container, state, navigate) {
     <div class="tech-tool-container">
       <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
           <h1 style="margin:0; font-size: 28px; color: #1e3a5f;">Hearing Test</h1>
-          <button class="btn btn-ghost" id="btn-back" title="Return to list">❮ Back to List</button>
+          <button class="btn btn-ghost" id="btn-back">❮ Back to List</button>
       </div>
 
       <div style="background: #76B214; color: white; border-radius: 12px; padding: 25px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px;">
@@ -48,22 +49,34 @@ export function renderTestEntry(container, state, navigate) {
       ${renderQ("exposed_2hr", "Exposed to noise within the last two hours?", slot.testData.exposed_2hr)}
       <div class="sub-question" id="exposed_2hr_details">
         <label class="q-label">Duration?</label>
-        <select class="q-input q-select" data-id="exposed_2hr_duration" title="Exposure duration"><option value="under 2hrs">under 2hrs</option><option value="2-4hrs">2-4hrs</option><option value="4+hrs">4+hrs</option></select>
+        <select class="q-input q-select live-track" data-id="exposed_2hr_duration" title="Duration">
+            <option value="under 2hrs" ${slot.testData.exposed_2hr_duration === 'under 2hrs' ? 'selected' : ''}>under 2hrs</option>
+            <option value="2-4hrs" ${slot.testData.exposed_2hr_duration === '2-4hrs' ? 'selected' : ''}>2-4hrs</option>
+            <option value="4+hrs" ${slot.testData.exposed_2hr_duration === '4+hrs' ? 'selected' : ''}>4+hrs</option>
+        </select>
       </div>
 
       ${renderQ("regular_hpd", "Regularly wear hearing protection?", slot.testData.regular_hpd)}
       <div class="sub-question" id="hpd_details">
         <div style="display:flex; gap:10px;">
-            <select class="q-input q-select" data-id="hpd_class" title="HPD Class"><option value="A">Class A</option><option value="B">Class B</option><option value="C">Class C</option></select>
-            <select class="q-input q-select" data-id="hpd_style" title="HPD Style"><option value="earplugs">Earplugs</option><option value="earmuffs">Earmuffs</option><option value="custom">Custom</option></select>
+            <select class="q-input q-select live-track" data-id="hpd_class" title="Class">
+                <option value="A" ${slot.testData.hpd_class === 'A' ? 'selected' : ''}>Class A</option>
+                <option value="B" ${slot.testData.hpd_class === 'B' ? 'selected' : ''}>Class B</option>
+                <option value="C" ${slot.testData.hpd_class === 'C' ? 'selected' : ''}>Class C</option>
+            </select>
+            <select class="q-input q-select live-track" data-id="hpd_style" title="Style">
+                <option value="earplugs" ${slot.testData.hpd_style === 'earplugs' ? 'selected' : ''}>Earplugs</option>
+                <option value="earmuffs" ${slot.testData.hpd_style === 'earmuffs' ? 'selected' : ''}>Earmuffs</option>
+                <option value="custom" ${slot.testData.hpd_style === 'custom' ? 'selected' : ''}>Custom</option>
+            </select>
         </div>
       </div>
 
       <div class="q-row">
         <div class="q-label">Has your employer given you information about noise induced hearing loss in the last year?</div>
-        <select class="q-input q-select" data-id="employer_info" title="Employer info provided">
-            <option value="No">No</option>
-            <option value="Yes" selected>Yes</option>
+        <select class="q-input q-select live-track" data-id="employer_info" title="Employer Info">
+            <option value="No" ${slot.testData.employer_info === 'No' ? 'selected' : ''}>No</option>
+            <option value="Yes" ${slot.testData.employer_info !== 'No' ? 'selected' : ''}>Yes</option>
         </select>
       </div>
 
@@ -76,12 +89,12 @@ export function renderTestEntry(container, state, navigate) {
       
       <div class="q-row">
         <div class="q-label">Ringing in ears (tinnitus)?</div>
-        <select class="q-input q-select" data-id="ringing" id="ringing" title="Ringing in ears"><option value="No">No</option><option value="Yes">Yes</option></select>
+        <select class="q-input q-select live-track" data-id="ringing" id="ringing" title="Ringing"><option value="No" ${slot.testData.ringing === 'No' ? 'selected' : ''}>No</option><option value="Yes" ${slot.testData.ringing === 'Yes' ? 'selected' : ''}>Yes</option></select>
       </div>
       <div class="sub-question" id="ringing_details">
         <div style="display:flex; gap:20px;">
-            <select class="q-input q-select" data-id="ringing_ear" title="Which ear"><option value="Left">Left</option><option value="Right">Right</option><option value="Both">Both</option></select>
-            <select class="q-input q-select" data-id="ringing_duration" title="How long"><option value="less than 5">less than 5</option><option value="5-10">5-10</option><option value="over 15">over 15</option></select>
+            <select class="q-input q-select live-track" data-id="ringing_ear" title="Ear"><option value="Left" ${slot.testData.ringing_ear === 'Left' ? 'selected' : ''}>Left</option><option value="Right" ${slot.testData.ringing_ear === 'Right' ? 'selected' : ''}>Right</option><option value="Both" ${slot.testData.ringing_ear === 'Both' ? 'selected' : ''}>Both</option></select>
+            <select class="q-input q-select live-track" data-id="ringing_duration" title="Duration"><option value="less than 5" ${slot.testData.ringing_duration === 'less than 5' ? 'selected' : ''}>less than 5</option><option value="over 15" ${slot.testData.ringing_duration === 'over 15' ? 'selected' : ''}>over 15</option></select>
         </div>
       </div>
 
@@ -89,17 +102,17 @@ export function renderTestEntry(container, state, navigate) {
 
       <div class="q-row">
         <div class="q-label">Have you ever used a firearm?</div>
-        <select class="q-input q-select" data-id="firearms" id="firearms" title="Firearm use"><option value="No">No</option><option value="Yes">Yes</option></select>
+        <select class="q-input q-select live-track" data-id="firearms" id="firearms" title="Firearms"><option value="No" ${slot.testData.firearms === 'No' ? 'selected' : ''}>No</option><option value="Yes" ${slot.testData.firearms === 'Yes' ? 'selected' : ''}>Yes</option></select>
       </div>
       <div class="sub-question" id="firearms_details">
         <div style="display:flex; gap:20px;">
-            <select class="q-input q-select" data-id="firearm_type" title="Firearm type"><option value="Both">Both</option><option value="Handguns">Handguns</option><option value="Rifles">Rifles</option></select>
-            <select class="q-input q-select" data-id="firearm_duration" title="Years of use"><option value="under 10">under 10</option><option value="10-20">10-20</option><option value="over 20">over 20</option></select>
+            <select class="q-input q-select live-track" data-id="firearm_type" title="Type"><option value="Both" ${slot.testData.firearm_type === 'Both' ? 'selected' : ''}>Both</option><option value="Handguns" ${slot.testData.firearm_type === 'Handguns' ? 'selected' : ''}>Handguns</option><option value="Rifles" ${slot.testData.firearm_type === 'Rifles' ? 'selected' : ''}>Rifles</option></select>
+            <select class="q-input q-select live-track" data-id="firearm_duration" title="Years"><option value="under 10" ${slot.testData.firearm_duration === 'under 10' ? 'selected' : ''}>under 10</option><option value="over 20" ${slot.testData.firearm_duration === 'over 20' ? 'selected' : ''}>over 20</option></select>
         </div>
       </div>
 
       <h2 class="section-title">Hearing Test Results</h2>
-      <div class="audio-entry-container" style="display:flex; gap:30px;">
+      <div style="display:flex; gap:30px;">
           <div style="flex:1">
               <span class="ear-header">Left Ear (dB)</span>
               <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px;">
@@ -116,13 +129,15 @@ export function renderTestEntry(container, state, navigate) {
           </div>
       </div>
 
-      <div style="margin-top: 40px; text-align: right; padding-bottom: 120px;">
-          <button class="btn btn-primary" id="btn-complete-test" style="background: #1e3a5f; color: white; padding: 14px 60px; border:none; font-weight:bold;">Finish Test</button>
-      </div>
+      <h2 class="section-title">Finalize</h2>
+      <textarea id="tech-notes" class="live-track" data-id="techNotes" rows="4" style="width:100%; border: 1px solid #ccc; border-radius: 8px; padding: 15px; font-size:14px;">${slot.techNotes || ''}</textarea>
+      <div style="margin-top: 40px; text-align: right; padding-bottom: 120px;"><button class="btn btn-primary" id="btn-complete-test" style="background: #1e3a5f; color: white; padding: 14px 60px; border:none; font-weight:bold;">Finish Test</button></div>
     </div>
   `;
 
-  // --- Handlers ---
+  // --- 3. INTERACTION & LIVE SYNC LOGIC ---
+
+  // A. Toggle visibility of sub-questions
   const toggleSub = (pId, sId) => { 
     const p = container.querySelector(`#${pId}`); 
     const s = container.querySelector(`#${sId}`); 
@@ -136,27 +151,36 @@ export function renderTestEntry(container, state, navigate) {
   toggleSub('ringing', 'ringing_details');
   toggleSub('firearms', 'firearms_details');
 
+  // B. LIVE TRACKING: Save every keystroke/selection to the slot immediately
+  container.addEventListener('change', (e) => {
+      const el = e.target;
+      if (el.classList.contains('q-input')) {
+          slot.testData[el.dataset.id] = el.value;
+      } else if (el.classList.contains('audio-input')) {
+          const key = (el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq;
+          slot.testData[key] = el.value;
+          updateAudiogramPlot(container, el.dataset.ear, baseline);
+      } else if (el.id === 'tech-notes') {
+          slot.techNotes = el.value;
+      }
+  });
+
   container.querySelector('#btn-back').onclick = () => navigate('employee-list');
 
+  // Initial plot of existing data
   updateAudiogramPlot(container, 'L', baseline);
   updateAudiogramPlot(container, 'R', baseline);
 
-  container.querySelectorAll('.audio-input').forEach(sel => {
-    sel.addEventListener('change', () => {
-        updateAudiogramPlot(container, sel.dataset.ear, baseline);
-        slot.testData[(sel.dataset.ear === 'L' ? 'l' : 'r') + sel.dataset.freq] = sel.value;
-    });
-  });
-
+  // Finish and Save
   container.querySelector('#btn-complete-test').onclick = async () => {
     const testResult = {
         test_date: TimeService.getTimestamp(),
         tech_id: state.user.tech_id,
-        history: {},
-        thresholds: {}
+        history: { ...slot.testData },
+        thresholds: {},
+        notes: slot.techNotes
     };
 
-    container.querySelectorAll('.q-input').forEach(s => testResult.history[s.dataset.id] = s.value);
     container.querySelectorAll('.audio-input').forEach(s => {
         const key = (s.dataset.ear === 'L' ? 'left_' : 'right_') + (s.dataset.freq >= 1000 ? (s.dataset.freq/1000)+'k' : s.dataset.freq);
         testResult.thresholds[key] = parseInt(s.value);
@@ -166,33 +190,17 @@ export function renderTestEntry(container, state, navigate) {
     if (pEmp) pEmp.completed_tests = [testResult];
 
     await savePacket(packet);
-    slot.currentEmployee = null; slot.testData = {};
+    slot.currentEmployee = null; slot.testData = {}; slot.techNotes = '';
     navigate('employee-list');
   };
-
-  const audioInputs = container.querySelectorAll('.audio-input');
-  audioInputs.forEach((sel, idx) => {
-    sel.onchange = () => { if (sel.value !== "" && idx < audioInputs.length - 1) audioInputs[idx + 1].focus(); };
-  });
 }
 
-// Helper: Renders static background grid
+// --- SVG HELPERS ---
+
 function renderAudiogramSVG(ear) {
-    return `<svg viewBox="0 0 300 240" style="width:100%; height:100%;">
-        <rect x="40" y="40" width="240" height="70" fill="#76B214" opacity="0.1" />
-        <g stroke="#ddd" stroke-width="1">
-            ${[500, 1000, 2000, 3000, 4000, 6000, 8000].map((f, i) => `<line x1="${40+(i*40)}" y1="20" x2="${40+(i*40)}" y2="220" />`).join('')}
-            ${[0, 20, 40, 60, 80, 100].map((db) => `<line x1="40" y1="${40+((db+10)*2)}" x2="280" y2="${40+((db+10)*2)}" />`).join('')}
-        </g>
-        <line x1="40" y1="110" x2="280" y2="110" stroke="#76B214" stroke-width="2" stroke-dasharray="5,3" />
-        <polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" />
-        <g id="base-markers-${ear}" opacity="0.5"></g>
-        <polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" />
-        <g id="markers-${ear}"></g>
-    </svg>`;
+    return `<svg viewBox="0 0 300 240" style="width:100%; height:100%;"><rect x="40" y="40" width="240" height="70" fill="#76B214" opacity="0.1" /><g stroke="#ddd" stroke-width="1">${[500, 1000, 2000, 3000, 4000, 6000, 8000].map((f, i) => `<line x1="${40+(i*40)}" y1="20" x2="${40+(i*40)}" y2="220" />`).join('')}${ [0, 20, 40, 60, 80, 100].map((db) => `<line x1="40" y1="${40+((db+10)*2)}" x2="280" y2="${40+((db+10)*2)}" />`).join('')}</g><line x1="40" y1="110" x2="280" y2="110" stroke="#76B214" stroke-width="2" stroke-dasharray="5,3" /><polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" /><g id="base-markers-${ear}" opacity="0.5"></g><polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" /><g id="markers-${ear}"></g></svg>`;
 }
 
-// Helper: Updates plotted points
 function updateAudiogramPlot(container, ear, baseline) {
     const freqs = [500, 1000, 2000, 3000, 4000, 6000, 8000];
     const baseMarkers = container.querySelector(`#base-markers-${ear}`);
@@ -223,12 +231,11 @@ function updateAudiogramPlot(container, ear, baseline) {
     path.setAttribute('points', points.join(' '));
 }
 
-function renderQ(id, label, cur = "No") { return `<div class="q-row"><span class="q-label">${label}</span><select class="q-input q-select" id="${id}" data-id="${id}" title="${label}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select></div>`; }
-function renderSimpleQ(id, label, cur = "No") { return `<div class="q-row"><div class="q-label">${label}</div><select class="q-input q-select" data-id="${id}" title="${label}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select></div>`; }
+function renderQ(id, label, cur = "No") { return `<div class="q-row"><span class="q-label">${label}</span><select class="q-input q-select live-track" id="${id}" data-id="${id}" title="${label}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select></div>`; }
+function renderSimpleQ(id, label, cur = "No") { return `<div class="q-row"><div class="q-label">${label}</div><select class="q-input q-select live-track" data-id="${id}" title="${label}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select></div>`; }
 function renderAudioInput(ear, freq, cur = "") {
     let opts = '<option value="">--</option>';
     for (let i = 0; i <= 100; i += 5) opts += `<option value="${i}" ${cur==i?'selected':''}>${i}</option>`;
-    return `<div style="text-align:center;"><select class="audio-input" data-ear="${ear}" data-freq="${freq}" title="${ear} ear ${freq}Hz" style="width:100%; padding:8px 0; font-weight:bold; border-radius:4px; border:1px solid #ccc;">${opts}</select><label style="font-size:10px; color:#666; display:block; margin-top:4px;">${freq >= 1000 ? (freq/1000)+'k' : '.5k'}</label></div>`;
+    return `<div style="text-align:center;"><select class="audio-input live-track" data-ear="${ear}" data-freq="${freq}" title="${ear} ear ${freq}Hz" style="width:100%; padding:8px 0; font-weight:bold; border-radius:4px; border:1px solid #ccc;">${opts}</select><label style="font-size:10px; color:#666; display:block; margin-top:4px;">${freq >= 1000 ? (freq/1000)+'k' : '.5k'}</label></div>`;
 }
-
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
