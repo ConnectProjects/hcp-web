@@ -15,71 +15,56 @@ import { renderHelp }           from './screens/help.js'
 import { renderTraining }       from './screens/training.js'
 import { renderNewVisit }       from './screens/new-visit.js'
 
-// ---------------------------------------------------------------------------
-// App state
-// ---------------------------------------------------------------------------
-
 export const state = {
-  screen:             'login',
-  user:               null,       
-  syncFolder:         null,       
-  logoUrl:            null,       
-  packets:            [],         
-  currentPacket:      null,       
-  
-  activeSlot:         0, 
+  screen: 'login',
+  user: null, syncFolder: null, logoUrl: null, packets: [], currentPacket: null,
+  activeSlot: 0,
   slots: [
-    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
-    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
-  ],
-  
-  currentEmployee:    null,
-  testData:           {},
-  techNotes:          '',
-  lastSync:           null,       
-  helpReturnScreen:   null
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
+  ]
 }
 
-// ---------------------------------------------------------------------------
-// Slot Management (The "Memory" Engine)
-// ---------------------------------------------------------------------------
+// --- SLOT PERSISTENCE ENGINE ---
 
 function saveStateToSlot() {
   const s = state.slots[state.activeSlot];
   if (!s) return;
-  
-  // Save Logical State
-  s.screen = state.screen;
-  s.currentPacket = state.currentPacket;
-  s.currentEmployee = state.currentEmployee;
-  s.testData = { ...state.testData };
-  s.techNotes = state.techNotes;
 
-  // Save UI State (Scroll Position)
+  // 1. Save navigation state
+  s.screen = state.screen;
+
+  // 2. SCRAPE LIVE DOM VALUES (This prevents data loss on switch)
+  const inputs = document.querySelectorAll('.q-input, .audio-input, #tech-notes');
+  inputs.forEach(el => {
+    if (el.id === 'tech-notes') {
+      s.techNotes = el.value;
+    } else if (el.classList.contains('q-input')) {
+      s.testData[el.dataset.id] = el.value;
+    } else if (el.classList.contains('audio-input')) {
+      const key = (el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq;
+      s.testData[key] = el.value;
+    }
+  });
+
+  // 3. Save Scroll
   const mainArea = document.querySelector('.main-area');
   s.scrollPos = mainArea ? mainArea.scrollTop : 0;
 }
 
 function loadStateFromSlot() {
   const s = state.slots[state.activeSlot];
-  if (!s) return;
-
-  // Restore Logical State
+  
+  // Restore state pointers
   state.screen = s.screen;
-  state.currentPacket = s.currentPacket;
   state.currentEmployee = s.currentEmployee;
-  state.testData = { ...s.testData };
-  state.techNotes = s.techNotes;
-
-  // Paint the UI
+  
   paint();
 
-  // Restore UI State (Scroll Position) after the browser has rendered the HTML
+  // Restore Scroll
   setTimeout(() => {
     const mainArea = document.querySelector('.main-area');
-    if (mainArea) {
-        mainArea.scrollTo({ top: s.scrollPos, behavior: 'instant' });
-    }
+    if (mainArea) mainArea.scrollTop = s.scrollPos || 0;
   }, 0);
 }
 
@@ -87,100 +72,82 @@ export function switchSlot(slotIndex) {
   if (slotIndex < 0 || slotIndex > 1) return;
   if (state.activeSlot === slotIndex) return;
 
-  saveStateToSlot();
+  saveStateToSlot(); // Capture what tech is doing now
   state.activeSlot = slotIndex;
   
-  // If the booth we are switching TO is empty, go to the list
-  if (!state.slots[state.activeSlot].currentEmployee && state.currentPacket) {
-      state.slots[state.activeSlot].screen = 'employee-list';
+  const targetSlot = state.slots[state.activeSlot];
+
+  // If target booth is empty, but we are in a visit, show the list
+  if (!targetSlot.currentEmployee && state.currentPacket) {
+      targetSlot.screen = 'employee-list';
   }
   
   loadStateFromSlot();
 }
 
-// ---------------------------------------------------------------------------
-// Navigation
-// ---------------------------------------------------------------------------
-
 export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
   
   saveStateToSlot();
-  
+
+  // If navigating to a new screen, update the state
   state.screen = screen;
-  Object.assign(state, params);
   
-  // Update the current slot's record of the screen
+  // If params has a packet, lock it in (prevents "Empty List" bug)
+  if (params.currentPacket) state.currentPacket = params.currentPacket;
+  if (params.currentEmployee) state.slots[state.activeSlot].currentEmployee = params.currentEmployee;
+
+  // Ensure current slot knows its screen
   state.slots[state.activeSlot].screen = screen;
 
   paint();
 }
 
+// --- UI PAINT ---
+
 function paint() {
-  const app = document.getElementById('app')
-  const renderFn = SCREENS[state.screen]
+  const app = document.getElementById('app');
+  const renderFn = SCREENS[state.screen];
+  if (!renderFn) return;
+  if (state.screen === 'login') { app.innerHTML = ''; renderFn(app, state, navigate); return; }
 
-  if (state.screen === 'login') {
-    app.innerHTML = '';
-    renderFn(app, state, navigate);
-    return;
-  }
-
-  const techName = state.user?.name ?? 'Tech'
-  const contextScreens = ['company', 'employee-list', 'test-entry']
-  const showSwitcher = contextScreens.includes(state.screen)
+  const techName = state.user?.name ?? 'Tech';
+  const showSwitcher = ['employee-list', 'test-entry'].includes(state.screen);
 
   app.innerHTML = `
     <div class="app-shell">
-      <nav class="sidebar" id="sidebar">
-        <div class="sidebar-brand">
-          ${state.logoUrl ? `<img src="${state.logoUrl}" class="sidebar-logo-img" />` : `<div class="sidebar-logo-img">${BrandLogo}</div>`}
-        </div>
+      <nav class="sidebar">
+        <div class="sidebar-brand">${state.logoUrl ? `<img src="${state.logoUrl}" class="sidebar-logo-img" />` : `<div class="sidebar-logo-img">${BrandLogo}</div>`}</div>
         <ul class="sidebar-nav">
-          ${NAV_ITEMS.map(item => `
-            <li>
-              <button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}">
-                <span class="nav-icon">${item.icon}</span>
-                <span class="nav-label">${item.label}</span>
-              </button>
-            </li>
-          `).join('')}
+          ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
         </ul>
+        <div class="sidebar-footer">
+          <span class="user-name">${techName}</span>
+          <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">${state.syncFolder ? '●' : '○'} Sync</span>
+        </div>
       </nav>
-
       <div class="main-area">
         ${showSwitcher ? `
           <div class="booth-switcher-bar">
             <button class="booth-tab b1 ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
               <span class="booth-indicator">1</span>
-              <div class="booth-info">
-                <span class="booth-label">LEFT BOOTH</span>
-                <span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
+              <div class="booth-info"><span class="booth-label">LEFT BOOTH</span><span class="booth-name">${state.slots[0].currentEmployee?.last_name ?? 'Empty'}</span></div>
             </button>
             <button class="booth-tab b2 ${state.activeSlot === 1 ? 'active' : ''}" data-slot="1">
               <span class="booth-indicator">2</span>
-              <div class="booth-info">
-                <span class="booth-label">RIGHT BOOTH</span>
-                <span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span>
-              </div>
+              <div class="booth-info"><span class="booth-label">RIGHT BOOTH</span><span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span></div>
             </button>
-          </div>
-        ` : ''}
+          </div>` : ''}
         <div id="main-content" class="main-content"></div>
       </div>
-    </div>
-  `
+    </div>`;
 
-  app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
-    btn.onclick = () => navigate(btn.dataset.screen)
-  })
-
-  app.querySelectorAll('.booth-tab').forEach(btn => {
-    btn.onclick = () => switchSlot(Number(btn.dataset.slot))
-  })
-
-  renderFn(document.getElementById('main-content'), state, navigate)
+  app.querySelectorAll('.nav-item[data-screen]').forEach(btn => btn.onclick = () => {
+      if (btn.dataset.screen === 'dashboard') state.currentPacket = null; // Clear packet context only on dashboard
+      navigate(btn.dataset.screen);
+  });
+  app.querySelectorAll('.booth-tab').forEach(btn => btn.onclick = () => switchSlot(Number(btn.dataset.slot)));
+  renderFn(document.getElementById('main-content'), state, navigate);
 }
 
 const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule': renderSchedule, 'calendar': renderCalendar, 'company': renderCompany, 'employee-list': renderEmployeeList, 'test-entry': renderTestEntry, 'sync': renderSync, 'settings': renderSettings, 'help': renderHelp, 'training': renderTraining, 'new-visit': renderNewVisit };
