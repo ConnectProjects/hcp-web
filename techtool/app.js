@@ -15,106 +15,59 @@ import { renderHelp }           from './screens/help.js'
 import { renderTraining }       from './screens/training.js'
 import { renderNewVisit }       from './screens/new-visit.js'
 
-// ---------------------------------------------------------------------------
-// App state
-// ---------------------------------------------------------------------------
-
 export const state = {
   screen: 'login',
-  user: null, 
-  syncFolder: null, 
-  logoUrl: null, 
-  packets: [], 
-  currentPacket: null, 
-  
+  user: null, syncFolder: null, logoUrl: null, packets: [], currentPacket: null,
   activeSlot: 0,
   slots: [
-    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 },
-    { screen: 'dashboard', currentPacket: null, currentEmployee: null, testData: {}, techNotes: '', scrollPos: 0 }
-  ],
-  
-  currentEmployee:    null,
-  testData:           {},
-  techNotes:          ''
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '' },
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '' }
+  ]
 }
 
 // ---------------------------------------------------------------------------
-// Slot & Scroll Persistence Engine
+// Slot Management
 // ---------------------------------------------------------------------------
-
-function saveStateToSlot() {
-  const s = state.slots[state.activeSlot];
-  if (!s) return;
-
-  s.screen = state.screen;
-  s.currentEmployee = state.currentEmployee;
-
-  // Scrape form data into slot memory
-  const inputs = document.querySelectorAll('.q-input, .audio-input, #tech-notes');
-  inputs.forEach(el => {
-    if (el.id === 'tech-notes') s.techNotes = el.value;
-    else if (el.classList.contains('q-input')) s.testData[el.dataset.id] = el.value;
-    else if (el.classList.contains('audio-input')) {
-      s.testData[(el.dataset.ear === 'L' ? 'l' : 'r') + el.dataset.freq] = el.value;
-    }
-  });
-}
-
-function loadStateFromSlot() {
-  const s = state.slots[state.activeSlot];
-  
-  state.screen = s.screen;
-  state.currentEmployee = s.currentEmployee;
-  state.testData = s.testData;
-  state.techNotes = s.techNotes;
-
-  paint();
-
-  // Restore Scroll Position after a tiny delay to ensure the browser has finished layout
-  setTimeout(() => {
-    const scrollContainer = document.querySelector('.main-area');
-    if (scrollContainer) {
-      scrollContainer.scrollTop = s.scrollPos || 0;
-    }
-  }, 10);
-}
 
 export function switchSlot(slotIndex) {
   if (slotIndex < 0 || slotIndex > 1) return;
-  if (state.activeSlot === slotIndex) return;
-
-  saveStateToSlot();
   state.activeSlot = slotIndex;
   
   const targetSlot = state.slots[state.activeSlot];
+  
+  // If we are in a packet but the booth is empty, set it to the list
   if (!targetSlot.currentEmployee && state.currentPacket) {
       targetSlot.screen = 'employee-list';
   }
   
-  loadStateFromSlot();
+  state.screen = targetSlot.screen;
+  state.currentEmployee = targetSlot.currentEmployee;
+  
+  paint();
 }
 
 export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
   
-  saveStateToSlot();
   state.screen = screen;
-  
   if (params.currentPacket) state.currentPacket = params.currentPacket;
   
-  if (screen === 'test-entry' && params.currentEmployee) {
+  // If we are on a clinical screen, update the current slot's "memory"
+  const isClinical = ['employee-list', 'test-entry'].includes(screen);
+  if (isClinical) {
       const s = state.slots[state.activeSlot];
-      s.currentEmployee = params.currentEmployee;
-      state.currentEmployee = params.currentEmployee;
-      s.screen = 'test-entry';
-      s.scrollPos = 0; // Reset scroll for new worker
+      s.screen = screen;
+      if (params.currentEmployee) {
+          s.currentEmployee = params.currentEmployee;
+          state.currentEmployee = params.currentEmployee;
+      }
   }
 
   paint();
 }
 
 // ---------------------------------------------------------------------------
-// UI Painting
+// UI Painting (The "Multi-Viewport" Engine)
 // ---------------------------------------------------------------------------
 
 function paint() {
@@ -133,34 +86,23 @@ function paint() {
     app.innerHTML = `
       <div class="app-shell">
         <nav class="sidebar" id="sidebar-target"></nav>
-        <div class="main-area" id="main-scroll-container">
+        <div class="main-area">
           <div id="switcher-target"></div>
-          <div id="main-content" class="main-content"></div>
+          <div id="viewport-global" class="viewport"></div>
+          <div id="viewport-slot-0" class="viewport hidden"></div>
+          <div id="viewport-slot-1" class="viewport hidden"></div>
         </div>
       </div>`;
-
-    // 2. NEW: Attach the real-time scroll listener once
-    const scrollArea = document.getElementById('main-scroll-container');
-    scrollArea.addEventListener('scroll', () => {
-        state.slots[state.activeSlot].scrollPos = scrollArea.scrollTop;
-    });
   }
 
-  // 3. Update Sidebar
+  // 2. Update Sidebar
   const techName = state.user?.name ?? 'Tech';
   document.getElementById('sidebar-target').innerHTML = `
     <div class="sidebar-brand">
       ${state.logoUrl ? `<img src="${state.logoUrl}" class="sidebar-logo-img" />` : `<div class="sidebar-logo-img">${BrandLogo}</div>`}
     </div>
     <ul class="sidebar-nav">
-      ${NAV_ITEMS.map(item => `
-        <li>
-          <button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}">
-            <span class="nav-icon">${item.icon}</span>
-            <span class="nav-label">${item.label}</span>
-          </button>
-        </li>
-      `).join('')}
+      ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
     </ul>
     <div class="sidebar-footer">
       <span class="user-name">${techName}</span>
@@ -168,11 +110,11 @@ function paint() {
     </div>
   `;
 
-  // 4. Update Switcher Bar
+  // 3. Update Switcher Bar
   const switcherTarget = document.getElementById('switcher-target');
-  const showSwitcher = ['employee-list', 'test-entry'].includes(state.screen);
+  const isClinical = ['employee-list', 'test-entry'].includes(state.screen);
   
-  if (showSwitcher) {
+  if (isClinical) {
     switcherTarget.innerHTML = `
       <div class="booth-switcher-bar">
         <button class="booth-tab b1 ${state.activeSlot === 0 ? 'active' : ''}" data-slot="0">
@@ -192,19 +134,34 @@ function paint() {
     switcherTarget.innerHTML = '';
   }
 
+  // 4. Viewport Management (The Scroll Fix)
+  const vGlobal = document.getElementById('viewport-global');
+  const vSlot0  = document.getElementById('viewport-slot-0');
+  const vSlot1  = document.getElementById('viewport-slot-1');
+
+  // Hide everything first
+  [vGlobal, vSlot0, vSlot1].forEach(v => v.classList.add('hidden'));
+
+  let activeViewport;
+  if (isClinical) {
+      activeViewport = (state.activeSlot === 0) ? vSlot0 : vSlot1;
+  } else {
+      activeViewport = vGlobal;
+  }
+
+  activeViewport.classList.remove('hidden');
+  
+  // 5. Render content into the correct viewport
+  renderFn(activeViewport, state, navigate);
+
+  // Sidebar Listeners
   document.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.onclick = () => {
         if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
         navigate(btn.dataset.screen);
     };
   });
-
-  renderFn(document.getElementById('main-content'), state, navigate);
 }
-
-// ---------------------------------------------------------------------------
-// Logic & Boot
-// ---------------------------------------------------------------------------
 
 const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule': renderSchedule, 'calendar': renderCalendar, 'company': renderCompany, 'employee-list': renderEmployeeList, 'test-entry': renderTestEntry, 'sync': renderSync, 'settings': renderSettings, 'help': renderHelp, 'training': renderTraining, 'new-visit': renderNewVisit };
 const NAV_ITEMS = [ { screen: 'dashboard', label: 'Dashboard', icon: '⊞' }, { screen: 'schedule', label: 'Packets', icon: '📅' }, { screen: 'settings', label: 'Settings', icon: '⚙' } ];
