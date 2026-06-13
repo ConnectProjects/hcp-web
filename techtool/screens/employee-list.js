@@ -109,42 +109,42 @@ function buildList(employees) {
 function attachRowHandlers(container, employees, packet, state, navigate) {
   container.querySelectorAll('.emp-row').forEach(row => {
     row.onclick = (e) => {
+      // 1. Ignore if clicking 'Skip'
       if (e.target.closest('.emp-row__skip')) return;
-      const emp = employees.find(e => e.employee_id == row.dataset.empId);
+
+      // 2. Find the employee (using loose equality for ID safety)
+      const empId = row.dataset.empId;
+      const emp = employees.find(e => e.employee_id == empId);
+      
       if (!emp || emp.skipped_at) return;
 
+      console.log("🛠️ Preparing Booth for:", emp.last_name);
+
+      // 3. FORCE state synchronization
+      state.currentEmployee = emp;
+      state.currentPacket = packet;
+      
       const slot = state.slots[state.activeSlot];
       slot.currentEmployee = emp;
       slot.currentPacket = packet;
 
-      // EDIT LOGIC: If already tested, load previous values into the slot
-      if (emp.completed_tests?.length > 0) {
-          const test = emp.completed_tests[0];
-          slot.testData = { ...test.history };
-          slot.techNotes = test.notes || '';
-          // Map DB keys (left_1k) back to UI keys (l1000)
-          Object.entries(test.thresholds || {}).forEach(([k, v]) => {
-              const uiKey = k.replace('left_', 'l').replace('right_', 'r').replace('1k','1000').replace('2k','2000').replace('3k','3000').replace('4k','4000').replace('6k','6000').replace('8k','8000');
-              slot.testData[uiKey] = v;
-          });
+      // 4. Clear old data for a new test, or keep if editing
+      if (!emp.completed_tests || emp.completed_tests.length === 0) {
+        slot.testData = {};
+        slot.techNotes = '';
       } else {
-          slot.testData = {}; slot.techNotes = '';
+        // Load existing test for editing
+        const test = emp.completed_tests[0];
+        slot.testData = { ...test.history };
+        slot.techNotes = test.notes || '';
       }
 
+      // 5. Navigate
       navigate('test-entry');
     };
   });
 
-  container.querySelectorAll('.emp-row__skip').forEach(btn => {
-    btn.onclick = async (e) => {
-      e.stopPropagation();
-      if (confirm("Skip this worker?")) {
-        markEmployeeSkipped(packet, btn.dataset.skipId, "Not present");
-        await savePacket(packet);
-        renderEmployeeList(container, state, navigate);
-      }
-    };
-  });
+  // ... (keep your existing skip button logic below this)
 }
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
