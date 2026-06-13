@@ -2401,3 +2401,45 @@ select.thresh-cell {
 @media (max-width: 800px) {
     .audio-entry-container { flex-direction: column; }
 }
+
+/* --- UI REFINEMENTS --- */
+.test-header-box {
+    background: #76B214;
+    color: white;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.header-item strong { opacity: 0.8; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+
+.q-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.q-row.no-border { border-bottom: none; }
+
+.q-label { font-size: 14px; color: #333; flex: 1; padding-right: 20px; }
+
+.sub-question {
+    margin-left: 20px;
+    padding: 0 15px;
+    border-left: 4px solid #76B214;
+    background: #f9f9f9;
+    display: none;
+}
+
+.sub-question.visible { display: block; }
+
+.audio-input-row {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
