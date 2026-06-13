@@ -2402,44 +2402,121 @@ select.thresh-cell {
     .audio-entry-container { flex-direction: column; }
 }
 
-/* --- UI REFINEMENTS --- */
-.test-header-box {
-    background: #76B214;
-    color: white;
-    border-radius: 8px;
-    padding: 20px;
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 20px;
+/* --- TECHTOOL FORM POLISH --- */
+
+/* Standardize the container width so it doesn't stretch too far */
+.tech-tool-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 20px 100px 20px; /* Space for sticky footer if added later */
+}
+
+/* Fix the invisible Back button */
+.btn-ghost {
+    background: none;
+    border: none;
+    color: #76B214 !important; /* Force Connect Hearing Green */
+    font-weight: bold;
+    cursor: pointer;
+    padding: 10px 0;
+    display: inline-block;
     font-size: 14px;
 }
 
-.header-item strong { opacity: 0.8; font-size: 11px; text-transform: uppercase; display: block; margin-bottom: 2px; }
+/* Green Header Box - Improved Alignment */
+.test-header-box {
+    background: #76B214;
+    color: white;
+    padding: 15px 25px;
+    display: grid;
+    grid-template-columns: 1.5fr 1.5fr 1fr;
+    gap: 10px;
+    border-radius: 0 0 8px 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
 
+.header-item strong {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    opacity: 0.8;
+    letter-spacing: 0.5px;
+}
+
+.header-item span {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+/* Section Titles */
+.section-title {
+    color: #333;
+    font-size: 1.4rem;
+    margin: 40px 0 15px 0;
+    font-weight: 800;
+}
+
+/* Form Card Container */
+.form-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 0 20px;
+    margin-bottom: 20px;
+}
+
+/* Question Rows */
 .q-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 0;
-    border-bottom: 1px solid #eee;
+    padding: 16px 0;
+    border-bottom: 1px solid #f0f0f0;
+    gap: 20px;
 }
 
-.q-row.no-border { border-bottom: none; }
+.q-row:last-child { border-bottom: none; }
 
-.q-label { font-size: 14px; color: #333; flex: 1; padding-right: 20px; }
+.q-label {
+    font-size: 14px;
+    color: #444;
+    line-height: 1.4;
+    flex: 1;
+}
 
+/* Sub-questions (Indented) */
 .sub-question {
-    margin-left: 20px;
-    padding: 0 15px;
-    border-left: 4px solid #76B214;
     background: #f9f9f9;
+    border-left: 4px solid #76B214;
+    margin: 0;
+    padding: 0 20px;
     display: none;
 }
 
-.sub-question.visible { display: block; }
+.sub-question.visible {
+    display: block;
+}
+
+/* Input Styling */
+.q-select {
+    min-width: 100px;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background-color: white;
+    font-size: 14px;
+}
+
+/* Audiogram Grid */
+.audio-entry-container {
+    display: flex;
+    gap: 30px;
+    margin-top: 20px;
+}
 
 .audio-input-row {
     display: flex;
-    gap: 5px;
+    gap: 4px;
     margin-bottom: 10px;
 }

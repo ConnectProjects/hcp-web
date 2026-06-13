@@ -12,14 +12,14 @@ export function renderTestEntry(container, state, navigate) {
   container.innerHTML = `
     <div class="tech-tool-container">
       
-      <!-- 1. Green Header Box -->
+      <!-- 1. Standardized Green Header -->
       <div class="test-header-box">
-          <div class="header-item"><strong>Worker:</strong> ${esc(emp.last_name)}, ${esc(emp.first_name)}</div>
-          <div class="header-item"><strong>Employer:</strong> ${esc(packet?.company?.name || 'Manual')}</div>
-          <div class="header-item"><strong>Date:</strong> ${new Date().toISOString().split('T')[0]}</div>
+          <div class="header-item"><strong>Worker</strong><span>${esc(emp.last_name)}, ${esc(emp.first_name)}</span></div>
+          <div class="header-item"><strong>Employer</strong><span>${esc(packet?.company?.name || 'Manual')}</span></div>
+          <div class="header-item"><strong>Date</strong><span>${new Date().toISOString().split('T')[0]}</span></div>
       </div>
 
-      <button class="btn btn-ghost" id="btn-back" style="margin-bottom:20px">❮ Back to List</button>
+      <button class="btn btn-ghost" id="btn-back">❮ Back to List</button>
 
       <h2 class="section-title">Noise Exposure</h2>
       <div class="form-card">
@@ -32,8 +32,8 @@ export function renderTestEntry(container, state, navigate) {
           </div>
           
           <div class="sub-question ${slot.testData.exposed_2hr === 'Yes' ? 'visible' : ''}" id="exposed_2hr_details">
-            <div class="q-row no-border">
-                <span class="q-label">Duration?</span>
+            <div class="q-row">
+                <span class="q-label">Duration of exposure?</span>
                 <select class="q-input q-select" data-id="exposed_2hr_duration">
                     <option value="under 2hrs" ${slot.testData.exposed_2hr_duration === 'under 2hrs' ? 'selected' : ''}>under 2hrs</option>
                     <option value="2-4hrs" ${slot.testData.exposed_2hr_duration === '2-4hrs' ? 'selected' : ''}>2-4hrs</option>
@@ -51,15 +51,15 @@ export function renderTestEntry(container, state, navigate) {
           </div>
 
           <div class="sub-question ${slot.testData.regular_hpd === 'Yes' ? 'visible' : ''}" id="hpd_details">
-            <div class="q-row no-border">
-                <span class="q-label">Class & Style</span>
+            <div class="q-row">
+                <span class="q-label">HPD Class & Style</span>
                 <div style="display:flex; gap:10px;">
-                    <select class="q-input q-select" data-id="hpd_class">
+                    <select class="q-input q-select" data-id="hpd_class" title="Class">
                         <option value="A" ${slot.testData.hpd_class === 'A' ? 'selected' : ''}>A</option>
                         <option value="B" ${slot.testData.hpd_class === 'B' ? 'selected' : ''}>B</option>
                         <option value="C" ${slot.testData.hpd_class === 'C' ? 'selected' : ''}>C</option>
                     </select>
-                    <select class="q-input q-select" data-id="hpd_style">
+                    <select class="q-input q-select" data-id="hpd_style" title="Style">
                         <option value="earplugs" ${slot.testData.hpd_style === 'earplugs' ? 'selected' : ''}>Earplugs</option>
                         <option value="earmuffs" ${slot.testData.hpd_style === 'earmuffs' ? 'selected' : ''}>Earmuffs</option>
                         <option value="custom" ${slot.testData.hpd_style === 'custom' ? 'selected' : ''}>Custom</option>
@@ -79,21 +79,21 @@ export function renderTestEntry(container, state, navigate) {
 
       <h2 class="section-title">Hearing History</h2>
       <div class="form-card">
-          ${renderSimpleQ("ear_infection", "Severe ear infection?", slot.testData.ear_infection)}
-          ${renderSimpleQ("ear_surgery", "Ear surgery?", slot.testData.ear_surgery)}
-          ${renderSimpleQ("dizziness", "Dizziness or balance problems?", slot.testData.dizziness)}
-          ${renderSimpleQ("head_injury", "Serious head injury?", slot.testData.head_injury)}
-          ${renderSimpleQ("childhood_loss", "Hearing loss in childhood?", slot.testData.childhood_loss)}
+          ${renderSimpleQ("ear_infection", "Have you ever had a severe ear infection?", slot.testData.ear_infection)}
+          ${renderSimpleQ("ear_surgery", "Have you ever had ear surgery?", slot.testData.ear_surgery)}
+          ${renderSimpleQ("dizziness", "Have you ever had dizziness or balance problems?", slot.testData.dizziness)}
+          ${renderSimpleQ("head_injury", "Have you ever had a serious head injury?", slot.testData.head_injury)}
+          ${renderSimpleQ("childhood_loss", "Did you have hearing loss in childhood?", slot.testData.childhood_loss)}
           
           <div class="q-row">
-            <span class="q-label">Ringing in ears (tinnitus)?</span>
+            <span class="q-label">Do you have ringing in your ears (tinnitus)?</span>
             <select class="q-input q-select" data-id="ringing" id="ringing">
                 <option value="No" ${slot.testData.ringing === 'No' ? 'selected' : ''}>No</option>
                 <option value="Yes" ${slot.testData.ringing === 'Yes' ? 'selected' : ''}>Yes</option>
             </select>
           </div>
           <div class="sub-question ${slot.testData.ringing === 'Yes' ? 'visible' : ''}" id="ringing_details">
-            <div class="q-row no-border">
+            <div class="q-row">
                 <span class="q-label">Which ear?</span>
                 <select class="q-input q-select" data-id="ringing_ear">
                     <option value="Left" ${slot.testData.ringing_ear === 'Left' ? 'selected' : ''}>Left</option>
@@ -103,7 +103,7 @@ export function renderTestEntry(container, state, navigate) {
             </div>
           </div>
 
-          ${renderSimpleQ("loud_blast", "Exposure to a loud blast or explosion?", slot.testData.loud_blast)}
+          ${renderSimpleQ("loud_blast", "Have you ever had exposure to a loud blast or explosion?", slot.testData.loud_blast)}
 
           <div class="q-row">
             <span class="q-label">Have you ever used a firearm?</span>
@@ -113,7 +113,7 @@ export function renderTestEntry(container, state, navigate) {
             </select>
           </div>
           <div class="sub-question ${slot.testData.firearms === 'Yes' ? 'visible' : ''}" id="firearms_details">
-            <div class="q-row no-border">
+            <div class="q-row">
                 <span class="q-label">Type & Years</span>
                 <div style="display:flex; gap:10px;">
                     <select class="q-input q-select" data-id="firearm_type">
@@ -150,12 +150,12 @@ export function renderTestEntry(container, state, navigate) {
       </div>
 
       <h2 class="section-title">Finalize</h2>
-      <div class="form-card">
-          <label class="q-label" style="display:block; margin-bottom:10px;">Technician Notes</label>
+      <div class="form-card" style="padding: 20px;">
+          <label class="q-label" style="display:block; margin-bottom:10px; font-weight:bold;">Technician Notes</label>
           <textarea id="tech-notes" rows="4" style="width:100%; border: 1px solid #ccc; border-radius: 8px; padding: 15px;">${slot.techNotes || ''}</textarea>
       </div>
 
-      <div style="margin-top: 40px; text-align: right; padding-bottom: 100px;">
+      <div style="margin-top: 40px; text-align: right; padding-bottom: 120px;">
           <button class="btn btn-primary" id="btn-complete-test" style="background: #1e3a5f; color: white; padding: 16px 80px; border:none; font-weight:bold; font-size:16px; border-radius:8px;">Finish Test</button>
       </div>
     </div>
@@ -200,13 +200,6 @@ function renderSimpleQ(id, label, cur = "No") {
     return `<div class="q-row">
         <span class="q-label">${label}</span>
         <select class="q-input q-select" data-id="${id}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select>
-    </div>`;
-}
-
-function renderQ(id, label, cur = "No") {
-    return `<div class="q-row">
-        <span class="q-label">${label}</span>
-        <select class="q-input q-select" id="${id}" data-id="${id}"><option value="No" ${cur==='No'?'selected':''}>No</option><option value="Yes" ${cur==='Yes'?'selected':''}>Yes</option></select>
     </div>`;
 }
 
