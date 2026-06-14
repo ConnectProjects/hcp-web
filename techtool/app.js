@@ -1,4 +1,4 @@
-import { openDB, getSetting, getAllPackets } from './db/idb.js'
+import { openDB, getSetting, getAllPackets, savePacket } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
 import { applyTheme, loadThemeColor }        from './theme.js'
@@ -25,50 +25,55 @@ export const state = {
   ]
 }
 
-// ---------------------------------------------------------------------------
-// Slot Management
-// ---------------------------------------------------------------------------
+// --- SLOT & DATA PERSISTENCE ---
+
+function saveStateToSlot() {
+  const s = state.slots[state.activeSlot];
+  if (!s) return;
+  s.screen = state.screen;
+
+  // SCRAPE DATA: Find the inputs in the ACTIVE viewport and save them to memory
+  const activeViewportId = ['employee-list', 'test-entry'].includes(state.screen) 
+    ? `viewport-slot-${state.activeSlot}` 
+    : 'viewport-global';
+  
+  const container = document.getElementById(activeViewportId);
+  if (container) {
+    const inputs = container.querySelectorAll('.q-input, .audio-input, #tech-notes');
+    inputs.forEach(el => {
+      if (el.id === 'tech-notes') s.techNotes = el.value;
+      else s.testData[el.dataset.id] = el.value;
+    });
+  }
+}
 
 export function switchSlot(slotIndex) {
   if (slotIndex < 0 || slotIndex > 1) return;
+  if (state.activeSlot === slotIndex) return;
+
+  saveStateToSlot(); // Save current work
   state.activeSlot = slotIndex;
   
   const targetSlot = state.slots[state.activeSlot];
-  
-  // If we are in a packet but the booth is empty, set it to the list
   if (!targetSlot.currentEmployee && state.currentPacket) {
       targetSlot.screen = 'employee-list';
   }
   
   state.screen = targetSlot.screen;
-  state.currentEmployee = targetSlot.currentEmployee;
-  
   paint();
 }
 
 export function navigate(screen, params = {}) {
   if (!SCREENS[screen]) return;
-  
+  saveStateToSlot();
   state.screen = screen;
   if (params.currentPacket) state.currentPacket = params.currentPacket;
-  
-  // If we are on a clinical screen, update the current slot's "memory"
-  const isClinical = ['employee-list', 'test-entry'].includes(screen);
-  if (isClinical) {
-      const s = state.slots[state.activeSlot];
-      s.screen = screen;
-      if (params.currentEmployee) {
-          s.currentEmployee = params.currentEmployee;
-          state.currentEmployee = params.currentEmployee;
-      }
-  }
-
+  if (params.currentEmployee) state.slots[state.activeSlot].currentEmployee = params.currentEmployee;
+  state.slots[state.activeSlot].screen = screen;
   paint();
 }
 
-// ---------------------------------------------------------------------------
-// UI Painting (The "Multi-Viewport" Engine)
-// ---------------------------------------------------------------------------
+// --- UI PAINT (Multi-Viewport) ---
 
 function paint() {
   const app = document.getElementById('app');
@@ -81,7 +86,6 @@ function paint() {
     return;
   }
 
-  // 1. Build the persistent shell if it doesn't exist
   if (!document.querySelector('.app-shell')) {
     app.innerHTML = `
       <div class="app-shell">
@@ -95,22 +99,18 @@ function paint() {
       </div>`;
   }
 
-  // 2. Update Sidebar
-  const techName = state.user?.name ?? 'Tech';
+  // Update Sidebar
   document.getElementById('sidebar-target').innerHTML = `
-    <div class="sidebar-brand">
-      ${state.logoUrl ? `<img src="${state.logoUrl}" class="sidebar-logo-img" />` : `<div class="sidebar-logo-img">${BrandLogo}</div>`}
-    </div>
+    <div class="sidebar-brand">${BrandLogo}</div>
     <ul class="sidebar-nav">
       ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
     </ul>
     <div class="sidebar-footer">
-      <span class="user-name">${techName}</span>
+      <span class="user-name">${state.user?.name ?? 'Tech'}</span>
       <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">${state.syncFolder ? '●' : '○'} Sync</span>
-    </div>
-  `;
+    </div>`;
 
-  // 3. Update Switcher Bar
+  // Update Switcher
   const switcherTarget = document.getElementById('switcher-target');
   const isClinical = ['employee-list', 'test-entry'].includes(state.screen);
   
@@ -126,40 +126,23 @@ function paint() {
           <div class="booth-info"><span class="booth-label">RIGHT BOOTH</span><span class="booth-name">${state.slots[1].currentEmployee?.last_name ?? 'Empty'}</span></div>
         </button>
       </div>`;
-    
-    switcherTarget.querySelectorAll('.booth-tab').forEach(btn => {
-      btn.onclick = () => switchSlot(Number(btn.dataset.slot));
-    });
-  } else {
-    switcherTarget.innerHTML = '';
-  }
+    switcherTarget.querySelectorAll('.booth-tab').forEach(btn => btn.onclick = () => switchSlot(Number(btn.dataset.slot)));
+  } else { switcherTarget.innerHTML = ''; }
 
-  // 4. Viewport Management (The Scroll Fix)
+  // Viewport Management
   const vGlobal = document.getElementById('viewport-global');
   const vSlot0  = document.getElementById('viewport-slot-0');
   const vSlot1  = document.getElementById('viewport-slot-1');
-
-  // Hide everything first
   [vGlobal, vSlot0, vSlot1].forEach(v => v.classList.add('hidden'));
 
-  let activeViewport;
-  if (isClinical) {
-      activeViewport = (state.activeSlot === 0) ? vSlot0 : vSlot1;
-  } else {
-      activeViewport = vGlobal;
-  }
-
+  let activeViewport = isClinical ? (state.activeSlot === 0 ? vSlot0 : vSlot1) : vGlobal;
   activeViewport.classList.remove('hidden');
   
-  // 5. Render content into the correct viewport
   renderFn(activeViewport, state, navigate);
 
-  // Sidebar Listeners
-  document.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
-    btn.onclick = () => {
-        if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
-        navigate(btn.dataset.screen);
-    };
+  document.querySelectorAll('.nav-item[data-screen]').forEach(btn => btn.onclick = () => {
+    if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
+    navigate(btn.dataset.screen);
   });
 }
 
