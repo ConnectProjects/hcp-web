@@ -1,3 +1,4 @@
+import { renderLogs } from './screens/logs.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
