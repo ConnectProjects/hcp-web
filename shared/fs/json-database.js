@@ -61,15 +61,14 @@ export const JsonDatabase = {
       }
     }
     return await this.getCloudTimestamps(syncFolder);
-  }
-};
+  },
 
-/**
+  /**
    * Push branding assets (logo + favicon) to sync folder.
    */
   async pushBranding(syncFolder, queryOneFn) {
     if (!syncFolder) return;
-    const logo   = queryOneFn("SELECT value FROM settings WHERE key = 'company_logo'")?.value ?? null;
+    const logo    = queryOneFn("SELECT value FROM settings WHERE key = 'company_logo'")?.value ?? null;
     const favicon = queryOneFn("SELECT value FROM settings WHERE key = 'company_favicon'")?.value ?? null;
     await writeJsonFile(syncFolder, '', 'branding.json', { logo, favicon });
   },
@@ -82,4 +81,5 @@ export const JsonDatabase = {
     try {
       return await readJsonFile(syncFolder, '', 'branding.json');
     } catch (e) { return null; }
-  },
+  }
+};
