@@ -47,9 +47,6 @@ export async function setSetting(key, value) {
   })
 }
 
-/**
- * Removes a setting (used for Logout)
- */
 export async function removeSetting(key) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -67,9 +64,22 @@ export async function removeSetting(key) {
 export async function getAllPackets() {
   const db = await openDB()
   return new Promise((resolve, reject) => {
-    const req = db.transaction('packets').objectStore('packets').getAll()
+    const req = db.transaction('packets', 'readonly').objectStore('packets').getAll()
     req.onsuccess = () => resolve(req.result)
     req.onerror   = () => reject(req.error)
+  })
+}
+
+/**
+ * NEW/RESTORED: Checks if a packet exists in the local database.
+ * Required by schedule.js
+ */
+export async function packetExists(packetId) {
+  const db = await openDB()
+  return new Promise((resolve) => {
+    const req = db.transaction('packets', 'readonly').objectStore('packets').get(packetId)
+    req.onsuccess = () => resolve(!!req.result)
+    req.onerror   = () => resolve(false)
   })
 }
 
@@ -83,9 +93,6 @@ export async function savePacket(packet) {
   })
 }
 
-/**
- * Permanently deletes a packet from the local device database.
- */
 export async function deletePacket(packetId) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -97,9 +104,6 @@ export async function deletePacket(packetId) {
   });
 }
 
-/**
- * Marks a packet as archived (hidden from dashboard)
- */
 export async function archivePacket(packetId) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
