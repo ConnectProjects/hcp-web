@@ -16,7 +16,8 @@ export function getLocationsByCompany(companyId) {
   return query(`
     SELECT l.*,
       (SELECT COUNT(*) FROM employees e WHERE e.location_id = l.location_id AND e.status = 'active') AS employee_count,
-      (SELECT MAX(t.test_date) FROM tests t
+      -- Wrap the result in DATE() to remove the time and timezone string
+      (SELECT DATE(MAX(t.test_date)) FROM tests t
          WHERE t.location_id = l.location_id) AS last_test_date
     FROM locations l
     WHERE l.company_id = ? AND l.active = 1
@@ -24,11 +25,13 @@ export function getLocationsByCompany(companyId) {
   `, [companyId])
 }
 
+// ... rest of the file stays exactly the same ...
+
 export function getLocation(locationId) {
   return queryOne(`
     SELECT l.*, c.name AS company_name
     FROM locations l
-    JOIN companies c ON l.company_id = c.company_id
+    JOIN companies c ON c.company_id = l.company_id
     WHERE l.location_id = ?
   `, [locationId])
 }
@@ -91,10 +94,6 @@ export function deactivateLocation(locationId) {
   run(`UPDATE locations SET active = 0, updated_at = datetime('now') WHERE location_id = ?`, [locationId])
 }
 
-// ---------------------------------------------------------------------------
-// HPD Inventory (per location)
-// ---------------------------------------------------------------------------
-
 export function getHPDInventory(locationId) {
   const row = queryOne('SELECT hpd_inventory FROM locations WHERE location_id = ?', [locationId])
   try { return JSON.parse(row?.hpd_inventory ?? '[]') } catch { return [] }
@@ -104,10 +103,6 @@ export function saveHPDInventory(locationId, inventory) {
   run(`UPDATE locations SET hpd_inventory = ?, updated_at = datetime('now') WHERE location_id = ?`,
     [JSON.stringify(inventory), locationId])
 }
-
-// ---------------------------------------------------------------------------
-// Employment history
-// ---------------------------------------------------------------------------
 
 export function getEmploymentHistory(employeeId) {
   return query(`
@@ -143,10 +138,6 @@ export function endEmployment(employmentId, endDate) {
     [endDate, employmentId])
 }
 
-// ---------------------------------------------------------------------------
-// Baselines (per employee + location)
-// ---------------------------------------------------------------------------
-
 export function getActiveBaseline(employeeId, locationId) {
   return queryOne(`
     SELECT * FROM baselines
@@ -174,14 +165,6 @@ export function getAllBaselinesForEmployee(employeeId) {
   `, [employeeId])
 }
 
-// ---------------------------------------------------------------------------
-// Packet Generation
-// ---------------------------------------------------------------------------
-
-/**
- * THE CORE FIX: This function builds the employee list for TechTool.
- * It now uses location_id (Schema 2.0) and includes history.
- */
 export function buildPacketEmployees(locationId) {
   const employees = query(`
     SELECT * FROM employees 
@@ -192,7 +175,6 @@ export function buildPacketEmployees(locationId) {
   return employees.map(emp => {
     const priorTests = query(`SELECT * FROM tests WHERE employee_id = ? ORDER BY test_date DESC LIMIT 3`, [emp.employee_id]);
 
-    // We explicitly select all columns to be 100% sure the frequencies are included
     let baseline = queryOne(`
       SELECT 
         test_date, 
@@ -203,7 +185,6 @@ export function buildPacketEmployees(locationId) {
       ORDER BY test_date DESC LIMIT 1
     `, [emp.employee_id]);
 
-    // Fallback if no baseline record exists
     if (!baseline) {
       baseline = queryOne(`
         SELECT 
@@ -223,10 +204,6 @@ export function buildPacketEmployees(locationId) {
     };
   });
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function extractThresholds(row) {
   return {
