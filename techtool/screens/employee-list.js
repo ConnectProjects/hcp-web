@@ -14,7 +14,7 @@ export function renderEmployeeList(container, state, navigate) {
   container.innerHTML = `
     <div class="screen">
       <header class="app-header">
-        <button class="btn btn-ghost" id="btn-back">‹ ${esc(packet?.company?.name ?? 'Dashboard')}</button>
+        <button class="btn btn-ghost" id="btn-back">‹ Dashboard</button>
         <h1 class="app-title">Employees</h1>
         <span class="count-chip">${employees.length}</span>
       </header>
@@ -52,7 +52,6 @@ export function renderEmployeeList(container, state, navigate) {
     </div>
   `
 
-  // --- Handlers ---
   container.querySelector('#btn-back').onclick = () => navigate('dashboard')
 
   if (allResolved) {
@@ -98,7 +97,7 @@ function buildList(employees) {
           <div class="emp-row__meta">${esc(emp.job_title || '')} ${skipped ? '· SKIPPED' : ''}</div>
         </div>
         <div class="emp-row__right">
-          ${done ? '<span class="badge badge-success">✓ Done</span>' : skipped ? '<span class="badge">Skipped</span>' : '<span class="badge badge-neutral">Pending</span>'}
+          ${done ? '<span class="badge badge-success">✓ Done (Click to Edit)</span>' : skipped ? '<span class="badge">Skipped</span>' : '<span class="badge badge-neutral">Pending</span>'}
           ${!done && !skipped ? `<button class="emp-row__skip" data-skip-id="${emp.employee_id}">Skip</button>` : ''}
         </div>
       </div>
@@ -109,42 +108,49 @@ function buildList(employees) {
 function attachRowHandlers(container, employees, packet, state, navigate) {
   container.querySelectorAll('.emp-row').forEach(row => {
     row.onclick = (e) => {
-      // 1. Ignore if clicking 'Skip'
       if (e.target.closest('.emp-row__skip')) return;
-
-      // 2. Find the employee (using loose equality for ID safety)
-      const empId = row.dataset.empId;
-      const emp = employees.find(e => e.employee_id == empId);
-      
+      const emp = employees.find(e => e.employee_id == row.dataset.empId);
       if (!emp || emp.skipped_at) return;
 
-      console.log("🛠️ Preparing Booth for:", emp.last_name);
-
-      // 3. FORCE state synchronization
-      state.currentEmployee = emp;
-      state.currentPacket = packet;
-      
       const slot = state.slots[state.activeSlot];
       slot.currentEmployee = emp;
       slot.currentPacket = packet;
 
-      // 4. Clear old data for a new test, or keep if editing
-      if (!emp.completed_tests || emp.completed_tests.length === 0) {
-        slot.testData = {};
-        slot.techNotes = '';
+      // --- THE EDIT LOGIC ---
+      if (emp.completed_tests?.length > 0) {
+          const test = emp.completed_tests[0];
+          // 1. Load questionnaire history
+          slot.testData = { ...test.history };
+          slot.techNotes = test.notes || '';
+          
+          // 2. Map Database Keys (left_1k) back to UI Keys (l1000)
+          const freqs = [500, 1000, 2000, 3000, 4000, 6000, 8000];
+          freqs.forEach(f => {
+              const dbFreq = f >= 1000 ? (f/1000)+'k' : f;
+              slot.testData['l' + f] = test.thresholds['left_' + dbFreq];
+              slot.testData['r' + f] = test.thresholds['right_' + dbFreq];
+          });
+          
+          console.log("Loaded existing test for editing:", slot.testData);
       } else {
-        // Load existing test for editing
-        const test = emp.completed_tests[0];
-        slot.testData = { ...test.history };
-        slot.techNotes = test.notes || '';
+          slot.testData = {}; 
+          slot.techNotes = '';
       }
 
-      // 5. Navigate
       navigate('test-entry');
     };
   });
 
-  // ... (keep your existing skip button logic below this)
+  container.querySelectorAll('.emp-row__skip').forEach(btn => {
+    btn.onclick = async (e) => {
+      e.stopPropagation();
+      if (confirm("Skip this worker?")) {
+        markEmployeeSkipped(packet, btn.dataset.skipId, "Not present");
+        await savePacket(packet);
+        renderEmployeeList(container, state, navigate);
+      }
+    };
+  });
 }
 
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
