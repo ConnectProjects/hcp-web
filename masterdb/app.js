@@ -242,7 +242,8 @@ const SCREENS = {
   'company-detail': renderCompanyDetail, 'location-detail': renderLocationDetail,
   employees: renderEmployees, 'employee-detail': renderEmployeeDetail,
   'test-detail': renderTestDetail, packets: renderPackets,
-  incoming: renderIncoming, reports: renderReports, settings: renderSettings,
+  incoming: renderIncoming, 'import-confirm': renderImportConfirm,
+  reports: renderReports, settings: renderSettings,
   users: renderUsers, logs: renderLogs, 'data-tools': renderDataTools,
   'legacy-import': renderLegacyImport, help: renderHelp,
 };
