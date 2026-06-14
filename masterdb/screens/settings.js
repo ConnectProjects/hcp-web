@@ -3,6 +3,7 @@ import { exportDB }             from '../db/sqlite.js'
 import { pickSyncFolder, getSyncFolder } from '@shared/fs/sync-folder.js'
 import { isDemoLoaded, clearDemoData }   from '../db/demo.js'
 import { applyTheme, saveThemeColor, loadThemeColor, DEFAULT_COLOR } from '../theme.js'
+import { JsonDatabase } from '@shared/fs/json-database.js'
 
 export function renderSettings(container, state, navigate) {
   const provinces = query('SELECT * FROM provinces ORDER BY province_code')
@@ -130,7 +131,9 @@ export function renderSettings(container, state, navigate) {
     const file = e.target.files[0]; if (!file) return;
     const dataUrl = await resizeImage(file, 400, 160);
     run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('company_logo', ?)`, [dataUrl]);
-    state.logoUrl = dataUrl; navigate('settings');
+    state.logoUrl = dataUrl;
+    await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+    navigate('settings');
   };
 
   // FAVICON HANDLER
@@ -139,15 +142,17 @@ export function renderSettings(container, state, navigate) {
     // Resize to 64x64 for a clean icon
     const dataUrl = await resizeImage(file, 64, 64);
     run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('company_favicon', ?)`, [dataUrl]);
-    
+
     // Apply immediately to the current tab
     applyFavicon(dataUrl);
+    await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     navigate('settings');
   };
 
-  container.querySelector('#btn-reset-favicon').onclick = () => {
+  container.querySelector('#btn-reset-favicon').onclick = async () => {
       run(`DELETE FROM settings WHERE key = 'company_favicon'`);
       applyFavicon('favicon.ico');
+      await JsonDatabase.pushBranding(state.syncFolder, queryOne);
       navigate('settings');
   };
 

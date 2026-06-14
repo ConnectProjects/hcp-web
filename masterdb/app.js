@@ -225,6 +225,7 @@ async function boot() {
   
   if (state.syncFolder) {
     state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run);
+    await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     startHeartbeat();
   }
 
