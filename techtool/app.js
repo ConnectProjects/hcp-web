@@ -1,5 +1,6 @@
 import { openDB, getSetting, getAllPackets, savePacket } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
+import { JsonDatabase }                      from '@shared/fs/json-database.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
 import { applyTheme, loadThemeColor }        from './theme.js'
 import { renderLogin }          from './screens/login.js'
@@ -101,7 +102,12 @@ function paint() {
 
   // Update Sidebar
   document.getElementById('sidebar-target').innerHTML = `
-    <div class="sidebar-brand">${BrandLogo}</div>
+    <div class="sidebar-brand">
+      ${state.logoUrl
+        ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Logo" />`
+        : `<div class="sidebar-logo-img">${BrandLogo}</div>`
+      }
+    </div>
     <ul class="sidebar-nav">
       ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
     </ul>
@@ -150,6 +156,34 @@ const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule'
 const NAV_ITEMS = [ { screen: 'dashboard', label: 'Dashboard', icon: '⊞' }, { screen: 'schedule', label: 'Packets', icon: '📅' }, { screen: 'settings', label: 'Settings', icon: '⚙' } ];
 const NAV_PARENT = { 'company': 'schedule', 'employee-list': 'schedule', 'test-entry': 'schedule', 'new-visit': 'dashboard' };
 function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen; }
-async function boot() { applyTheme(loadThemeColor()); const techName = await getSetting('tech_name'); if (techName) { state.user = { name: techName, folder_name: await getSetting('tech_folder_name') }; state.packets = await getAllPackets(); state.syncFolder = await querySyncFolder(); navigate('dashboard'); } else { navigate('login'); } }
+
+async function boot() {
+  applyTheme(loadThemeColor());
+  const techName = await getSetting('tech_name');
+  if (techName) {
+    state.user = { name: techName, folder_name: await getSetting('tech_folder_name') };
+    state.packets = await getAllPackets();
+    state.syncFolder = await querySyncFolder();
+
+    // Apply branding from MasterDB sync
+    if (state.syncFolder) {
+      const branding = await JsonDatabase.pullBranding(state.syncFolder);
+      if (branding?.favicon) {
+        const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+        link.rel = 'icon';
+        link.href = branding.favicon;
+        document.head.appendChild(link);
+      }
+      if (branding?.logo) {
+        state.logoUrl = branding.logo;
+      }
+    }
+
+    navigate('dashboard');
+  } else {
+    navigate('login');
+  }
+}
+
 openDB().then(boot);
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
