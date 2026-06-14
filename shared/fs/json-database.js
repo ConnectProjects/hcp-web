@@ -1,16 +1,33 @@
 /**
  * shared/fs/json-database.js
  * High-level orchestration for the Master JSON files on OneDrive.
+ * 
+ * v2.0 — Row-level merge sync (syncMaster) replaces destructive pullMaster on boot.
  */
 import { readJsonFile, writeJsonFile } from './sync-folder.js'
 
 export const JsonDatabase = {
-  // These match your specific file list
+
+  // Synced table list
   tables: ['companies', 'locations', 'employees', 'tests', 'baselines', 'techs', 'schedules', 'users'],
+
+  // Primary keys and merge strategy per table
+  // merge: true  = row-level merge by PK + updated_at (two-way)
+  // merge: false = cloud-wins overwrite (derived/mirror data)
+  tableConfig: {
+    companies: { pk: 'company_id',  merge: true },
+    locations: { pk: 'location_id', merge: true },
+    employees: { pk: 'employee_id', merge: true },
+    tests:     { pk: 'test_id',     merge: true },
+    baselines: { pk: 'baseline_id', merge: true },
+    users:     { pk: 'user_id',     merge: true },
+    techs:     { pk: 'tech_id',     merge: false },
+    schedules: { pk: null,          merge: false }
+  },
 
   /**
    * Gets the 'Last Modified' timestamps for all JSON files on OneDrive.
-   * This is used to detect if another user saved changes.
+   * Used by the heartbeat to detect if another user saved changes.
    */
   async getCloudTimestamps(syncFolder) {
     if (!syncFolder) return {};
@@ -21,14 +38,115 @@ export const JsonDatabase = {
         const file = await fileHandle.getFile();
         stats[table] = file.lastModified;
       } catch (e) {
-        stats[table] = 0; // File doesn't exist yet
+        stats[table] = 0;
       }
     }
     return stats;
   },
 
   /**
+   * Two-way merge sync (replaces pullMaster for boot).
+   *
+   * For each merge-enabled table:
+   *   1. Read cloud JSON and local SQLite
+   *   2. Index both by primary key
+   *   3. Rows only in local  → keep (new local additions)
+   *   4. Rows only in cloud  → keep (new from another user)
+   *   5. Rows in both        → compare updated_at, keep newer
+   *   6. Write merged result to BOTH local SQLite and cloud JSON
+   *
+   * For non-merge tables (techs, schedules):
+   *   Cloud wins (simple overwrite, same as old pullMaster).
+   *
+   * IMPORTANT: Use soft-deletes (set active=0) instead of hard deletes,
+   * otherwise deleted rows will reappear from the other side on next sync.
+   */
+  async syncMaster(syncFolder, queryFn, runFn) {
+    if (!syncFolder) return {};
+
+    for (const table of this.tables) {
+      const config = this.tableConfig[table];
+
+      // --- Read cloud data ---
+      let cloudRows = [];
+      try {
+        const data = await readJsonFile(syncFolder, '', `${table}.json`);
+        if (Array.isArray(data)) cloudRows = data;
+      } catch (e) {
+        // JSON file doesn't exist yet — that's fine
+      }
+
+      // --- Non-merge tables: simple cloud-wins overwrite ---
+      if (!config || !config.merge) {
+        try {
+          runFn(`DELETE FROM ${table}`);
+          cloudRows.forEach(row => {
+            const cols = Object.keys(row).join(',');
+            const vals = Object.values(row);
+            const qs = vals.map(() => '?').join(',');
+            runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
+          });
+        } catch (e) {
+          console.warn(`Sync skip: ${table} table may not exist locally.`);
+        }
+        continue;
+      }
+
+      // --- Merge-enabled tables ---
+      try {
+        const pk = config.pk;
+        const localRows = queryFn(`SELECT * FROM ${table}`);
+
+        // Index both sides by primary key
+        const localMap = new Map(localRows.map(r => [String(r[pk]), r]));
+        const cloudMap = new Map(cloudRows.map(r => [String(r[pk]), r]));
+        const merged = new Map();
+
+        // Start with all local rows
+        for (const [key, row] of localMap) {
+          merged.set(key, row);
+        }
+
+        // Merge in cloud rows
+        for (const [key, cloudRow] of cloudMap) {
+          const localRow = localMap.get(key);
+          if (!localRow) {
+            // Row only exists in cloud — new from another user
+            merged.set(key, cloudRow);
+          } else {
+            // Row exists in both — keep the newer one
+            const cloudTime = cloudRow.updated_at || cloudRow.created_at || '';
+            const localTime = localRow.updated_at || localRow.created_at || '';
+            if (cloudTime > localTime) {
+              merged.set(key, cloudRow);
+            }
+            // else local is newer or equal — already in merged
+          }
+        }
+
+        // Write merged result to local SQLite
+        runFn(`DELETE FROM ${table}`);
+        for (const row of merged.values()) {
+          const cols = Object.keys(row).join(',');
+          const vals = Object.values(row);
+          const qs = vals.map(() => '?').join(',');
+          runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
+        }
+
+        // Write merged result back to cloud so both sides are in sync
+        await writeJsonFile(syncFolder, '', `${table}.json`, [...merged.values()]);
+
+      } catch (e) {
+        console.warn(`Sync error on ${table}:`, e.message);
+      }
+    }
+
+    return await this.getCloudTimestamps(syncFolder);
+  },
+
+  /**
    * Pushes current local SQLite data to OneDrive JSONs.
+   * Use after bulk operations or when you need a full push.
    */
   async pushMaster(syncFolder, queryFn) {
     if (!syncFolder) return;
@@ -40,27 +158,13 @@ export const JsonDatabase = {
   },
 
   /**
-   * Pulls OneDrive JSONs and overwrites local SQLite data.
+   * Pushes a single table to OneDrive.
+   * Call after creating/updating/deleting rows in a specific table.
    */
-  async pullMaster(syncFolder, runFn) {
+  async pushTable(syncFolder, queryFn, tableName) {
     if (!syncFolder) return;
-    for (const table of this.tables) {
-      try {
-        const data = await readJsonFile(syncFolder, '', `${table}.json`);
-        if (Array.isArray(data)) {
-          runFn(`DELETE FROM ${table}`);
-          data.forEach(row => {
-            const cols = Object.keys(row).join(',');
-            const vals = Object.values(row);
-            const qs = Object.keys(row).map(() => '?').join(',');
-            runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
-          });
-        }
-      } catch (e) {
-        console.warn(`Table ${table}.json not found in sync folder.`);
-      }
-    }
-    return await this.getCloudTimestamps(syncFolder);
+    const data = queryFn(`SELECT * FROM ${tableName}`);
+    await writeJsonFile(syncFolder, '', `${tableName}.json`, data);
   },
 
   /**

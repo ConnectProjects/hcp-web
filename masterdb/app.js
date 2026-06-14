@@ -224,7 +224,7 @@ async function boot() {
   applyTheme(loadThemeColor());
   
   if (state.syncFolder) {
-    state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run);
+    state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     startHeartbeat();
   }
@@ -246,6 +246,8 @@ const SCREENS = {
   reports: renderReports, settings: renderSettings,
   users: renderUsers, logs: renderLogs, 'data-tools': renderDataTools,
   'legacy-import': renderLegacyImport, help: renderHelp,
+  'generate-packet': renderGeneratePacket, 'rejected-packets': renderRejectedPackets,
+  'province-rules': renderProvinceRules,
 };
 
 const NAV_ITEMS = [
@@ -264,7 +266,9 @@ const NAV_ITEMS = [
 const NAV_PARENT = {
   'company-detail': 'companies', 'location-detail': 'companies',
   'employee-detail': 'employees', 'test-detail': 'employees',
-  'incoming': 'packets', 'legacy-import': 'data-tools'
+  'incoming': 'packets', 'legacy-import': 'data-tools',
+  'import-confirm': 'packets', 'generate-packet': 'packets',
+  'rejected-packets': 'packets', 'province-rules': 'settings'
 };
 
 function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen; }

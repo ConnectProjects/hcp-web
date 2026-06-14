@@ -1,11 +1,9 @@
 /**
  * Database schema initialization.
  * 
- * Schema version: 2.1
+ * Schema version: 2.2
  * Changes:
- *   - Added system_log table for auditing actions.
- *   - Added users table for RBAC.
- *   - Pruned redundant fields from companies and locations (Address, Phone, etc.)
+ *   - Added updated_at to employees, tests, baselines, users for sync merge support.
  */
 
 import { getDB, run, query } from './sqlite.js'
@@ -103,6 +101,7 @@ CREATE TABLE IF NOT EXISTS employees (
   job_title     TEXT,
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
@@ -127,6 +126,7 @@ CREATE TABLE IF NOT EXISTS tests (
   questionnaire             TEXT,
   packet_id                 TEXT,
   created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at                TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS baselines (
   right_500     REAL, right_1k REAL, right_2k REAL, right_3k REAL,
   right_4k      REAL, right_6k REAL, right_8k REAL,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
@@ -165,9 +166,46 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `
 
+// ---------------------------------------------------------------------------
+// Migrations — runs once, silently skips if column already exists
+// ---------------------------------------------------------------------------
+
+const MIGRATIONS = [
+  {
+    add: `ALTER TABLE employees ADD COLUMN updated_at TEXT DEFAULT ''`,
+    backfill: `UPDATE employees SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
+  },
+  {
+    add: `ALTER TABLE tests ADD COLUMN updated_at TEXT DEFAULT ''`,
+    backfill: `UPDATE tests SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
+  },
+  {
+    add: `ALTER TABLE baselines ADD COLUMN updated_at TEXT DEFAULT ''`,
+    backfill: `UPDATE baselines SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
+  },
+  {
+    add: `ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT ''`,
+    backfill: `UPDATE users SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
+  }
+];
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
 export async function initSchema() {
   const db = getDB()
   db.run(CREATE_TABLES)
+
+  // Run migrations (safe to re-run — ALTER TABLE fails silently if column exists)
+  for (const m of MIGRATIONS) {
+    try {
+      run(m.add);
+      run(m.backfill);
+    } catch (e) {
+      // Column already exists — skip
+    }
+  }
 
   // Seed provinces if empty
   const existing = query('SELECT COUNT(*) AS n FROM provinces')[0]?.n ?? 0
