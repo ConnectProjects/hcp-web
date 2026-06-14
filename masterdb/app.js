@@ -181,6 +181,12 @@ async function boot() {
   await initDB(); await initSchema();
   state.syncFolder = await querySyncFolder();
   state.logoUrl = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;
+  const customFavicon = queryOne('SELECT value FROM settings WHERE key = ?', ['company_favicon'])?.value;
+if (customFavicon) {
+    const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+    link.rel = 'icon';
+    link.href = customFavicon;
+    document.head.appendChild(link);
   const savedId = localStorage.getItem('masterdb_user_id');
   if (savedId) { const u = queryOne("SELECT * FROM users WHERE user_id = ?", [savedId]); if (u && u.active !== 0) state.user = u; }
   applyTheme(loadThemeColor());
