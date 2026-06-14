@@ -10,7 +10,7 @@ export function getAllCompanies() {
       c.*,
       (SELECT GROUP_CONCAT(DISTINCT province) FROM locations WHERE company_id = c.company_id) as province_list,
       (SELECT COUNT(*) FROM employees e JOIN locations l ON e.location_id = l.location_id WHERE l.company_id = c.company_id) as employee_count,
-      (SELECT MAX(test_date) FROM tests t JOIN locations l ON t.location_id = l.location_id WHERE l.company_id = c.company_id) as last_test_date
+      (SELECT DATE(MAX(test_date)) FROM tests t JOIN locations l ON t.location_id = l.location_id WHERE l.company_id = c.company_id) as last_test_date
     FROM companies c
     WHERE c.active = 1
     ORDER BY c.name ASC
