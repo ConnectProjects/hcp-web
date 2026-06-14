@@ -1,13 +1,12 @@
-import { TimeService } from '../shared/time-utils.js'
 import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
-import { renderLogs }      from './screens/logs.js' // NEW
 import { renderTestDetail }from './screens/test-detail.js'
 import { initDB, query, queryOne, run, logAction, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { getSyncFolder, querySyncFolder, pickSyncFolder } from '@shared/fs/sync-folder.js'
 import { JsonDatabase }       from '@shared/fs/json-database.js'
+import { TimeService }        from '../shared/time-utils.js'
 import { BrandLogo }          from '@shared/components/brand-logo.js'
 import { applyTheme, loadThemeColor } from './theme.js'
 import { renderLegacyImport } from './screens/legacy-import.js'
@@ -28,20 +27,29 @@ import { renderHelp }         from './screens/help.js'
 import { renderLocationDetail } from './screens/location-detail.js'
 import { ROLES, PERMISSIONS } from '../shared/auth-utils.js'
 
+// ---------------------------------------------------------------------------
+// App state
+// ---------------------------------------------------------------------------
+
 export const state = {
-  screen: 'login',
-  user: null, 
-  syncFolder: null,
-  logoUrl: null,
-  orgProfile: null,
-  currentCompany: null,
+  screen:          'login',
+  user:            null, 
+  syncFolder:      null,
+  logoUrl:         null,
+  orgProfile:      null,
+  currentCompany:  null,
   currentEmployee: null,
-  pendingPacket: null,
-  params: {},
+  pendingPacket:   null,
+  params:          {},
   cloudTimestamps: {},
-  isOutofSync: false
+  isOutofSync:     false
 }
+
 window.state = state;
+
+// ---------------------------------------------------------------------------
+// Navigation & Guard
+// ---------------------------------------------------------------------------
 
 export function navigate(screen, params = {}) {
   if (!state.user && screen !== 'login') {
@@ -53,13 +61,13 @@ export function navigate(screen, params = {}) {
   if (state.user && screen !== 'login') {
     const role = state.user.role;
     if (role === ROLES.TECH) {
-        alert("Access Denied.");
+        alert("Access Denied: Technicians restricted to TechTool.");
         logout();
         return;
     }
     const allowed = PERMISSIONS[role] || [];
     if (role !== ROLES.SUPER_ADMIN && role !== ROLES.ADMIN && !allowed.includes(screen)) {
-        alert("Access Denied: Restricted screen.");
+        alert("Access Denied.");
         return;
     }
   }
@@ -68,21 +76,26 @@ export function navigate(screen, params = {}) {
   state.params = params;
   Object.assign(state, params);
   
-  // NEW: Automatically log every screen transition
-  logAction(state, "NAVIGATE", `Viewed ${screen}`);
-  
+  if (state.user) {
+    logAction(state, "NAVIGATE", `Viewed ${screen}`);
+  }
+
   paint();
 }
 
 function paint() {
   const app = document.getElementById('app')
   const renderFn = SCREENS[state.screen]
-  if (!renderFn) return;
+  
+  if (!renderFn) {
+    app.innerHTML = `<div class="error-screen"><h2>Unknown screen: ${state.screen}</h2></div>`
+    return
+  }
 
   if (state.screen === 'login') {
-    app.innerHTML = '';
-    renderFn(app, state, navigate);
-    return;
+    app.innerHTML = ''
+    renderFn(app, state, navigate)
+    return
   }
 
   const filteredNavItems = NAV_ITEMS.filter(item => {
@@ -93,7 +106,12 @@ function paint() {
   app.innerHTML = `
     <div class="app-shell">
       <nav class="sidebar" id="sidebar">
-        <div class="sidebar-brand"><div class="sidebar-logo-img">${BrandLogo}</div></div>
+        <div class="sidebar-brand">
+          ${state.logoUrl
+            ? `<img src="${state.logoUrl}" class="sidebar-logo-img" alt="Logo" />`
+            : `<div class="sidebar-logo-img">${BrandLogo}</div>`
+          }
+        </div>
         <ul class="sidebar-nav">
           ${filteredNavItems.map(item => `
             <li>
@@ -125,7 +143,9 @@ function paint() {
   app.querySelectorAll('.nav-item[data-screen]').forEach(btn => {
     btn.addEventListener('click', () => navigate(btn.dataset.screen))
   })
+
   app.querySelector('#btn-logout').onclick = logout;
+
   app.querySelector('#sync-trigger').onclick = async () => {
     const handle = await getSyncFolder();
     if (handle) { state.syncFolder = handle; paint(); }
@@ -135,63 +155,14 @@ function paint() {
   renderFn(document.getElementById('main-content'), state, navigate)
 }
 
+// ---------------------------------------------------------------------------
+// System Actions
+// ---------------------------------------------------------------------------
+
 export function logout() {
   localStorage.removeItem('masterdb_user_id');
   state.user = null;
   navigate('login');
-}
-
-const SCREENS = {
-  login: renderLogin, dashboard: renderDashboard, companies: renderCompanies,
-  'company-detail': renderCompanyDetail, 'employee-detail': renderEmployeeDetail,
-  'test-detail': renderTestDetail, employees: renderEmployees,
-  'generate-packet': renderGeneratePacket, packets: renderPackets,
-  incoming: renderIncoming, 'rejected-packets': renderRejectedPackets,
-  'import-confirm': renderImportConfirm, settings: renderSettings,
-  'province-rules': renderProvinceRules, reports: renderReports,
-  'legacy-import': renderLegacyImport, help: renderHelp,
-  'location-detail': renderLocationDetail, 'data-tools': renderDataTools,
-  'users': renderUsers, 'logs': renderLogs // REGISTERED
-}
-
-const NAV_ITEMS = [
-  { screen: 'dashboard', label: 'Dashboard', icon: '⊞' },
-  { screen: 'companies', label: 'Companies', icon: '🏭' },
-  { screen: 'employees', label: 'Employees', icon: '👷' },
-  { screen: 'packets',   label: 'Packets',   icon: '📦' },
-  { screen: 'reports',   label: 'Reports',   icon: '📊' },
-  { screen: 'users',     label: 'Team',      icon: '👥' },
-  { screen: 'data-tools',label: 'Data Tools',icon: '🛠️' },
-  { screen: 'logs',      label: 'Logs',      icon: '📜' }, // ADDED TO SIDEBAR
-  { screen: 'settings',  label: 'Settings',  icon: '⚙️' },
-  { screen: 'help',      label: 'Help',      icon: '❓' }
-]
-
-const NAV_PARENT = {
-  'company-detail': 'companies', 'employee-detail': 'employees', 'test-detail': 'employees',
-  'generate-packet': 'companies', 'incoming': 'packets', 'rejected-packets': 'packets',
-  'import-confirm': 'packets', 'province-rules': 'settings', 'location-detail': 'companies',
-  'data-tools': 'data-tools', 'users': 'users', 'logs': 'logs', 'help': 'help'
-}
-
-function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen }
-
-async function boot() {
-  await TimeService.sync(); // Sync with network time immediately
-  await initDB(); await initSchema();
-  state.syncFolder = await querySyncFolder();
-  state.logoUrl = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;
-  const customFavicon = queryOne('SELECT value FROM settings WHERE key = ?', ['company_favicon'])?.value;
-if (customFavicon) {
-    const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
-    link.rel = 'icon';
-    link.href = customFavicon;
-    document.head.appendChild(link);
-  const savedId = localStorage.getItem('masterdb_user_id');
-  if (savedId) { const u = queryOne("SELECT * FROM users WHERE user_id = ?", [savedId]); if (u && u.active !== 0) state.user = u; }
-  applyTheme(loadThemeColor());
-  if (state.syncFolder) { state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run); startHeartbeat(); }
-  if (!state.user) navigate('login'); else navigate('dashboard');
 }
 
 async function startHeartbeat() {
@@ -217,5 +188,88 @@ function showSyncWarning() {
   document.getElementById('btn-sync-now').onclick = () => location.reload();
 }
 
-boot().catch(err => { document.getElementById('app').innerHTML = `<div class="error-screen"><h2>Startup Error</h2><pre>${err.message}</pre></div>` });
-function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+
+async function boot() {
+  await TimeService.sync();
+  await initDB();
+  await initSchema();
+
+  state.syncFolder = await querySyncFolder();
+  state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;
+
+  // FAVICON BOOT LOGIC
+  const customFavicon = queryOne('SELECT value FROM settings WHERE key = ?', ['company_favicon'])?.value;
+  if (customFavicon) {
+    const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+    link.rel = 'icon';
+    link.href = customFavicon;
+    document.head.appendChild(link);
+  }
+
+  const savedUserId = localStorage.getItem('masterdb_user_id');
+  if (savedUserId) {
+      const user = queryOne("SELECT * FROM users WHERE user_id = ?", [savedUserId]);
+      if (user && user.active !== 0) state.user = user;
+  }
+
+  const orgKeys = ['org_name','org_phone','org_email']
+  state.orgProfile = Object.fromEntries(
+    orgKeys.map(k => [k, queryOne('SELECT value FROM settings WHERE key = ?', [k])?.value ?? ''])
+  );
+
+  applyTheme(loadThemeColor());
+  
+  if (state.syncFolder) {
+    state.cloudTimestamps = await JsonDatabase.pullMaster(state.syncFolder, run);
+    startHeartbeat();
+  }
+
+  if (!state.user) navigate('login');
+  else navigate('dashboard');
+}
+
+// ---------------------------------------------------------------------------
+// Registry
+// ---------------------------------------------------------------------------
+
+const SCREENS = {
+  login: renderLogin, dashboard: renderDashboard, companies: renderCompanies,
+  'company-detail': renderCompanyDetail, 'location-detail': renderLocationDetail,
+  employees: renderEmployees, 'employee-detail': renderEmployeeDetail,
+  'test-detail': renderTestDetail, packets: renderPackets,
+  incoming: renderIncoming, reports: renderReports, settings: renderSettings,
+  users: renderUsers, logs: renderLogs, 'data-tools': renderDataTools,
+  'legacy-import': renderLegacyImport, help: renderHelp,
+};
+
+const NAV_ITEMS = [
+  { screen: 'dashboard', label: 'Dashboard', icon: '⊞' },
+  { screen: 'companies', label: 'Companies', icon: '🏭' },
+  { screen: 'employees', label: 'Employees', icon: '👷' },
+  { screen: 'packets',   label: 'Packets',   icon: '📦' },
+  { screen: 'reports',   label: 'Reports',   icon: '📊' },
+  { screen: 'users',     label: 'Team',      icon: '👥' },
+  { screen: 'settings',  label: 'Settings',  icon: '⚙️' },
+  { screen: 'data-tools',label: 'Data Tools',icon: '🛠️' },
+  { screen: 'logs',      label: 'Logs',      icon: '📜' },
+  { screen: 'help',      label: 'Help',      icon: '❓' }
+];
+
+const NAV_PARENT = {
+  'company-detail': 'companies', 'location-detail': 'companies',
+  'employee-detail': 'employees', 'test-detail': 'employees',
+  'incoming': 'packets', 'legacy-import': 'data-tools'
+};
+
+function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen; }
+
+boot().catch(err => {
+  document.getElementById('app').innerHTML = `<div class="error-screen"><h2>Startup Error</h2><pre>${err.message}</pre></div>`;
+});
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
