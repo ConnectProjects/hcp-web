@@ -163,13 +163,27 @@ async function doImport(container, packet, packetId, navigate, state) {
           dbEmp = queryOne(`SELECT last_insert_rowid() as employee_id`)
         }
 
+        // Check if this worker already has a baseline in MasterDB
+        const hasBaseline = queryOne(
+          `SELECT test_id FROM tests WHERE employee_id = ? AND test_type = 'Baseline' LIMIT 1`,
+          [dbEmp.employee_id]
+        );
+        let baselineAssigned = false;
+
         for (const test of emp.completed_tests) {
+          // First test for a worker with no baseline must be Baseline
+          let testType = test.test_type;
+          if (!hasBaseline && !baselineAssigned) {
+            testType = 'Baseline';
+            baselineAssigned = true;
+          }
+
           createTest({
             employee_id: dbEmp.employee_id,
             location_id: location.location_id,
             test_date: safe(test.test_date),
             tech_id: safe(test.tech_id || packet.tech?.tech_id),
-            test_type: safe(test.test_type),
+            test_type: safe(testType),
             province: province,
             classification: test.classification?.category ?? test.classification ?? '?',
             packet_id: packet.packet_id,
