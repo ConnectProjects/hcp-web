@@ -149,7 +149,16 @@ function paint() {
 
   app.querySelector('#sync-trigger').onclick = async () => {
     const handle = await getSyncFolder();
-    if (handle) { state.syncFolder = handle; paint(); }
+    if (handle) {
+      state.syncFolder = handle;
+      const trigger = document.getElementById('sync-trigger');
+      if (trigger) trigger.textContent = '⟳ Syncing…';
+      state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
+      await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+      state.isOutofSync = false;
+      document.getElementById('sync-warning-banner')?.remove();
+      navigate(state.screen, state.params);
+    }
     else { const newH = await pickSyncFolder(); if (newH) location.reload(); }
   };
 
