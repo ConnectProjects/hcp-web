@@ -20,6 +20,9 @@ export function renderDashboard(container, state, navigate) {
       <div class="packet-grid">
         ${activePackets.length > 0 ? activePackets.map(p => `
           <div class="packet-card" data-id="${p.packet_id}">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
+          </div>
             <div class="packet-card__body">
                 <div class="packet-info">
                   <div class="packet-name">${esc(p.company_name || p.company?.name || 'Unknown')}</div>
@@ -28,9 +31,6 @@ export function renderDashboard(container, state, navigate) {
                   </div>
                 </div>
                 <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
-            </div>
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
             </div>
           </div>
         `).join('') : `

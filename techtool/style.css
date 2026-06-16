@@ -476,12 +476,16 @@ textarea { resize: vertical; }
 /* Packet cards */
 .packet-card {
   display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  flex-direction: column;
+  padding: 0 16px 8px;
   border-bottom: 1px solid var(--grey-200);
   cursor: pointer;
   transition: background .12s;
+}
+
+.progress-bar {
+  height: 3px;
+  margin: 0 -16px;
 }
 .packet-card:hover { background: var(--grey-50); }
 .packet-card--today { border-left: 3px solid var(--blue-mid); }
