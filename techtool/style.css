@@ -496,7 +496,12 @@ textarea { resize: vertical; }
 .today-pill  { font-size: 10px; font-weight: 700; color: var(--blue-mid); background: var(--blue-light); padding: 1px 6px; border-radius: 8px; margin-top: 3px; }
 
 .packet-card__body { flex: 1; min-width: 0; }
-.packet-company    { font-size: 15px; font-weight: 600; color: var(--grey-900); }
+.packet-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--grey-900);
+  white-space: nowrap;
+}
 .packet-meta       { font-size: 13px; color: var(--grey-500); margin-top: 3px; }
 .sticky-flag       { font-size: 12px; }
 .packet-card__arrow { font-size: 20px; color: var(--grey-300); }
