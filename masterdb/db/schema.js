@@ -207,6 +207,35 @@ export async function initSchema() {
     }
   }
 
+  // employees — drop legacy company_id NOT NULL column, replaced by location_id.
+  // SQLite can't alter column constraints, so recreate the table.
+  // Older locally-created databases predating the location_id refactor still
+  // carry this column, which breaks inserts/merge-sync rows that omit it.
+  try {
+    const hasCo = query(`SELECT * FROM pragma_table_info('employees') WHERE name = 'company_id'`).length > 0
+    if (hasCo) {
+      db.run(`CREATE TABLE employees_new (
+        employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id   INTEGER,
+        first_name    TEXT NOT NULL,
+        last_name     TEXT NOT NULL,
+        dob           TEXT,
+        hire_date     TEXT,
+        job_title     TEXT,
+        status        TEXT NOT NULL DEFAULT 'active',
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (location_id) REFERENCES locations(location_id)
+      )`)
+      db.run(`INSERT INTO employees_new
+        (employee_id, location_id, first_name, last_name, dob, hire_date, job_title, status, created_at, updated_at)
+        SELECT employee_id, location_id, first_name, last_name, dob, hire_date, job_title, status, created_at, updated_at
+        FROM employees`)
+      db.run(`DROP TABLE employees`)
+      db.run(`ALTER TABLE employees_new RENAME TO employees`)
+    }
+  } catch (e) { console.warn('employees table migration:', e) }
+
   // Seed provinces if empty
   const existing = query('SELECT COUNT(*) AS n FROM provinces')[0]?.n ?? 0
   if (existing === 0) await seedProvinces()
