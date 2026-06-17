@@ -11,10 +11,11 @@ export function getAllPackets() {
       COALESCE(c.name, '')  AS company_name,
       COALESCE(l.name, '')  AS location_name,
       COALESCE(l.province, '') AS province,
-      t.folder_name AS tech_folder_name
+      COALESCE(u.folder_name, t.folder_name) AS tech_folder_name
     FROM packets p
     LEFT JOIN companies c ON c.company_id = p.company_id
     LEFT JOIN locations l ON l.location_id = p.location_id
+    LEFT JOIN users u     ON u.user_id = p.tech_id
     LEFT JOIN techs t     ON t.tech_id = p.tech_id
     ORDER BY p.created_at DESC
   `)
@@ -26,10 +27,11 @@ export function getPacketsByStatus(status) {
       COALESCE(c.name, '')  AS company_name,
       COALESCE(l.name, '')  AS location_name,
       COALESCE(l.province, '') AS province,
-      t.folder_name AS tech_folder_name
+      COALESCE(u.folder_name, t.folder_name) AS tech_folder_name
     FROM packets p
     LEFT JOIN companies c ON c.company_id = p.company_id
     LEFT JOIN locations l ON l.location_id = p.location_id
+    LEFT JOIN users u     ON u.user_id = p.tech_id
     LEFT JOIN techs t     ON t.tech_id = p.tech_id
     WHERE p.status = ?
     ORDER BY p.visit_date ASC

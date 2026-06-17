@@ -147,6 +147,31 @@ CREATE TABLE IF NOT EXISTS baselines (
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
+CREATE TABLE IF NOT EXISTS techs (
+  tech_id      TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  initials     TEXT,
+  email        TEXT,
+  role         TEXT NOT NULL DEFAULT 'tech',
+  folder_name  TEXT,
+  iat_number   TEXT,
+  active       INTEGER NOT NULL DEFAULT 1,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS schedules (
+  schedule_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id    INTEGER NOT NULL,
+  location_id   INTEGER,
+  tech_id       TEXT,
+  visit_date    TEXT NOT NULL,
+  notes         TEXT,
+  completed     INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (company_id)  REFERENCES companies(company_id),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
+);
+
 CREATE TABLE IF NOT EXISTS packets (
   packet_id     TEXT PRIMARY KEY,
   company_id    INTEGER NOT NULL,
