@@ -215,6 +215,162 @@ const MIGRATIONS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Table rebuilds — for tables whose column set has changed across schema
+// versions. Each entry's `columns` must match its current CREATE_TABLES
+// definition above exactly.
+// ---------------------------------------------------------------------------
+
+const REBUILD_DEFS = {
+  companies: {
+    columns: ['company_id', 'name', 'active', 'created_at', 'updated_at'],
+    sql: `CREATE TABLE companies_new (
+      company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT NOT NULL,
+      active        INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )`
+  },
+  locations: {
+    columns: ['location_id', 'company_id', 'name', 'province', 'hpd_inventory', 'active', 'created_at', 'updated_at'],
+    sql: `CREATE TABLE locations_new (
+      location_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id    INTEGER NOT NULL,
+      name          TEXT NOT NULL,
+      province      TEXT NOT NULL,
+      hpd_inventory TEXT NOT NULL DEFAULT '[]',
+      active        INTEGER NOT NULL DEFAULT 1,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (company_id) REFERENCES companies(company_id)
+    )`
+  },
+  employees: {
+    columns: ['employee_id', 'location_id', 'first_name', 'last_name', 'dob', 'hire_date', 'job_title', 'status', 'created_at', 'updated_at'],
+    sql: `CREATE TABLE employees_new (
+      employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+      location_id   INTEGER,
+      first_name    TEXT NOT NULL,
+      last_name     TEXT NOT NULL,
+      dob           TEXT,
+      hire_date     TEXT,
+      job_title     TEXT,
+      status        TEXT NOT NULL DEFAULT 'active',
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (location_id) REFERENCES locations(location_id)
+    )`
+  },
+  tests: {
+    columns: [
+      'test_id', 'employee_id', 'location_id', 'test_date', 'tech_id', 'test_type', 'province',
+      'left_500', 'left_1k', 'left_2k', 'left_3k', 'left_4k', 'left_6k', 'left_8k',
+      'right_500', 'right_1k', 'right_2k', 'right_3k', 'right_4k', 'right_6k', 'right_8k',
+      'classification', 'triggered_rule_id', 'sts_flag', 'counsel_text', 'tech_notes', 'questionnaire', 'packet_id',
+      'created_at', 'updated_at'
+    ],
+    sql: `CREATE TABLE tests_new (
+      test_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id          INTEGER NOT NULL,
+      location_id          INTEGER,
+      test_date            TEXT NOT NULL,
+      tech_id              TEXT,
+      test_type            TEXT NOT NULL DEFAULT 'Periodic',
+      province             TEXT NOT NULL,
+      left_500   REAL, left_1k  REAL, left_2k  REAL, left_3k  REAL,
+      left_4k    REAL, left_6k  REAL, left_8k  REAL,
+      right_500  REAL, right_1k REAL, right_2k REAL, right_3k REAL,
+      right_4k   REAL, right_6k REAL, right_8k REAL,
+      classification            TEXT,
+      triggered_rule_id         INTEGER,
+      sts_flag                  INTEGER NOT NULL DEFAULT 0,
+      counsel_text              TEXT,
+      tech_notes                TEXT,
+      questionnaire             TEXT,
+      packet_id                 TEXT,
+      created_at                TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at                TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
+      FOREIGN KEY (location_id) REFERENCES locations(location_id)
+    )`
+  },
+  baselines: {
+    columns: [
+      'baseline_id', 'employee_id', 'location_id', 'test_date', 'archived',
+      'left_500', 'left_1k', 'left_2k', 'left_3k', 'left_4k', 'left_6k', 'left_8k',
+      'right_500', 'right_1k', 'right_2k', 'right_3k', 'right_4k', 'right_6k', 'right_8k',
+      'created_at', 'updated_at'
+    ],
+    sql: `CREATE TABLE baselines_new (
+      baseline_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id   INTEGER NOT NULL,
+      location_id   INTEGER,
+      test_date     TEXT NOT NULL,
+      archived      INTEGER NOT NULL DEFAULT 0,
+      left_500      REAL, left_1k  REAL, left_2k  REAL, left_3k  REAL,
+      left_4k       REAL, left_6k  REAL, left_8k  REAL,
+      right_500     REAL, right_1k REAL, right_2k REAL, right_3k REAL,
+      right_4k      REAL, right_6k REAL, right_8k REAL,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
+      FOREIGN KEY (location_id) REFERENCES locations(location_id)
+    )`
+  },
+  packets: {
+    columns: ['packet_id', 'company_id', 'location_id', 'tech_id', 'visit_date', 'filename', 'status', 'testing_duration', 'created_at', 'updated_at'],
+    sql: `CREATE TABLE packets_new (
+      packet_id     TEXT PRIMARY KEY,
+      company_id    INTEGER NOT NULL,
+      location_id   INTEGER,
+      tech_id       TEXT,
+      visit_date    TEXT NOT NULL,
+      filename      TEXT NOT NULL,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      testing_duration TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )`
+  },
+  users: {
+    columns: ['user_id', 'name', 'initials', 'role', 'folder_name', 'pin_hash', 'iat_number', 'active', 'created_at', 'updated_at'],
+    sql: `CREATE TABLE users_new (
+      user_id       TEXT PRIMARY KEY,
+      name          TEXT NOT NULL,
+      initials      TEXT,
+      role          TEXT DEFAULT 'tech',
+      folder_name   TEXT,
+      pin_hash      TEXT,
+      iat_number    TEXT,
+      active        INTEGER DEFAULT 1,
+      created_at    TEXT DEFAULT (datetime('now')),
+      updated_at    TEXT DEFAULT (datetime('now'))
+    )`
+  }
+}
+
+/**
+ * Rebuilds `table` if its actual local columns don't match REBUILD_DEFS,
+ * copying over only the columns both sides have. No-op if the table
+ * doesn't exist yet (CREATE_TABLES already made it with the current shape)
+ * or already matches.
+ */
+function reconcileTable(table) {
+  const def = REBUILD_DEFS[table]
+  const localCols = new Set(query(`SELECT name FROM pragma_table_info('${table}')`).map(r => r.name))
+  if (localCols.size === 0) return
+
+  const matches = def.columns.length === localCols.size && def.columns.every(c => localCols.has(c))
+  if (matches) return
+
+  const copyCols = def.columns.filter(c => localCols.has(c)).join(', ')
+  run(def.sql)
+  run(`INSERT INTO ${table}_new (${copyCols}) SELECT ${copyCols} FROM ${table}`)
+  run(`DROP TABLE ${table}`)
+  run(`ALTER TABLE ${table}_new RENAME TO ${table}`)
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 
@@ -232,34 +388,20 @@ export async function initSchema() {
     }
   }
 
-  // employees — drop legacy company_id NOT NULL column, replaced by location_id.
-  // SQLite can't alter column constraints, so recreate the table.
-  // Older locally-created databases predating the location_id refactor still
-  // carry this column, which breaks inserts/merge-sync rows that omit it.
-  try {
-    const hasCo = query(`SELECT * FROM pragma_table_info('employees') WHERE name = 'company_id'`).length > 0
-    if (hasCo) {
-      db.run(`CREATE TABLE employees_new (
-        employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-        location_id   INTEGER,
-        first_name    TEXT NOT NULL,
-        last_name     TEXT NOT NULL,
-        dob           TEXT,
-        hire_date     TEXT,
-        job_title     TEXT,
-        status        TEXT NOT NULL DEFAULT 'active',
-        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (location_id) REFERENCES locations(location_id)
-      )`)
-      db.run(`INSERT INTO employees_new
-        (employee_id, location_id, first_name, last_name, dob, hire_date, job_title, status, created_at, updated_at)
-        SELECT employee_id, location_id, first_name, last_name, dob, hire_date, job_title, status, created_at, updated_at
-        FROM employees`)
-      db.run(`DROP TABLE employees`)
-      db.run(`ALTER TABLE employees_new RENAME TO employees`)
+  // Reconcile tables whose shape has changed since this schema was pruned
+  // down over several versions (e.g. companies/locations used to carry
+  // province/address/contact fields directly, employees used to carry
+  // company_id). SQLite can't alter column constraints or drop columns,
+  // so any local database older than the current shape needs its table
+  // rebuilt — otherwise stale NOT NULL columns the app no longer writes
+  // break every insert, including merge-sync rows that omit them.
+  for (const table of Object.keys(REBUILD_DEFS)) {
+    try {
+      reconcileTable(table)
+    } catch (e) {
+      console.warn(`${table} table migration:`, e)
     }
-  } catch (e) { console.warn('employees table migration:', e) }
+  }
 
   // Seed provinces if empty
   const existing = query('SELECT COUNT(*) AS n FROM provinces')[0]?.n ?? 0
