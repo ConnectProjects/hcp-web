@@ -69,10 +69,17 @@ CREATE TABLE IF NOT EXISTS system_log (
   created_at  TEXT DEFAULT (datetime('now'))
 );
 
--- 4. ENTITIES (Pruned for Schema 2.1)
+-- 4. ENTITIES
 CREATE TABLE IF NOT EXISTS companies (
   company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
+  address       TEXT,
+  city          TEXT,
+  contact_name  TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  website       TEXT,
+  sticky_notes  TEXT,
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -83,7 +90,15 @@ CREATE TABLE IF NOT EXISTS locations (
   company_id    INTEGER NOT NULL,
   name          TEXT NOT NULL,
   province      TEXT NOT NULL,
+  address       TEXT,
+  city          TEXT,
+  postal_code   TEXT,
+  contact_name  TEXT,
+  contact_phone TEXT,
+  contact_email TEXT,
+  cu_code       TEXT,
   hpd_inventory TEXT NOT NULL DEFAULT '[]',
+  sticky_notes  TEXT,
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -102,6 +117,17 @@ CREATE TABLE IF NOT EXISTS employees (
   status        TEXT NOT NULL DEFAULT 'active',
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (location_id) REFERENCES locations(location_id)
+);
+
+CREATE TABLE IF NOT EXISTS employment (
+  employment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id   INTEGER NOT NULL,
+  location_id   INTEGER NOT NULL,
+  job_title     TEXT,
+  start_date    TEXT,
+  end_date      TEXT,
+  FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
 );
 
@@ -125,10 +151,28 @@ CREATE TABLE IF NOT EXISTS tests (
   tech_notes                TEXT,
   questionnaire             TEXT,
   packet_id                 TEXT,
+  referral_given_to_worker  INTEGER DEFAULT 0,
+  referral_sent_to_employer INTEGER DEFAULT 0,
+  referral_sent_date        TEXT,
+  triggering_freq_hz        INTEGER,
+  triggering_ear            TEXT,
+  shift_db                  REAL,
   created_at                TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at                TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
   FOREIGN KEY (location_id) REFERENCES locations(location_id)
+);
+
+CREATE TABLE IF NOT EXISTS hpd_assessments (
+  hpd_id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id            INTEGER NOT NULL,
+  hpd_make_model     TEXT,
+  rated_nrr          REAL,
+  derated_nrr        REAL,
+  lex8hr             REAL,
+  protected_exposure REAL,
+  adequacy           TEXT,
+  FOREIGN KEY (test_id) REFERENCES tests(test_id)
 );
 
 CREATE TABLE IF NOT EXISTS baselines (
@@ -189,6 +233,11 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS help_content (
+  section_id TEXT PRIMARY KEY,
+  content    TEXT
+);
 `
 
 // ---------------------------------------------------------------------------
@@ -222,23 +271,38 @@ const MIGRATIONS = [
 
 const REBUILD_DEFS = {
   companies: {
-    columns: ['company_id', 'name', 'active', 'created_at', 'updated_at'],
+    columns: ['company_id', 'name', 'address', 'city', 'contact_name', 'contact_phone', 'contact_email', 'website', 'sticky_notes', 'active', 'created_at', 'updated_at'],
     sql: `CREATE TABLE companies_new (
       company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT NOT NULL,
+      address       TEXT,
+      city          TEXT,
+      contact_name  TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      website       TEXT,
+      sticky_notes  TEXT,
       active        INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
     )`
   },
   locations: {
-    columns: ['location_id', 'company_id', 'name', 'province', 'hpd_inventory', 'active', 'created_at', 'updated_at'],
+    columns: ['location_id', 'company_id', 'name', 'province', 'address', 'city', 'postal_code', 'contact_name', 'contact_phone', 'contact_email', 'cu_code', 'hpd_inventory', 'sticky_notes', 'active', 'created_at', 'updated_at'],
     sql: `CREATE TABLE locations_new (
       location_id   INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id    INTEGER NOT NULL,
       name          TEXT NOT NULL,
       province      TEXT NOT NULL,
+      address       TEXT,
+      city          TEXT,
+      postal_code   TEXT,
+      contact_name  TEXT,
+      contact_phone TEXT,
+      contact_email TEXT,
+      cu_code       TEXT,
       hpd_inventory TEXT NOT NULL DEFAULT '[]',
+      sticky_notes  TEXT,
       active        INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -267,6 +331,8 @@ const REBUILD_DEFS = {
       'left_500', 'left_1k', 'left_2k', 'left_3k', 'left_4k', 'left_6k', 'left_8k',
       'right_500', 'right_1k', 'right_2k', 'right_3k', 'right_4k', 'right_6k', 'right_8k',
       'classification', 'triggered_rule_id', 'sts_flag', 'counsel_text', 'tech_notes', 'questionnaire', 'packet_id',
+      'referral_given_to_worker', 'referral_sent_to_employer', 'referral_sent_date',
+      'triggering_freq_hz', 'triggering_ear', 'shift_db',
       'created_at', 'updated_at'
     ],
     sql: `CREATE TABLE tests_new (
@@ -288,6 +354,12 @@ const REBUILD_DEFS = {
       tech_notes                TEXT,
       questionnaire             TEXT,
       packet_id                 TEXT,
+      referral_given_to_worker  INTEGER DEFAULT 0,
+      referral_sent_to_employer INTEGER DEFAULT 0,
+      referral_sent_date        TEXT,
+      triggering_freq_hz        INTEGER,
+      triggering_ear            TEXT,
+      shift_db                  REAL,
       created_at                TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at                TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
@@ -388,13 +460,14 @@ export async function initSchema() {
     }
   }
 
-  // Reconcile tables whose shape has changed since this schema was pruned
-  // down over several versions (e.g. companies/locations used to carry
-  // province/address/contact fields directly, employees used to carry
-  // company_id). SQLite can't alter column constraints or drop columns,
-  // so any local database older than the current shape needs its table
-  // rebuilt — otherwise stale NOT NULL columns the app no longer writes
-  // break every insert, including merge-sync rows that omit them.
+  // Reconcile tables whose shape has changed across schema versions (e.g.
+  // companies used to carry a NOT NULL province column directly, before
+  // that moved to locations; employees used to carry company_id, before
+  // that moved to location_id). SQLite can't alter column constraints or
+  // drop columns, so any local database older than the current shape
+  // needs its table rebuilt — otherwise stale NOT NULL columns the app no
+  // longer writes break every insert, including merge-sync rows that omit
+  // them.
   for (const table of Object.keys(REBUILD_DEFS)) {
     try {
       reconcileTable(table)

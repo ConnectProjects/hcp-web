@@ -69,12 +69,12 @@ export function createCompany(data) {
  */
 export function updateCompany(id, data) {
   return run(`
-    UPDATE companies 
-    SET name = ?, address = ?, contact_name = ?, 
-        contact_phone = ?, contact_email = ?, sticky_notes = ?,
+    UPDATE companies
+    SET name = ?, address = ?, city = ?, contact_name = ?,
+        contact_phone = ?, contact_email = ?, website = ?, sticky_notes = ?,
         updated_at = datetime('now')
     WHERE company_id = ?
-  `, [data.name, data.address, data.contact_name, data.contact_phone, data.contact_email, data.sticky_notes, id]);
+  `, [data.name, data.address, data.city, data.contact_name, data.contact_phone, data.contact_email, data.website, data.sticky_notes, id]);
 }
 
 /**
