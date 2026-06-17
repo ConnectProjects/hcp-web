@@ -76,18 +76,35 @@ export const JsonDatabase = {
         // JSON file doesn't exist yet — that's fine
       }
 
+      // Cloud JSON may carry columns from older schema versions that no
+      // longer exist locally (e.g. a pruned table). Only insert columns
+      // the local table actually has, so stale fields don't break inserts.
+      const localCols = this.getLocalColumns(queryFn, table);
+      if (!localCols) {
+        console.warn(`Sync skip: ${table} table may not exist locally.`);
+        continue;
+      }
+      const toRow = row => {
+        const filtered = {};
+        for (const key of Object.keys(row)) {
+          if (localCols.has(key)) filtered[key] = row[key];
+        }
+        return filtered;
+      };
+
       // --- Non-merge tables: simple cloud-wins overwrite ---
       if (!config || !config.merge) {
         try {
           runFn(`DELETE FROM ${table}`);
           cloudRows.forEach(row => {
-            const cols = Object.keys(row).join(',');
-            const vals = Object.values(row);
+            const filtered = toRow(row);
+            const cols = Object.keys(filtered).join(',');
+            const vals = Object.values(filtered);
             const qs = vals.map(() => '?').join(',');
             runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
           });
         } catch (e) {
-          console.warn(`Sync skip: ${table} table may not exist locally.`);
+          console.warn(`Sync error on ${table}:`, e.message);
         }
         continue;
       }
@@ -127,8 +144,9 @@ export const JsonDatabase = {
         // Write merged result to local SQLite
         runFn(`DELETE FROM ${table}`);
         for (const row of merged.values()) {
-          const cols = Object.keys(row).join(',');
-          const vals = Object.values(row);
+          const filtered = toRow(row);
+          const cols = Object.keys(filtered).join(',');
+          const vals = Object.values(filtered);
           const qs = vals.map(() => '?').join(',');
           runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
         }
@@ -142,6 +160,19 @@ export const JsonDatabase = {
     }
 
     return await this.getCloudTimestamps(syncFolder);
+  },
+
+  /**
+   * Returns the set of column names the local table actually has,
+   * or null if the table doesn't exist.
+   */
+  getLocalColumns(queryFn, table) {
+    try {
+      const cols = queryFn(`SELECT name FROM pragma_table_info('${table}')`);
+      return cols.length > 0 ? new Set(cols.map(c => c.name)) : null;
+    } catch (e) {
+      return null;
+    }
   },
 
   /**
