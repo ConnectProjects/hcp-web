@@ -96,14 +96,14 @@ export function renderDataTools(container, state, navigate) {
       </div>
 
       <!-- TAB 3: INTELLIGENT CLEANUP -->
-      <div id="tab-cleanup" class="tab-content" style="display:none">
-        <div class="form-card">
-          <h3>Duplicate Detection</h3>
-          <p class="help-text">Scanning for potential name matches across different IDs.</p>
-          <button class="btn btn-outline" id="btn-scan-dupes">🔍 Scan for Duplicates</button>
-          <div id="dupe-results" style="margin-top:20px"></div>
-        </div>
-      </div>
+<div id="tab-cleanup" class="tab-content" style="display:none">
+  <div class="form-card">
+    <h3>Duplicate Employee Detection</h3>
+    <p class="help-text">Finds employees sharing the same name. Select which record to keep — all tests and baselines from duplicates will be merged onto it.</p>
+    <button class="btn btn-outline" id="btn-scan-dupes">🔍 Scan for Duplicates</button>
+    <div id="dupe-results" style="margin-top:20px"></div>
+  </div>
+</div>
 
       <!-- TAB 4: LEGACY IMPORT -->
       <div id="tab-import" class="tab-content" style="display:none">
@@ -194,23 +194,110 @@ export function renderDataTools(container, state, navigate) {
   };
 
   // --- DUPLICATE SCANNER ---
-  container.querySelector('#btn-scan-dupes').onclick = () => {
-    const dupes = query(`
-        SELECT first_name, last_name, COUNT(*) as count 
-        FROM employees 
-        GROUP BY first_name, last_name 
-        HAVING count > 1
-    `);
-    const res = container.querySelector('#dupe-results');
-    if (dupes.length === 0) { res.innerHTML = "<p>No exact name duplicates found.</p>"; return; }
-    
-    res.innerHTML = `<h4>Potential Employee Duplicates</h4>` + dupes.map(d => `
-        <div class="alert alert-warn" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px">
-            <span>${esc(d.last_name)}, ${esc(d.first_name)} (${d.count} records)</span>
-            <button class="btn btn-sm btn-primary" onclick="alert('Search for this name in Employees to resolve manually.')">View</button>
+container.querySelector('#btn-scan-dupes').onclick = () => {
+  const dupeNames = query(`
+    SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, COUNT(*) AS cnt
+    FROM employees
+    GROUP BY LOWER(first_name), LOWER(last_name)
+    HAVING cnt > 1
+    ORDER BY ln, fn
+  `);
+
+  const res = container.querySelector('#dupe-results');
+  if (dupeNames.length === 0) {
+    res.innerHTML = '<p style="color:green">✓ No duplicate employee names found.</p>';
+    return;
+  }
+
+  let html = `<p style="margin-bottom:16px"><strong>${dupeNames.length} duplicate name(s) found.</strong> Select which record to keep per group, then click Merge.</p>`;
+
+  for (const d of dupeNames) {
+    const records = query(`
+      SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title,
+             l.name AS location_name, l.province,
+             c.name AS company_name,
+             (SELECT COUNT(*) FROM tests t WHERE t.employee_id = e.employee_id) AS test_count,
+             (SELECT COUNT(*) FROM baselines b WHERE b.employee_id = e.employee_id) AS baseline_count
+      FROM employees e
+      LEFT JOIN locations l ON l.location_id = e.location_id
+      LEFT JOIN companies c ON c.company_id = l.company_id
+      WHERE LOWER(e.first_name) = ? AND LOWER(e.last_name) = ?
+      ORDER BY test_count DESC
+    `, [d.fn, d.ln]);
+
+    const groupId = `grp-${records[0].employee_id}`;
+    html += `
+      <div class="form-card" style="margin-bottom:16px; border-left:4px solid #f0ad4e">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+          <strong>${esc(records[0].last_name)}, ${esc(records[0].first_name)}</strong>
+          <button class="btn btn-sm btn-primary" data-group="${groupId}" id="btn-merge-${groupId}">Merge & Keep Selected →</button>
         </div>
-    `).join('');
-  };
+        <table class="data-table" style="font-size:12px; width:100%">
+          <thead>
+            <tr>
+              <th style="width:30px">Keep</th>
+              <th>Company</th>
+              <th>Location</th>
+              <th>DOB</th>
+              <th>Job Title</th>
+              <th>Tests</th>
+              <th>Baselines</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${records.map((r, idx) => `
+              <tr style="${idx === 0 ? 'background:#f0fff0' : ''}">
+                <td style="text-align:center">
+                  <input type="radio" name="${groupId}" value="${r.employee_id}" ${idx === 0 ? 'checked' : ''}>
+                </td>
+                <td>${esc(r.company_name || '—')}</td>
+                <td>${esc(r.location_name || '—')} ${r.province ? `(${r.province})` : ''}</td>
+                <td>${esc(r.dob || '—')}</td>
+                <td>${esc(r.job_title || '—')}</td>
+                <td><strong>${r.test_count}</strong></td>
+                <td>${r.baseline_count}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  res.innerHTML = html;
+
+  // Wire up merge buttons
+  res.querySelectorAll('[id^="btn-merge-"]').forEach(btn => {
+    btn.onclick = () => {
+      const groupId = btn.dataset.group;
+      const keepId = parseInt(res.querySelector(`input[name="${groupId}"]:checked`).value);
+      const allIds = Array.from(res.querySelectorAll(`input[name="${groupId}"]`)).map(r => parseInt(r.value));
+      const deleteIds = allIds.filter(id => id !== keepId);
+
+      const totalTests = deleteIds.reduce((sum, id) => {
+        return sum + (queryOne('SELECT COUNT(*) AS n FROM tests WHERE employee_id = ?', [id])?.n ?? 0);
+      }, 0);
+      const totalBaselines = deleteIds.reduce((sum, id) => {
+        return sum + (queryOne('SELECT COUNT(*) AS n FROM baselines WHERE employee_id = ?', [id])?.n ?? 0);
+      }, 0);
+
+      if (!confirm(`Merge ${deleteIds.length} duplicate(s) into the selected record?\n\n${totalTests} test(s) and ${totalBaselines} baseline(s) will be reassigned. The duplicates will be permanently deleted.`)) return;
+
+      try {
+        transaction(({ run }) => {
+          for (const dupId of deleteIds) {
+            run('UPDATE tests     SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
+            run('UPDATE baselines SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
+            run('DELETE FROM employees WHERE employee_id = ?', [dupId]);
+          }
+        });
+        btn.closest('.form-card').innerHTML = `<p style="color:green">✓ Merged successfully — ${deleteIds.length} duplicate(s) removed, ${totalTests} test(s) reassigned.</p>`;
+      } catch (err) {
+        alert('Merge failed: ' + err.message);
+      }
+    };
+  });
+};
 
   // --- LEGACY IMPORT LOGIC ---
   const picker = container.querySelector('#file-picker');
