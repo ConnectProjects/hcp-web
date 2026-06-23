@@ -178,14 +178,12 @@ export function logout() {
 async function startHeartbeat() {
   if (!state.syncFolder) return;
   setInterval(async () => {
-    if (!state.user || state.isOutofSync || state.screen === 'login') return;
+    if (!state.user || state.screen === 'login') return;
     try {
-      const newT = await JsonDatabase.getCloudTimestamps(state.syncFolder);
-      let changed = false;
-      for (const table of JsonDatabase.tables) { if (newT[table] > (state.cloudTimestamps[table] || 0)) { changed = true; break; } }
-      if (changed) { state.isOutofSync = true; showSyncWarning(); }
+      state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
+      await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     } catch (e) {}
-  }, 30000);
+  }, 60000);
 }
 
 function showSyncWarning() {
