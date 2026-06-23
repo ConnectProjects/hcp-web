@@ -307,10 +307,10 @@ function parseSurgicalCSV(csvText) {
         dob: parseDate(r[3]), testDate,
         rowCompany: currentCo, rowLocation: currentLoc, province: currentProv,
         wearHpd: r[5], hpdType: r[6],
-        testType: (r[7]||'').toUpperCase().includes('BASE') ? 'Baseline' : 'Periodic',
+        testType: (r[7] || '').toUpperCase().includes('BASE') ? 'Baseline' : 'Periodic',
         category: r[8],
-        left_500: num(r[9]),  left_1k: num(r[10]), left_2k: num(r[11]), left_3k: num(r[12]),
-        left_4k:  num(r[13]), left_6k: num(r[14]), left_8k: num(r[15]),
+        left_500:  num(r[9]),  left_1k:  num(r[10]), left_2k:  num(r[11]), left_3k:  num(r[12]),
+        left_4k:   num(r[13]), left_6k:  num(r[14]), left_8k:  num(r[15]),
         right_500: num(r[16]), right_1k: num(r[17]), right_2k: num(r[18]), right_3k: num(r[19]),
         right_4k:  num(r[20]), right_6k: num(r[21]), right_8k: num(r[22])
       });
@@ -327,14 +327,14 @@ function parseDate(raw) {
   if (spaceMatch) {
     const mo = MONTHS[spaceMatch[1]]; if (!mo) return null;
     let day = spaceMatch[2].padStart(2, '0'), year = spaceMatch[4];
-    if (!year && day.length === 2) { year = parseInt(day) > 30 ? "19"+day : "20"+day; day = "01"; }
+    if (!year && day.length === 2) { year = parseInt(day) > 30 ? "19" + day : "20" + day; day = "01"; }
     if (!year) year = "1900";
-    return `${year}-${mo}-${day.substring(0,2)}`;
+    return `${year}-${mo}-${day.substring(0, 2)}`;
   }
   const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2,'0')}-${slashMatch[2].padStart(2,'0')}`;
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-function num(v) { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[^0-9.-]/g,'')); return isNaN(n) ? null : n; }
-function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function num(v) { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[^0-9.-]/g, '')); return isNaN(n) ? null : n; }
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }g,'&lt;').replace(/>/g,'&gt;'); }
