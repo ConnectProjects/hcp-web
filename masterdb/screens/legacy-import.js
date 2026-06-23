@@ -57,7 +57,7 @@ async function handleFiles(fileList, container, navigate) {
 function parseSurgicalCSV(csvText) {
   const lines = csvText.split(/\r?\n/);
   const allRows = [];
-  
+
   let currentCo = "Unknown Company";
   let currentLoc = "Main Office";
   let currentProv = "AB";
@@ -91,7 +91,7 @@ function parseSurgicalCSV(csvText) {
             currentLoc = metaValues[1].replace(/^"|"$/g, '') || "Main Office";
             currentProv = metaValues[2] || "AB";
         }
-        i += 2; 
+        i += 2;
         continue;
     }
 
@@ -107,7 +107,7 @@ function parseSurgicalCSV(csvText) {
         if (r.length < 5 || r[0].toLowerCase() === "first name" || r[0].includes("MMDDYYYY")) continue;
 
         const testDate = parseDate(r[4]);
-        
+
         // CRITICAL FIX: Only add the row if we have a valid test date
         if (testDate) {
             allRows.push({
@@ -203,14 +203,14 @@ function runImport(rows, container, navigate) {
 
         if (!queryOne('SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ?', [eid, row.testDate])) {
           const hpdNote = row.wearHpd ? `HPD: ${row.wearHpd} (${row.hpdType})` : null;
-          run(`INSERT INTO tests (employee_id, location_id, test_date, test_type, province, 
-               left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k, 
-               right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k, 
-               classification, tech_notes, created_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`, 
-               [eid, locationId, row.testDate, row.testType, row.province, 
-                row.l500, row.l1k, row.l2k, row.l3k, row.l4k, row.l6k, row.l8k, 
-                row.r500, row.r1k, row.r2k, row.r3k, row.r4k, row.r6k, row.r8k, 
+          run(`INSERT INTO tests (employee_id, location_id, test_date, test_type, province,
+               left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+               right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
+               classification, tech_notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+               [eid, locationId, row.testDate, row.testType, row.province,
+                row.l500, row.l1k, row.l2k, row.l3k, row.l4k, row.l6k, row.l8k,
+                row.r500, row.r1k, row.r2k, row.r3k, row.r4k, row.r6k, row.r8k,
                 row.category, hpdNote]);
           count++;
         }
@@ -231,7 +231,7 @@ function parseDate(raw) {
     if (!raw || raw === "?") return null;
     let s = String(raw).trim().toUpperCase().replace(/-/g, ' ');
     const MONTHS = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12',SEPT:'09',JULY:'07',JUNE:'06'};
-    
+
     // Handles MAR 2 2021 or OCT 1 1970 or APR 84
     const spaceMatch = s.match(/^([A-Z]+)\s+(\d{1,4})(\s+(\d{4}))?$/);
     if (spaceMatch) {
@@ -239,29 +239,29 @@ function parseDate(raw) {
         if (!mo) return null;
         let day = spaceMatch[2].padStart(2, '0');
         let year = spaceMatch[4];
-        
+
         // Handle "Apr-84" style where only Month and Year are provided
         if (!year && day.length === 2) { year = parseInt(day) > 30 ? "19" + day : "20" + day; day = "01"; }
-        if (!year) year = "1900"; 
+        if (!year) year = "1900";
 
         return `${year}-${mo}-${day.substring(0,2)}`;
     }
     // Handles 7/31/2025
     const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2,'0')}-${slashMatch[2].padStart(2,'0')}`;
-    
+
     return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-function num(v) { 
+function num(v) {
   if (v === null || v === undefined || v === '') return null;
-  const n = Number(String(v).replace(/[^0-9.-]/g, '')); 
-  return isNaN(n) ? null : n; 
+  const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+  return isNaN(n) ? null : n;
 }
 function str(v) { return v == null ? '' : String(v).trim(); }
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function normalizeTestType(s) { 
-    s = (s || '').toUpperCase(); 
-    if (s.includes('BASE')) return 'Baseline'; 
-    return 'Periodic'; 
+function normalizeTestType(s) {
+    s = (s || '').toUpperCase();
+    if (s.includes('BASE')) return 'Baseline';
+    return 'Periodic';
 }
