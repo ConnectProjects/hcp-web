@@ -251,7 +251,7 @@ export function renderDataTools(container, state, navigate) {
                         [loc.location_id, row.firstName, row.lastName, row.dob, row.occupation]);
                     emp = { employee_id: queryOne("SELECT last_insert_rowid() as id").id };
                 }
-                createTest({ ...row, employee_id: emp.employee_id, location_id: loc.location_id });
+                createTest({ ...row, test_date: row.testDate, test_type: row.testType, employee_id: emp.employee_id, location_id: loc.location_id });
                 
                 // AUTO-BASELINE: If this is the first test for this employee ID, set it as baseline
                 const tCount = queryOne("SELECT COUNT(*) as n FROM tests WHERE employee_id = ?", [emp.employee_id]).n;
