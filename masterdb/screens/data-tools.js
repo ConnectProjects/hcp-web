@@ -266,21 +266,75 @@ export function renderDataTools(container, state, navigate) {
 }
 
 // --- SHARED UTILS ---
-function parseSurgicalCSV(t) {
-  const lines = t.split(/\r?\n/); const all = [];
-  let cCo = "", cLoc = "", cPr = "AB", p = false;
-  const sS = (l) => { const r = []; let c = "", q = false; for (let ch of l) { if (char === '"') q = !q; else if (ch === ',' && !q) { r.push(c.trim()); c = ""; } else c += ch; } r.push(c.trim()); return r; };
+function parseSurgicalCSV(csvText) {
+  const lines = csvText.split(/\r?\n/);
+  const allRows = [];
+  let currentCo = "Unknown Company", currentLoc = "Main Office", currentProv = "AB", parsingData = false;
+
+  const splitSafe = (line) => {
+    const result = []; let current = "", inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; }
+      else if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ""; }
+      else { current += ch; }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   for (let i = 0; i < lines.length; i++) {
-    const l = lines[i].trim(); if (!l) continue;
-    if (l.includes("### RECORD ###")) { const m = lines[i+2].split(','); cCo = m[0].replace(/"/g,''); cLoc = m[1].replace(/"/g,''); cPr = m[2] || "AB"; i += 2; p = false; continue; }
-    if (l.toLowerCase().startsWith("first name")) { p = true; continue; }
-    if (p) {
-        const r = l.split(','); if (r.length < 5 || r[0].includes("MMDDYYYY")) continue;
-        all.push({ firstName: r[0], lastName: r[1], occupation: r[2], dob: pD(r[3]), testDate: pD(r[4]), rowCompany: cCo, rowLocation: cLoc, province: cPr, left_500: n(r[9]), left_1k: n(r[10]), left_2k: n(r[11]), left_3k: n(r[12]), left_4k: n(r[13]), left_6k: n(r[14]), left_8k: n(r[15]), right_500: n(r[16]), right_1k: n(r[17]), right_2k: n(r[18]), right_3k: n(r[19]), right_4k: n(r[20]), right_6k: n(r[21]), right_8k: n(r[22]) });
+    const line = lines[i].trim();
+    if (!line || line.startsWith(',,,')) continue;
+    if (line.includes("### RECORD ###")) {
+      parsingData = false;
+      const m = splitSafe(lines[i + 2] || "");
+      if (m.length >= 2) {
+        currentCo  = m[0].replace(/^"|"$/g, '') || "Unknown Company";
+        currentLoc = m[1].replace(/^"|"$/g, '') || "Main Office";
+        currentProv = m[2] || "AB";
+      }
+      i += 2; continue;
+    }
+    if (line.toLowerCase().startsWith("first name,surname")) { parsingData = true; continue; }
+    if (parsingData) {
+      const r = splitSafe(line);
+      if (r.length < 5 || r[0].toLowerCase() === "first name" || r[0].includes("MMDDYYYY")) continue;
+      const testDate = parseDate(r[4]);
+      if (!testDate) continue;
+      allRows.push({
+        firstName: r[0], lastName: r[1], occupation: r[2],
+        dob: parseDate(r[3]), testDate,
+        rowCompany: currentCo, rowLocation: currentLoc, province: currentProv,
+        wearHpd: r[5], hpdType: r[6],
+        testType: (r[7]||'').toUpperCase().includes('BASE') ? 'Baseline' : 'Periodic',
+        category: r[8],
+        left_500: num(r[9]),  left_1k: num(r[10]), left_2k: num(r[11]), left_3k: num(r[12]),
+        left_4k:  num(r[13]), left_6k: num(r[14]), left_8k: num(r[15]),
+        right_500: num(r[16]), right_1k: num(r[17]), right_2k: num(r[18]), right_3k: num(r[19]),
+        right_4k:  num(r[20]), right_6k: num(r[21]), right_8k: num(r[22])
+      });
     }
   }
-  return all;
+  return allRows;
 }
-function pD(r) { if(!r) return null; let s = String(r).toUpperCase(); const M = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'}; const m = s.match(/^([A-Z]+)\s+(\d+)\s+(\d+)$/); return m ? `${m[3]}-${M[m[1]]}-${m[2].padStart(2,'0')}` : s; }
-function n(v) { const n = Number(String(v).replace(/[^0-9.-]/g,'')); return isNaN(n) ? null : n; }
+
+function parseDate(raw) {
+  if (!raw || raw === "?") return null;
+  let s = String(raw).trim().toUpperCase().replace(/-/g, ' ');
+  const MONTHS = {JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12',SEPT:'09',JULY:'07',JUNE:'06'};
+  const spaceMatch = s.match(/^([A-Z]+)\s+(\d{1,4})(\s+(\d{4}))?$/);
+  if (spaceMatch) {
+    const mo = MONTHS[spaceMatch[1]]; if (!mo) return null;
+    let day = spaceMatch[2].padStart(2, '0'), year = spaceMatch[4];
+    if (!year && day.length === 2) { year = parseInt(day) > 30 ? "19"+day : "20"+day; day = "01"; }
+    if (!year) year = "1900";
+    return `${year}-${mo}-${day.substring(0,2)}`;
+  }
+  const slashMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) return `${slashMatch[3]}-${slashMatch[1].padStart(2,'0')}-${slashMatch[2].padStart(2,'0')}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+function num(v) { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[^0-9.-]/g,'')); return isNaN(n) ? null : n; }
 function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
