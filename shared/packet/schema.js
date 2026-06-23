@@ -35,6 +35,7 @@ export const PACKET_STATUS = {
  *
  * @param {object} opts
  * @param {object} opts.company           - Company record from MasterDB
+ * @param {object} [opts.location]        - Location record this visit was generated for
  * @param {Array}  opts.employees         - Employee records with baseline and prior tests
  * @param {Array}  opts.rules             - Province classification rules (from rules/XX.json)
  * @param {Array}  opts.counselTemplates  - Counsel templates (from counsel/XX.json)
@@ -45,7 +46,7 @@ export const PACKET_STATUS = {
  * @param {string} [opts.stickyNotes]     - Office notes to tech
  * @returns {object} packet
  */
-export function createPacket({ company, employees, rules, counselTemplates, hpdInventory, techId, techInitials, visitDate, stickyNotes = '' }) {
+export function createPacket({ company, location, employees, rules, counselTemplates, hpdInventory, techId, techInitials, visitDate, stickyNotes = '' }) {
   const slug = company.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 20)
   const dateCompact = visitDate.replace(/-/g, '')
   const packetId = `${company.province}-${slug}-${dateCompact}-${techInitials}`
@@ -79,6 +80,12 @@ export function createPacket({ company, employees, rules, counselTemplates, hpdI
       contact_email: company.contact_email ?? null,
       sticky_notes: stickyNotes
     },
+
+    location: location ? {
+      location_id: location.location_id,
+      name:        location.name,
+      province:    location.province ?? company.province
+    } : null,
 
     // Classification rules for this company's province — snapshotted at packet creation time
     rules,
