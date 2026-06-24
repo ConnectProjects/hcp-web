@@ -387,7 +387,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
           const existingTest = queryOne(
             `SELECT test_id FROM tests
              WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
-            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id]
+            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id ?? null]
           )
 
           if (existingTest) {
