@@ -90,7 +90,6 @@ export function getComingSoonCompanies(monthsThreshold = 6) {
  * Helper to ensure we never send 'undefined' to the SQLite engine.
  * SQLite accepts null, but crashes on JavaScript undefined.
  */
-const nullify = (v) => (v === undefined || v === "" ? null : v);
 
 function nullify(v) {
   if (v === undefined || v === null) return null
@@ -180,12 +179,12 @@ export function createHPDAssessment(testId, hpd) {
     (test_id, hpd_make_model, rated_nrr, derated_nrr, lex8hr, protected_exposure, adequacy)
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
      [testId,
-     hpd.hpd_make_model ?? hpd.hpd_model ?? null,
-     nullify(hpd.rated_nrr),
-     nullify(hpd.derated_nrr),
-     nullify(hpd.lex8hr),
-     nullify(hpd.protected_exposure),
-     hpd.adequacy ?? null]
+ hpd.hpd_make_model ?? hpd.hpd_model ?? null,
+ nullify(hpd.rated_nrr),
+ nullify(hpd.derated_nrr),
+ nullify(hpd.lex8hr),
+ nullify(hpd.protected_exposure),
+ hpd.adequacy ?? null]
   )
   return lastInsertId()
 }
