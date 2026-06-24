@@ -140,19 +140,31 @@ export function createTest(data) {
 }
 
 export function updateTest(testId, data) {
+  const qJson = data.questionnaire ? JSON.stringify(data.questionnaire) : null
   run(`UPDATE tests SET
     test_date = ?, test_type = ?, province = ?,
     left_500 = ?, left_1k = ?, left_2k = ?, left_3k = ?, left_4k = ?, left_6k = ?, left_8k = ?,
-    right_500 = ?, right_1k = ?, right_2k = ?, right_3k = ?, right_4k = ?, right_6k = ?, right_8k = ?
+    right_500 = ?, right_1k = ?, right_2k = ?, right_3k = ?, right_4k = ?, right_6k = ?, right_8k = ?,
+    counsel_text = ?, tech_notes = ?,
+    referral_given_to_worker = ?, referral_sent_to_employer = ?, referral_sent_date = ?,
+    questionnaire = ?
     WHERE test_id = ?`,
-    [data.test_date,
-     data.test_type ?? 'Periodic',
-     data.province,
-     data.left_500  ?? null, data.left_1k  ?? null, data.left_2k  ?? null, data.left_3k  ?? null,
-     data.left_4k   ?? null, data.left_6k  ?? null, data.left_8k  ?? null,
-     data.right_500 ?? null, data.right_1k ?? null, data.right_2k ?? null, data.right_3k ?? null,
-     data.right_4k  ?? null, data.right_6k ?? null, data.right_8k ?? null,
-     testId]
+    [
+      data.test_date,
+      data.test_type ?? 'Periodic',
+      data.province,
+      data.left_500  ?? null, data.left_1k  ?? null, data.left_2k  ?? null, data.left_3k  ?? null,
+      data.left_4k   ?? null, data.left_6k  ?? null, data.left_8k  ?? null,
+      data.right_500 ?? null, data.right_1k ?? null, data.right_2k ?? null, data.right_3k ?? null,
+      data.right_4k  ?? null, data.right_6k ?? null, data.right_8k ?? null,
+      data.counsel_text ?? null,
+      data.tech_notes ?? null,
+      data.referral_given_to_worker  ?? null,
+      data.referral_sent_to_employer ?? null,
+      data.referral_sent_date        ?? null,
+      qJson,
+      testId
+    ]
   )
 }
 
@@ -199,16 +211,17 @@ export function getDashboardStats() {
  */
 export function getTestById(id) {
   return queryOne(`
-    SELECT t.*, 
+    SELECT t.*,
            e.first_name, e.last_name, e.dob, e.job_title,
-           l.name as location_name, l.province,
-           c.name as company_name,
-           h.hpd_make_model, h.rated_nrr, h.adequacy
+           l.name AS location_name, l.province,
+           c.name AS company_name,
+           h.hpd_make_model, h.rated_nrr, h.derated_nrr,
+           h.lex8hr, h.protected_exposure, h.adequacy
     FROM tests t
     JOIN employees e ON t.employee_id = e.employee_id
     JOIN locations l ON t.location_id = l.location_id
     JOIN companies c ON l.company_id = c.company_id
     LEFT JOIN hpd_assessments h ON t.test_id = h.test_id
     WHERE t.test_id = ?
-  `, [id]);
+  `, [id])
 }
