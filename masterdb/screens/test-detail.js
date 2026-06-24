@@ -23,7 +23,7 @@ function redraw(container, state, navigate, testId) {
         <div class="breadcrumb">
           <button class="btn btn-link" id="btn-back-to-emp">${esc(t.last_name)}, ${esc(t.first_name)}</button>
           <span>›</span>
-          <span>Test · ${esc(t.test_date)}</span>
+          <span>Test · ${esc((t.test_date||'').slice(0,10))}</span>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-outline btn-sm" id="btn-edit-test">Edit Test</button>
@@ -35,7 +35,7 @@ function redraw(container, state, navigate, testId) {
       <div style="background:#76B214;color:white;padding:16px 20px;border-radius:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
         <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;opacity:.8">Company</div><div style="font-weight:600">${esc(t.company_name)}</div></div>
         <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;opacity:.8">Location</div><div style="font-weight:600">${esc(t.location_name)} (${esc(t.province)})</div></div>
-        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;opacity:.8">Test Date</div><div style="font-weight:600">${esc(t.test_date)}</div></div>
+        <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;opacity:.8">Test Date</div><div style="font-weight:600">${esc((t.test_date||'').slice(0,10))}</div></div>
         <div><div style="font-size:10px;font-weight:700;text-transform:uppercase;opacity:.8">Type</div><div style="font-weight:600">${esc(t.test_type)}</div></div>
       </div>
 
@@ -146,7 +146,7 @@ function redraw(container, state, navigate, testId) {
       <div class="modal-backdrop"></div>
       <div class="modal-box modal-box--wide">
         <div class="modal-header">
-          <h2>Edit Test · ${esc(t.test_date)}</h2>
+          <h2>Edit Test · ${esc((t.test_date||'').slice(0,10))}</h2>
           <button class="modal-close" id="edit-close">✕</button>
         </div>
         <div class="modal-body">
@@ -154,7 +154,7 @@ function redraw(container, state, navigate, testId) {
           <div class="form-grid">
             <div class="form-group">
               <label>Test Date</label>
-              <input type="date" id="et-date" value="${esc(t.test_date)}" />
+              <input type="date" id="et-date" value="${esc((t.test_date||'').slice(0,10))}" />
             </div>
             <div class="form-group">
               <label>Test Type</label>
