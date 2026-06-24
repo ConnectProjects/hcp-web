@@ -5,7 +5,7 @@
  * Features: Employee/Location transfers, Duplicate Detection, and Legacy Import.
  */
 
-import { query, queryOne, run, transaction } from '../db/sqlite.js'
+import { query, queryOne, run, transaction, logAction } from '../db/sqlite.js'
 import { JsonDatabase } from '../../shared/fs/json-database.js'
 import { createTest } from '../db/tests.js'
 import { createBaseline } from '../db/employees.js'
@@ -96,14 +96,14 @@ export function renderDataTools(container, state, navigate) {
       </div>
 
       <!-- TAB 3: INTELLIGENT CLEANUP -->
-<div id="tab-cleanup" class="tab-content" style="display:none">
-  <div class="form-card">
-    <h3>Duplicate Employee Detection</h3>
-    <p class="help-text">Finds employees sharing the same name. Select which record to keep — all tests and baselines from duplicates will be merged onto it.</p>
-    <button class="btn btn-outline" id="btn-scan-dupes">🔍 Scan for Duplicates</button>
-    <div id="dupe-results" style="margin-top:20px"></div>
-  </div>
-</div>
+      <div id="tab-cleanup" class="tab-content" style="display:none">
+        <div class="form-card">
+          <h3>Duplicate Employee Detection</h3>
+          <p class="help-text">Finds employees sharing the same name. Select which record to keep — all tests and baselines from duplicates will be merged onto it.</p>
+          <button class="btn btn-outline" id="btn-scan-dupes">🔍 Scan for Duplicates</button>
+          <div id="dupe-results" style="margin-top:20px"></div>
+        </div>
+      </div>
 
       <!-- TAB 4: LEGACY IMPORT -->
       <div id="tab-import" class="tab-content" style="display:none">
@@ -165,12 +165,14 @@ export function renderDataTools(container, state, navigate) {
     const selected = Array.from(container.querySelectorAll('.emp-chk:checked')).map(c => c.value);
     if (!eDestLoc.value || selected.length === 0) return alert("Select destination and employees.");
     if (confirm(`Move ${selected.length} employees?`)) {
+      const destLoc = queryOne('SELECT l.name, c.name AS company_name FROM locations l JOIN companies c ON c.company_id = l.company_id WHERE l.location_id = ?', [eDestLoc.value]);
       transaction(({ run }) => {
         const ids = selected.join(',');
         run(`UPDATE employees SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
         run(`UPDATE tests SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
         run(`UPDATE baselines SET location_id = ? WHERE employee_id IN (${ids})`, [eDestLoc.value]);
       });
+      logAction(state, 'MOVE_EMPLOYEES', `Moved ${selected.length} employee(s) to "${destLoc?.name}" at "${destLoc?.company_name}"`)
       await JsonDatabase.pushMaster(state.syncFolder, query);
       alert("Employees moved and synced.");
       navigate('dashboard');
@@ -186,7 +188,10 @@ export function renderDataTools(container, state, navigate) {
   container.querySelector('#btn-do-move-loc').onclick = async () => {
     if (!lToMove.value || !lDestCo.value) return alert("Select source location and target company.");
     if (confirm("Move entire location and all its employees?")) {
+      const loc = queryOne('SELECT name FROM locations WHERE location_id = ?', [lToMove.value]);
+      const destCo = queryOne('SELECT name FROM companies WHERE company_id = ?', [lDestCo.value]);
       run("UPDATE locations SET company_id = ? WHERE location_id = ?", [lDestCo.value, lToMove.value]);
+      logAction(state, 'TRANSFER_LOCATION', `Transferred location "${loc?.name}" to company "${destCo?.name}"`)
       await JsonDatabase.pushMaster(state.syncFolder, query);
       alert("Location transferred.");
       navigate('dashboard');
@@ -194,110 +199,112 @@ export function renderDataTools(container, state, navigate) {
   };
 
   // --- DUPLICATE SCANNER ---
-container.querySelector('#btn-scan-dupes').onclick = () => {
-  const dupeNames = query(`
-    SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, COUNT(*) AS cnt
-    FROM employees
-    GROUP BY LOWER(first_name), LOWER(last_name)
-    HAVING cnt > 1
-    ORDER BY ln, fn
-  `);
+  container.querySelector('#btn-scan-dupes').onclick = () => {
+    const dupeNames = query(`
+      SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, COUNT(*) AS cnt
+      FROM employees
+      GROUP BY LOWER(first_name), LOWER(last_name)
+      HAVING cnt > 1
+      ORDER BY ln, fn
+    `);
 
-  const res = container.querySelector('#dupe-results');
-  if (dupeNames.length === 0) {
-    res.innerHTML = '<p style="color:green">✓ No duplicate employee names found.</p>';
-    return;
-  }
+    const res = container.querySelector('#dupe-results');
+    if (dupeNames.length === 0) {
+      res.innerHTML = '<p style="color:green">✓ No duplicate employee names found.</p>';
+      return;
+    }
 
-  let html = `<p style="margin-bottom:16px"><strong>${dupeNames.length} duplicate name(s) found.</strong> Select which record to keep per group, then click Merge.</p>`;
+    let html = `<p style="margin-bottom:16px"><strong>${dupeNames.length} duplicate name(s) found.</strong> Select which record to keep per group, then click Merge.</p>`;
 
-  for (const d of dupeNames) {
-    const records = query(`
-      SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title,
-             l.name AS location_name, l.province,
-             c.name AS company_name,
-             (SELECT COUNT(*) FROM tests t WHERE t.employee_id = e.employee_id) AS test_count,
-             (SELECT COUNT(*) FROM baselines b WHERE b.employee_id = e.employee_id) AS baseline_count
-      FROM employees e
-      LEFT JOIN locations l ON l.location_id = e.location_id
-      LEFT JOIN companies c ON c.company_id = l.company_id
-      WHERE LOWER(e.first_name) = ? AND LOWER(e.last_name) = ?
-      ORDER BY test_count DESC
-    `, [d.fn, d.ln]);
+    for (const d of dupeNames) {
+      const records = query(`
+        SELECT e.employee_id, e.first_name, e.last_name, e.dob, e.job_title,
+               l.name AS location_name, l.province,
+               c.name AS company_name,
+               (SELECT COUNT(*) FROM tests t WHERE t.employee_id = e.employee_id) AS test_count,
+               (SELECT COUNT(*) FROM baselines b WHERE b.employee_id = e.employee_id) AS baseline_count
+        FROM employees e
+        LEFT JOIN locations l ON l.location_id = e.location_id
+        LEFT JOIN companies c ON c.company_id = l.company_id
+        WHERE LOWER(e.first_name) = ? AND LOWER(e.last_name) = ?
+        ORDER BY test_count DESC
+      `, [d.fn, d.ln]);
 
-    const groupId = `grp-${records[0].employee_id}`;
-    html += `
-      <div class="form-card" style="margin-bottom:16px; border-left:4px solid #f0ad4e">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
-          <strong>${esc(records[0].last_name)}, ${esc(records[0].first_name)}</strong>
-          <button class="btn btn-sm btn-primary" data-group="${groupId}" id="btn-merge-${groupId}">Merge & Keep Selected →</button>
-        </div>
-        <table class="data-table" style="font-size:12px; width:100%">
-          <thead>
-            <tr>
-              <th style="width:30px">Keep</th>
-              <th>Company</th>
-              <th>Location</th>
-              <th>DOB</th>
-              <th>Job Title</th>
-              <th>Tests</th>
-              <th>Baselines</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${records.map((r, idx) => `
-              <tr style="${idx === 0 ? 'background:#f0fff0' : ''}">
-                <td style="text-align:center">
-                  <input type="radio" name="${groupId}" value="${r.employee_id}" ${idx === 0 ? 'checked' : ''}>
-                </td>
-                <td>${esc(r.company_name || '—')}</td>
-                <td>${esc(r.location_name || '—')} ${r.province ? `(${r.province})` : ''}</td>
-                <td>${esc(r.dob || '—')}</td>
-                <td>${esc(r.job_title || '—')}</td>
-                <td><strong>${r.test_count}</strong></td>
-                <td>${r.baseline_count}</td>
+      const groupId = `grp-${records[0].employee_id}`;
+      html += `
+        <div class="form-card" style="margin-bottom:16px; border-left:4px solid #f0ad4e">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+            <strong>${esc(records[0].last_name)}, ${esc(records[0].first_name)}</strong>
+            <button class="btn btn-sm btn-primary" data-group="${groupId}" id="btn-merge-${groupId}">Merge & Keep Selected →</button>
+          </div>
+          <table class="data-table" style="font-size:12px; width:100%">
+            <thead>
+              <tr>
+                <th style="width:30px">Keep</th>
+                <th>Company</th>
+                <th>Location</th>
+                <th>DOB</th>
+                <th>Job Title</th>
+                <th>Tests</th>
+                <th>Baselines</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
+            </thead>
+            <tbody>
+              ${records.map((r, idx) => `
+                <tr style="${idx === 0 ? 'background:#f0fff0' : ''}">
+                  <td style="text-align:center">
+                    <input type="radio" name="${groupId}" value="${r.employee_id}" ${idx === 0 ? 'checked' : ''}>
+                  </td>
+                  <td>${esc(r.company_name || '—')}</td>
+                  <td>${esc(r.location_name || '—')} ${r.province ? `(${r.province})` : ''}</td>
+                  <td>${esc(r.dob || '—')}</td>
+                  <td>${esc(r.job_title || '—')}</td>
+                  <td><strong>${r.test_count}</strong></td>
+                  <td>${r.baseline_count}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
 
-  res.innerHTML = html;
+    res.innerHTML = html;
 
-  // Wire up merge buttons
-  res.querySelectorAll('[id^="btn-merge-"]').forEach(btn => {
-    btn.onclick = () => {
-      const groupId = btn.dataset.group;
-      const keepId = parseInt(res.querySelector(`input[name="${groupId}"]:checked`).value);
-      const allIds = Array.from(res.querySelectorAll(`input[name="${groupId}"]`)).map(r => parseInt(r.value));
-      const deleteIds = allIds.filter(id => id !== keepId);
+    // Wire up merge buttons
+    res.querySelectorAll('[id^="btn-merge-"]').forEach(btn => {
+      btn.onclick = () => {
+        const groupId = btn.dataset.group;
+        const keepId = parseInt(res.querySelector(`input[name="${groupId}"]:checked`).value);
+        const allIds = Array.from(res.querySelectorAll(`input[name="${groupId}"]`)).map(r => parseInt(r.value));
+        const deleteIds = allIds.filter(id => id !== keepId);
 
-      const totalTests = deleteIds.reduce((sum, id) => {
-        return sum + (queryOne('SELECT COUNT(*) AS n FROM tests WHERE employee_id = ?', [id])?.n ?? 0);
-      }, 0);
-      const totalBaselines = deleteIds.reduce((sum, id) => {
-        return sum + (queryOne('SELECT COUNT(*) AS n FROM baselines WHERE employee_id = ?', [id])?.n ?? 0);
-      }, 0);
+        const keepEmp = queryOne('SELECT first_name, last_name FROM employees WHERE employee_id = ?', [keepId]);
+        const totalTests = deleteIds.reduce((sum, id) => {
+          return sum + (queryOne('SELECT COUNT(*) AS n FROM tests WHERE employee_id = ?', [id])?.n ?? 0);
+        }, 0);
+        const totalBaselines = deleteIds.reduce((sum, id) => {
+          return sum + (queryOne('SELECT COUNT(*) AS n FROM baselines WHERE employee_id = ?', [id])?.n ?? 0);
+        }, 0);
 
-      if (!confirm(`Merge ${deleteIds.length} duplicate(s) into the selected record?\n\n${totalTests} test(s) and ${totalBaselines} baseline(s) will be reassigned. The duplicates will be permanently deleted.`)) return;
+        if (!confirm(`Merge ${deleteIds.length} duplicate(s) into the selected record?\n\n${totalTests} test(s) and ${totalBaselines} baseline(s) will be reassigned. The duplicates will be permanently deleted.`)) return;
 
-      try {
-        transaction(({ run }) => {
-          for (const dupId of deleteIds) {
-            run('UPDATE tests     SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
-            run('UPDATE baselines SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
-            run('DELETE FROM employees WHERE employee_id = ?', [dupId]);
-          }
-        });
-        btn.closest('.form-card').innerHTML = `<p style="color:green">✓ Merged successfully — ${deleteIds.length} duplicate(s) removed, ${totalTests} test(s) reassigned.</p>`;
-      } catch (err) {
-        alert('Merge failed: ' + err.message);
-      }
-    };
-  });
-};
+        try {
+          transaction(({ run }) => {
+            for (const dupId of deleteIds) {
+              run('UPDATE tests     SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
+              run('UPDATE baselines SET employee_id = ? WHERE employee_id = ?', [keepId, dupId]);
+              run('DELETE FROM employees WHERE employee_id = ?', [dupId]);
+            }
+          });
+          logAction(state, 'MERGE_EMPLOYEES', `Merged ${deleteIds.length} duplicate(s) of "${keepEmp?.last_name}, ${keepEmp?.first_name}" — ${totalTests} test(s) and ${totalBaselines} baseline(s) reassigned`)
+          btn.closest('.form-card').innerHTML = `<p style="color:green">✓ Merged successfully — ${deleteIds.length} duplicate(s) removed, ${totalTests} test(s) reassigned.</p>`;
+        } catch (err) {
+          alert('Merge failed: ' + err.message);
+        }
+      };
+    });
+  };
 
   // --- LEGACY IMPORT LOGIC ---
   const picker = container.querySelector('#file-picker');
@@ -320,34 +327,35 @@ container.querySelector('#btn-scan-dupes').onclick = () => {
     btn.disabled = true; btn.textContent = "Processing...";
 
     try {
-        transaction(() => {
-            for (const row of parsedRows) {
-                let co = queryOne("SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE", [row.rowCompany]);
-                if (!co) {
-                    run("INSERT INTO companies (name, active) VALUES (?, 1)", [row.rowCompany]);
-                    co = { company_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-                let loc = queryOne("SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE", [co.company_id, row.rowLocation]);
-                if (!loc) {
-                    run("INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)", [co.company_id, row.rowLocation, row.province]);
-                    loc = { location_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-                let emp = queryOne("SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ?", [loc.location_id, row.firstName, row.lastName]);
-                if (!emp) {
-                    run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status) VALUES (?, ?, ?, ?, ?, 'active')", 
-                        [loc.location_id, row.firstName, row.lastName, row.dob, row.occupation]);
-                    emp = { employee_id: queryOne("SELECT last_insert_rowid() as id").id };
-                }
-                createTest({ ...row, test_date: row.testDate, test_type: row.testType, employee_id: emp.employee_id, location_id: loc.location_id });
-                
-                // AUTO-BASELINE: If this is the first test for this employee ID, set it as baseline
-                const tCount = queryOne("SELECT COUNT(*) as n FROM tests WHERE employee_id = ?", [emp.employee_id]).n;
-                if (tCount === 1) createBaseline(emp.employee_id, loc.location_id, row.testDate, row);
-            }
-        });
-        await JsonDatabase.pushMaster(state.syncFolder, query);
-        alert("Import complete and synced!");
-        navigate('dashboard');
+      transaction(() => {
+        for (const row of parsedRows) {
+          let co = queryOne("SELECT company_id FROM companies WHERE name = ? COLLATE NOCASE", [row.rowCompany]);
+          if (!co) {
+            run("INSERT INTO companies (name, active) VALUES (?, 1)", [row.rowCompany]);
+            co = { company_id: queryOne("SELECT last_insert_rowid() as id").id };
+          }
+          let loc = queryOne("SELECT location_id FROM locations WHERE company_id = ? AND name = ? COLLATE NOCASE", [co.company_id, row.rowLocation]);
+          if (!loc) {
+            run("INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)", [co.company_id, row.rowLocation, row.province]);
+            loc = { location_id: queryOne("SELECT last_insert_rowid() as id").id };
+          }
+          let emp = queryOne("SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ?", [loc.location_id, row.firstName, row.lastName]);
+          if (!emp) {
+            run("INSERT INTO employees (location_id, first_name, last_name, dob, job_title, status) VALUES (?, ?, ?, ?, ?, 'active')",
+              [loc.location_id, row.firstName, row.lastName, row.dob, row.occupation]);
+            emp = { employee_id: queryOne("SELECT last_insert_rowid() as id").id };
+          }
+          createTest({ ...row, test_date: row.testDate, test_type: row.testType, employee_id: emp.employee_id, location_id: loc.location_id });
+
+          // AUTO-BASELINE: If this is the first test for this employee ID, set it as baseline
+          const tCount = queryOne("SELECT COUNT(*) as n FROM tests WHERE employee_id = ?", [emp.employee_id]).n;
+          if (tCount === 1) createBaseline(emp.employee_id, loc.location_id, row.testDate, row);
+        }
+      });
+      logAction(state, 'LEGACY_IMPORT', `Imported ${parsedRows.length} test record(s) from CSV`)
+      await JsonDatabase.pushMaster(state.syncFolder, query);
+      alert("Import complete and synced!");
+      navigate('dashboard');
     } catch (err) { alert(err.message); btn.disabled = false; }
   };
 }
