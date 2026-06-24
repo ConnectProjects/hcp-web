@@ -55,10 +55,34 @@ export function renderHelp(container, state, navigate) {
     <div id="modal-edit-help" class="modal hidden">
       <div class="modal-backdrop"></div>
       <div class="modal-box modal-box--wide">
-        <div class="modal-header"><h2>Edit Help Content (HTML)</h2></div>
-        <div class="modal-body">
-          <textarea id="help-editor" style="width:100%; height:450px; font-family:monospace; font-size:12px; padding:15px; border:1px solid #ccc; border-radius:8px;"></textarea>
-          <p style="font-size:11px; color:#666; margin-top:10px;">Note: Changes will sync to all users via OneDrive.</p>
+        <div class="modal-header"><h2>Edit Help Section</h2></div>
+        <div class="modal-body" style="padding:0">
+          <div class="wysiwyg-toolbar" id="wysiwyg-toolbar">
+            <button type="button" data-cmd="bold"           title="Bold"><b>B</b></button>
+            <button type="button" data-cmd="italic"         title="Italic"><i>I</i></button>
+            <button type="button" data-cmd="underline"      title="Underline"><u>U</u></button>
+            <span class="wysiwyg-sep"></span>
+            <button type="button" data-cmd="h2"             title="Heading 2">H2</button>
+            <button type="button" data-cmd="h3"             title="Heading 3">H3</button>
+            <button type="button" data-cmd="p"              title="Paragraph">¶</button>
+            <span class="wysiwyg-sep"></span>
+            <button type="button" data-cmd="insertUnorderedList"  title="Bullet list">• List</button>
+            <button type="button" data-cmd="insertOrderedList"    title="Numbered list">1. List</button>
+            <span class="wysiwyg-sep"></span>
+            <button type="button" data-cmd="createLink"     title="Insert link">🔗</button>
+            <button type="button" data-cmd="unlink"         title="Remove link">Unlink</button>
+            <span class="wysiwyg-sep"></span>
+            <button type="button" data-cmd="removeFormat"   title="Clear formatting">✕ Format</button>
+          </div>
+          <div id="help-editor"
+               contenteditable="true"
+               style="min-height:420px; padding:20px 24px; outline:none; overflow-y:auto;
+                      font-size:14px; line-height:1.8; color:var(--grey-700);
+                      border-top:1px solid var(--grey-200)">
+          </div>
+          <p style="font-size:11px; color:#666; padding:8px 16px; border-top:1px solid var(--grey-100); margin:0">
+            Changes will sync to all users via OneDrive.
+          </p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" id="btn-edit-cancel">Cancel</button>
@@ -77,42 +101,63 @@ export function renderHelp(container, state, navigate) {
   function showSection(id) {
     currentSection = id;
     navBtns.forEach(b => b.classList.toggle('active', b.dataset.section === id));
-    
+
     let content = '';
     try {
-        const row = queryOne("SELECT content FROM help_content WHERE section_id = ?", [id]);
-        content = row ? row.content : SECTIONS[id];
+      const row = queryOne("SELECT content FROM help_content WHERE section_id = ?", [id]);
+      content = row ? row.content : SECTIONS[id];
     } catch (e) {
-        content = SECTIONS[id];
+      content = SECTIONS[id];
     }
 
     contentEl.innerHTML = content || '<p>Section not found.</p>';
     contentEl.scrollTop = 0;
   }
 
-  // --- Handlers ---
+  // --- Navigation ---
   container.querySelector('#btn-back-help').onclick = () => navigate(state.helpReturnScreen || 'dashboard');
+  navBtns.forEach(btn => { btn.onclick = () => showSection(btn.dataset.section); });
 
-  navBtns.forEach(btn => {
-    btn.onclick = () => showSection(btn.dataset.section);
-  });
-
+  // --- WYSIWYG editor ---
   if (isAdmin) {
     container.querySelector('#btn-edit-help').onclick = () => {
-        editor.value = contentEl.innerHTML.trim();
-        editModal.classList.remove('hidden');
+      editor.innerHTML = contentEl.innerHTML.trim();
+      editModal.classList.remove('hidden');
+      editor.focus();
     };
+
+    // Toolbar commands
+    container.querySelector('#wysiwyg-toolbar').addEventListener('mousedown', e => {
+      const btn = e.target.closest('[data-cmd]');
+      if (!btn) return;
+      e.preventDefault(); // keep focus in editor
+
+      const cmd = btn.dataset.cmd;
+      if (cmd === 'h2' || cmd === 'h3' || cmd === 'p') {
+        document.execCommand('formatBlock', false, cmd);
+      } else if (cmd === 'createLink') {
+        const url = prompt('Enter URL:', 'https://');
+        if (url) document.execCommand('createLink', false, url);
+      } else {
+        document.execCommand(cmd, false, null);
+      }
+      editor.focus();
+    });
+
     container.querySelector('#btn-edit-cancel').onclick = () => editModal.classList.add('hidden');
+
     container.querySelector('#btn-edit-save').onclick = async () => {
-        run("INSERT OR REPLACE INTO help_content (section_id, content) VALUES (?, ?)", [currentSection, editor.value]);
-        if (state.syncFolder) {
-            const allHelp = query("SELECT * FROM help_content");
-            await JsonDatabase.pushTable(state.syncFolder, 'help_content', allHelp);
-        }
-        editModal.classList.add('hidden');
-        showSection(currentSection);
+      const html = editor.innerHTML.trim();
+      run("INSERT OR REPLACE INTO help_content (section_id, content) VALUES (?, ?)", [currentSection, html]);
+      if (state.syncFolder) {
+        const allHelp = query("SELECT * FROM help_content");
+        await JsonDatabase.pushTable(state.syncFolder, 'help_content', allHelp);
+      }
+      editModal.classList.add('hidden');
+      showSection(currentSection);
     };
   }
+
   showSection('overview');
 }
 
@@ -241,11 +286,28 @@ const HELP_STYLES = `
   .help-content-wrap { position: relative; min-height: 600px; }
   .help-content { background: #fff; border: 1px solid var(--grey-200); border-radius: 8px; padding: 30px 40px; overflow-y: auto; }
   .help-content h2 { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 15px; border-bottom: 2px solid var(--grey-200); padding-bottom: 10px; }
+  .help-content h3 { font-size: 16px; font-weight: 600; color: var(--navy); margin: 18px 0 8px; }
   .help-content p { font-size: 14px; line-height: 1.8; color: var(--grey-700); margin-bottom: 15px; }
   .help-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; }
   .help-table th { background: var(--grey-50); text-align: left; padding: 8px; font-size: 11px; color: var(--grey-500); text-transform: uppercase; }
   .help-table td { padding: 10px 8px; border-bottom: 1px solid var(--grey-100); }
   #btn-edit-help { position: absolute; top: 15px; right: 15px; z-index: 5; background: #76B214; border:none; }
+
+  /* WYSIWYG toolbar */
+  .wysiwyg-toolbar { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; padding: 8px 12px; background: var(--grey-50); border-bottom: 1px solid var(--grey-200); }
+  .wysiwyg-toolbar button { padding: 4px 10px; font-size: 13px; background: #fff; border: 1px solid var(--grey-200); border-radius: 4px; cursor: pointer; color: var(--grey-700); line-height: 1.4; }
+  .wysiwyg-toolbar button:hover { background: var(--navy-light); border-color: var(--navy-mid); color: var(--navy-mid); }
+  .wysiwyg-sep { width: 1px; height: 22px; background: var(--grey-200); margin: 0 4px; }
+
+  /* Editor area inherits help content styles */
+  #help-editor h2 { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 15px; border-bottom: 2px solid var(--grey-200); padding-bottom: 10px; }
+  #help-editor h3 { font-size: 16px; font-weight: 600; color: var(--navy); margin: 18px 0 8px; }
+  #help-editor p { font-size: 14px; line-height: 1.8; color: var(--grey-700); margin-bottom: 15px; }
+  #help-editor ul, #help-editor ol { padding-left: 24px; margin-bottom: 15px; font-size: 14px; line-height: 1.8; }
+  #help-editor a { color: var(--navy-mid); text-decoration: underline; }
+  #help-editor table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 16px 0; }
+  #help-editor th { background: var(--grey-50); text-align: left; padding: 8px; font-size: 11px; color: var(--grey-500); text-transform: uppercase; }
+  #help-editor td { padding: 10px 8px; border-bottom: 1px solid var(--grey-100); }
 `;
 
 if (!document.getElementById('help-styles')) {
