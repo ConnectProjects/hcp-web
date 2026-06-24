@@ -2,6 +2,7 @@ import { getLocation, updateLocation, deactivateLocation,
          getHPDInventory, saveHPDInventory } from '../db/locations.js'
 import { getEmployeesByLocation, createEmployee, updateEmployee, deleteEmployee } from '../db/employees.js'
 import { getRecentTests, getSTSFlags } from '../db/tests.js'
+import { logAction } from '../db/sqlite.js'
 
 export function renderLocationDetail(container, state, navigate) {
   const locationId = state.currentLocation?.location_id
@@ -119,13 +120,13 @@ function redraw(container, state, navigate, locationId) {
     navigate('generate-packet', { currentLocation: location })
   )
   container.querySelector('#btn-edit').addEventListener('click', () =>
-    openEditLocation(container, location, locationId, navigate)
+    openEditLocation(container, state, location, locationId, navigate)
   )
   container.querySelector('#btn-edit-sticky')?.addEventListener('click', () =>
-    openEditLocation(container, location, locationId, navigate)
+    openEditLocation(container, state, location, locationId, navigate)
   )
   container.querySelector('#btn-add-sticky')?.addEventListener('click', () =>
-    openEditLocation(container, location, locationId, navigate)
+    openEditLocation(container, state, location, locationId, navigate)
   )
 
   // Tabs
@@ -136,11 +137,11 @@ function redraw(container, state, navigate, locationId) {
       btn.classList.add('tab-btn--active')
       container.querySelector('#tab-content').innerHTML =
         renderTab(activeTab, employees, recentTests, stsFlags, hpdInv)
-      wireTabHandlers(container, locationId, location, employees, hpdInv, navigate)
+      wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate)
     })
   })
 
-  wireTabHandlers(container, locationId, location, employees, hpdInv, navigate)
+  wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate)
 
   // Employee modal
   const empModal = container.querySelector('#modal-emp')
@@ -162,8 +163,13 @@ function redraw(container, state, navigate, locationId) {
       job_title:   container.querySelector('#ef-title').value.trim() || null,
       status:      container.querySelector('#ef-status').value
     }
-    if (editId) updateEmployee(Number(editId), data)
-    else        createEmployee(data)
+    if (editId) {
+      updateEmployee(Number(editId), data)
+      logAction(state, 'UPDATE_EMPLOYEE', `Updated employee "${ln}, ${fn}" at "${location.name}"`)
+    } else {
+      createEmployee(data)
+      logAction(state, 'CREATE_EMPLOYEE', `Added employee "${ln}, ${fn}" to "${location.name}" (${location.company_name})`)
+    }
     empModal.classList.add('hidden')
     redraw(container, state, navigate, locationId)
   })
@@ -276,7 +282,7 @@ function renderHPDTab(inventory) {
 // Tab event wiring
 // ---------------------------------------------------------------------------
 
-function wireTabHandlers(container, locationId, location, employees, hpdInv, navigate) {
+function wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate) {
   // Add employee
   container.querySelector('#btn-add-emp')?.addEventListener('click', () => {
     container.querySelector('#emp-modal-title').textContent = 'Add Employee'
@@ -306,6 +312,7 @@ function wireTabHandlers(container, locationId, location, employees, hpdInv, nav
     if (!emp) return
     if (!confirm(`Permanently delete ${emp.first_name} ${emp.last_name}? Historical tests will remain on file.`)) return
     deleteEmployee(Number(editId))
+    logAction(state, 'DELETE_EMPLOYEE', `Deleted employee "${emp.last_name}, ${emp.first_name}" from "${location.name}"`)
     container.querySelector('#modal-emp').classList.add('hidden')
     navigate('location-detail', { currentLocation: { location_id: locationId } })
   })
@@ -344,13 +351,16 @@ function wireTabHandlers(container, locationId, location, employees, hpdInv, nav
     if (!model || isNaN(nrr)) { alert('Model and NRR are required.'); return }
     hpdInv.push({ make_model: model, nrr, type })
     saveHPDInventory(locationId, hpdInv)
+    logAction(state, 'UPDATE_HPD', `Added HPD "${model}" (NRR ${nrr}) to "${location.name}"`)
     navigate('location-detail', { currentLocation: location, params: { tab: 'hpd' } })
   })
   container.querySelectorAll('[data-remove-hpd]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const idx = Number(btn.dataset.removeHpd)
+      const idx  = Number(btn.dataset.removeHpd)
+      const item = hpdInv[idx]
       hpdInv.splice(idx, 1)
       saveHPDInventory(locationId, hpdInv)
+      logAction(state, 'UPDATE_HPD', `Removed HPD "${item?.make_model}" from "${location.name}"`)
       navigate('location-detail', { currentLocation: location, params: { tab: 'hpd' } })
     })
   })
@@ -360,7 +370,7 @@ function wireTabHandlers(container, locationId, location, employees, hpdInv, nav
 // Edit location modal
 // ---------------------------------------------------------------------------
 
-function openEditLocation(container, location, locationId, navigate) {
+function openEditLocation(container, state, location, locationId, navigate) {
   container.querySelector('#modal-edit-loc')?.remove()
 
   const PROVS = [
@@ -444,6 +454,7 @@ function openEditLocation(container, location, locationId, navigate) {
   div.querySelector('#loc-deactivate').addEventListener('click', () => {
     if (!confirm(`Deactivate "${location.name}"? It will be hidden from the locations list.`)) return
     deactivateLocation(locationId)
+    logAction(state, 'DEACTIVATE_LOCATION', `Deactivated location "${location.name}" (${location.company_name})`)
     close()
     navigate('company-detail', { currentCompany: { company_id: location.company_id } })
   })
@@ -465,6 +476,7 @@ function openEditLocation(container, location, locationId, navigate) {
       cu_code:       div.querySelector('#lc-cu-code').value.trim()       || null,
       sticky_notes:  div.querySelector('#lc-sticky').value.trim()        || null
     })
+    logAction(state, 'UPDATE_LOCATION', `Updated location "${name}" at "${location.company_name}"`)
     close()
     navigate('location-detail', { currentLocation: { location_id: locationId } })
   })
