@@ -110,6 +110,12 @@ function paint() {
     </div>
     <ul class="sidebar-nav">
       ${NAV_ITEMS.map(item => `<li><button class="nav-item ${isNavActive(state.screen, item.screen) ? 'nav-item--active' : ''}" data-screen="${item.screen}"><span class="nav-icon">${item.icon}</span><span class="nav-label">${item.label}</span></button></li>`).join('')}
+          <li style="padding:8px 8px 2px">
+        <button class="nav-item nav-item--offline ${state.screen === 'new-visit' ? 'nav-item--active' : ''}" id="btn-new-visit">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">New Offline Visit</span>
+        </button>
+      </li>
     </ul>
     <div class="sidebar-footer">
       <span class="user-name">${state.user?.name ?? 'Tech'}</span>
@@ -150,6 +156,7 @@ function paint() {
     if (btn.dataset.screen === 'dashboard') state.currentPacket = null;
     navigate(btn.dataset.screen);
   });
+  document.getElementById('btn-new-visit')?.addEventListener('click', () => navigate('new-visit'));
 }
 
 const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule': renderSchedule, 'calendar': renderCalendar, 'company': renderCompany, 'employee-list': renderEmployeeList, 'test-entry': renderTestEntry, 'sync': renderSync, 'settings': renderSettings, 'help': renderHelp, 'training': renderTraining, 'new-visit': renderNewVisit };
