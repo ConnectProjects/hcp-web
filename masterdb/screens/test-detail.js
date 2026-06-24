@@ -400,15 +400,6 @@ function renderQuestionnaireEdit(q) {
   return fields.join('')
 }
 
-function renderQuestionnaireEdit(q) {
-  return Object.entries(q).map(([k, v]) => `
-    <div class="form-group">
-      <label>${prettyKey(k)}</label>
-      <input type="text" class="q-field" data-key="${esc(k)}" value="${esc(String(v ?? ''))}" />
-    </div>
-  `).join('')
-}
-
 function prettyKey(k) {
   return k
     .replace(/_/g, ' ')
