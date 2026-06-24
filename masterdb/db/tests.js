@@ -92,6 +92,12 @@ export function getComingSoonCompanies(monthsThreshold = 6) {
  */
 const nullify = (v) => (v === undefined || v === "" ? null : v);
 
+function nullify(v) {
+  if (v === undefined || v === null) return null
+  if (typeof v === 'number' && isNaN(v)) return null
+  return v
+}
+
 export function createTest(data) {
   // 1. Prepare JSON strings safely
   const classJson = data.classification ? JSON.stringify(data.classification) : null;
@@ -153,10 +159,10 @@ export function updateTest(testId, data) {
       data.test_date,
       data.test_type ?? 'Periodic',
       data.province,
-      data.left_500  ?? null, data.left_1k  ?? null, data.left_2k  ?? null, data.left_3k  ?? null,
-      data.left_4k   ?? null, data.left_6k  ?? null, data.left_8k  ?? null,
-      data.right_500 ?? null, data.right_1k ?? null, data.right_2k ?? null, data.right_3k ?? null,
-      data.right_4k  ?? null, data.right_6k ?? null, data.right_8k ?? null,
+       nullify(data.left_500),  nullify(data.left_1k),  nullify(data.left_2k),  nullify(data.left_3k),
+     nullify(data.left_4k),   nullify(data.left_6k),  nullify(data.left_8k),
+     nullify(data.right_500), nullify(data.right_1k), nullify(data.right_2k), nullify(data.right_3k),
+     nullify(data.right_4k),  nullify(data.right_6k), nullify(data.right_8k),
       data.counsel_text ?? null,
       data.tech_notes ?? null,
       data.referral_given_to_worker  ?? null,
@@ -173,13 +179,13 @@ export function createHPDAssessment(testId, hpd) {
   run(`INSERT INTO hpd_assessments
     (test_id, hpd_make_model, rated_nrr, derated_nrr, lex8hr, protected_exposure, adequacy)
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [testId,
-     hpd.hpd_model ?? null,
-     hpd.rated_nrr,
-     hpd.derated_nrr,
-     hpd.lex8hr,
-     hpd.protected_exposure,
-     hpd.adequacy]
+     [testId,
+     hpd.hpd_make_model ?? hpd.hpd_model ?? null,
+     nullify(hpd.rated_nrr),
+     nullify(hpd.derated_nrr),
+     nullify(hpd.lex8hr),
+     nullify(hpd.protected_exposure),
+     hpd.adequacy ?? null]
   )
   return lastInsertId()
 }
