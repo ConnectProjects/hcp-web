@@ -1,5 +1,8 @@
 import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
 import { getLocationsByCompany, createLocation } from '../db/locations.js'
+import { logAction } from '../db/sqlite.js'   // ADD THIS LINE
+import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
+import { getLocationsByCompany, createLocation } from '../db/locations.js'
 
 export function renderCompanyDetail(container, state, navigate) {
   const companyId = state.currentCompany?.company_id
@@ -130,13 +133,13 @@ function redraw(container, state, navigate, companyId) {
   container.querySelector('#btn-back').addEventListener('click', () => navigate('companies'))
 
   container.querySelector('#btn-edit').addEventListener('click', () =>
-    openEditCompany(container, company, companyId, navigate)
+    openEditCompany(container, state, company, companyId, navigate)
   )
   container.querySelector('#btn-edit-sticky')?.addEventListener('click', () =>
-    openEditCompany(container, company, companyId, navigate)
+    openEditCompany(container, state, company, companyId, navigate)
   )
   container.querySelector('#btn-add-sticky')?.addEventListener('click', () =>
-    openEditCompany(container, company, companyId, navigate)
+    openEditCompany(container, state, company, companyId, navigate)
   )
 
   // Location row / button clicks
@@ -176,6 +179,7 @@ function redraw(container, state, navigate, companyId) {
     })
 
     locModal.classList.add('hidden')
+    logAction(state, 'CREATE_LOCATION', `Added location "${name}" (${province}) to "${company.name}"`)
     navigate('location-detail', { currentLocation: { location_id: locId } })
   })
 }
@@ -184,7 +188,7 @@ function redraw(container, state, navigate, companyId) {
 // Edit company modal
 // ---------------------------------------------------------------------------
 
-function openEditCompany(container, company, companyId, navigate) {
+function openEditCompany(container, state, company, companyId, navigate) {
   container.querySelector('#modal-edit-co')?.remove()
 
   const div = document.createElement('div')
@@ -219,6 +223,7 @@ function openEditCompany(container, company, companyId, navigate) {
   div.querySelector('#co-deactivate').addEventListener('click', () => {
     if (!confirm(`Deactivate "${company.name}"? It will be hidden from the companies list.`)) return
     deactivateCompany(companyId)
+    logAction(state, 'DEACTIVATE_COMPANY', `Deactivated company "${company.name}"`)
     close()
     navigate('companies')
   })
@@ -236,6 +241,7 @@ function openEditCompany(container, company, companyId, navigate) {
       website:       div.querySelector('#cf-website').value.trim()       || null,
       sticky_notes:  div.querySelector('#cf-sticky').value.trim()        || null
     })
+    logAction(state, 'UPDATE_COMPANY', `Updated company "${name}"`)
     close()
     navigate('company-detail', { currentCompany: { company_id: companyId } })
   })
