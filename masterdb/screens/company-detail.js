@@ -1,8 +1,6 @@
 import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
 import { getLocationsByCompany, createLocation } from '../db/locations.js'
-import { logAction } from '../db/sqlite.js'   // ADD THIS LINE
-import { getCompany, updateCompany, deactivateCompany } from '../db/companies.js'
-import { getLocationsByCompany, createLocation } from '../db/locations.js'
+import { logAction } from '../db/sqlite.js'
 
 export function renderCompanyDetail(container, state, navigate) {
   const companyId = state.currentCompany?.company_id
