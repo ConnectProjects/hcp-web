@@ -250,11 +250,16 @@ function redraw(container, state, navigate, testId) {
         input.value !== '' ? Number(input.value) : null
     })
 
-    let updatedQ = null
+        let updatedQ = null
     if (q) {
-      updatedQ = {}
+      updatedQ = { pre: q.pre ? {} : undefined, post: q.post ? {} : undefined }
       container.querySelectorAll('.q-field').forEach(input => {
-        updatedQ[input.dataset.key] = input.value || null
+        const section = input.dataset.section
+        const key     = input.dataset.key
+        const val     = input.value
+        if (section && updatedQ[section] !== undefined) {
+          updatedQ[section][key] = val === 'true' ? true : val === 'false' ? false : val || null
+        }
       })
     }
 
@@ -292,14 +297,107 @@ function row(label, value, raw = false) {
 }
 
 function renderQuestionnaire(q) {
-  return Object.entries(q)
-    .filter(([, v]) => v !== null && v !== undefined && v !== '')
-    .map(([k, v]) => `
-      <div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--grey-100);font-size:13px">
-        <span style="color:var(--grey-500);min-width:160px">${prettyKey(k)}</span>
-        <span>${esc(String(v))}</span>
-      </div>
-    `).join('')
+  const sections = []
+
+  if (q.pre) {
+    const p = q.pre
+    sections.push(`
+      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:4px 0 2px">Pre-Test</div>
+      ${qrow('Noise exposure < 2h',   p.noise_2h   != null ? (p.noise_2h   ? 'Yes' + (p.noise_2h_duration ? ' · ' + p.noise_2h_duration + 'h' : '') : 'No') : null)}
+      ${qrow('Wears HPD',             p.wear_hpd   != null ? (p.wear_hpd   ? 'Yes' : 'No') : null)}
+      ${qrow('HPD Class',             p.hpd_class)}
+      ${qrow('HPD Style',             p.hpd_style)}
+      ${qrow('Reason not wearing',    p.hpd_no_reason)}
+      ${qrow('Employer info given',   p.employer_info != null ? (p.employer_info ? 'Yes' : 'No') : null)}
+    `)
+  }
+
+  if (q.post) {
+    const p = q.post
+    sections.push(`
+      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:12px 0 2px">Medical History</div>
+      ${qrow('Ear infection',         p.ear_infection  ? 'Yes' : 'No')}
+      ${qrow('Ear surgery',           p.ear_surgery    ? 'Yes' : 'No')}
+      ${qrow('Head injury',           p.head_injury    ? 'Yes' : 'No')}
+      ${qrow('Childhood hearing loss',p.childhood_loss ? 'Yes' : 'No')}
+      ${qrow('Tinnitus',              p.tinnitus ? 'Yes' + (p.tinnitus_ear ? ' · ' + p.tinnitus_ear : '') + (p.tinnitus_duration ? ' · ' + p.tinnitus_duration : '') : 'No')}
+      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:12px 0 2px">Recreational Noise</div>
+      ${qrow('Firearms',              p.firearms ? 'Yes' + (p.firearms_type ? ' · ' + p.firearms_type : '') + (p.firearms_shoulder ? ' · ' + p.firearms_shoulder + ' shoulder' : '') + (p.firearms_duration ? ' · ' + p.firearms_duration : '') : 'No')}
+    `)
+  }
+
+  // Fallback: unknown structure — flat display
+  if (!q.pre && !q.post) {
+    return Object.entries(q)
+      .filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
+      .map(([k, v]) => qrow(prettyKey(k), String(v)))
+      .join('')
+  }
+
+  return sections.join('')
+}
+
+function qrow(label, value) {
+  if (value === null || value === undefined || value === '') return ''
+  return `
+    <div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--grey-100);font-size:13px">
+      <span style="color:var(--grey-500);min-width:180px">${label}</span>
+      <span>${esc(String(value))}</span>
+    </div>`
+}
+
+function renderQuestionnaireEdit(q) {
+  const pre  = q.pre  ?? {}
+  const post = q.post ?? {}
+  const fields = []
+
+  // Pre fields
+  const preFields = [
+    ['noise_2h',          'Noise exposure < 2h (true/false)'],
+    ['noise_2h_duration', 'Noise duration'],
+    ['wear_hpd',          'Wears HPD (true/false)'],
+    ['hpd_class',         'HPD Class'],
+    ['hpd_style',         'HPD Style'],
+    ['hpd_no_reason',     'Reason not wearing HPD'],
+    ['employer_info',     'Employer info given (true/false)'],
+  ]
+  const postFields = [
+    ['ear_infection',   'Ear infection (true/false)'],
+    ['ear_surgery',     'Ear surgery (true/false)'],
+    ['head_injury',     'Head injury (true/false)'],
+    ['childhood_loss',  'Childhood hearing loss (true/false)'],
+    ['tinnitus',        'Tinnitus (true/false)'],
+    ['tinnitus_ear',    'Tinnitus ear'],
+    ['tinnitus_duration','Tinnitus duration'],
+    ['firearms',        'Uses firearms (true/false)'],
+    ['firearms_type',   'Firearms type'],
+    ['firearms_shoulder','Firearms shoulder'],
+    ['firearms_duration','Firearms duration'],
+  ]
+
+  if (q.pre !== undefined) {
+    fields.push(`<div class="form-group span-2" style="margin-bottom:4px"><strong style="font-size:12px;color:var(--grey-500)">PRE-TEST</strong></div>`)
+    preFields.forEach(([k, label]) => {
+      fields.push(`
+        <div class="form-group">
+          <label>${label}</label>
+          <input type="text" class="q-field" data-section="pre" data-key="${k}" value="${esc(String(pre[k] ?? ''))}" />
+        </div>`)
+    })
+  }
+
+  if (q.post !== undefined) {
+    fields.push(`<div class="form-group span-2" style="margin-top:8px;margin-bottom:4px"><strong style="font-size:12px;color:var(--grey-500)">POST-TEST (MEDICAL HISTORY)</strong></div>`)
+    postFields.forEach(([k, label]) => {
+      fields.push(`
+        <div class="form-group">
+          <label>${label}</label>
+          <input type="text" class="q-field" data-section="post" data-key="${k}" value="${esc(String(post[k] ?? ''))}" />
+        </div>`)
+    })
+  }
+
+  return fields.join('')
 }
 
 function renderQuestionnaireEdit(q) {
