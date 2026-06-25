@@ -19,8 +19,8 @@ export const ROLES = {
 export const PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: ['*'],
   [ROLES.ADMIN]: ['*'],
-  [ROLES.BILLING]: ['dashboard', 'companies', 'company-detail', 'location-detail', 'employees', 'employee-detail', 'packets', 'reports', 'help'],
-  [ROLES.LC]: ['dashboard', 'companies', 'company-detail', 'location-detail', 'packets', 'help'],
+  [ROLES.BILLING]: ['*'],
+  [ROLES.LC]: ['*'],
   [ROLES.TECH]: [] 
 };
 
@@ -58,5 +58,6 @@ export async function hashPin(pin, userId) {
 export function canUserAccess(role, screen) {
     if (role === ROLES.SUPER_ADMIN || role === ROLES.ADMIN) return true;
     const allowedScreens = PERMISSIONS[role] || [];
+    if (allowedScreens.includes('*')) return true;
     return allowedScreens.includes(screen);
 }
