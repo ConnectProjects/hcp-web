@@ -27,7 +27,7 @@ export function renderDashboard(container, state, navigate) {
                 <div class="packet-info">
                   <div class="packet-name">${esc(p.company_name || p.company?.name || 'Unknown')}</div>
                   <div class="packet-meta">
-                    ${esc(p.location_name || 'Main Office')} · ${(p.employees || []).length} workers
+                    ${esc(p.location?.name || p.location_name || '')} · ${(p.employees || []).length} workers
                   </div>
                 </div>
                 <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
