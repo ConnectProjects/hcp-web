@@ -18,10 +18,10 @@ export const ROLES = {
 // Note: 'super-admin' and 'admin' are handled as "Full Access" in app.js logic
 export const PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: ['*'],
-  [ROLES.ADMIN]: ['*'],
-  [ROLES.BILLING]: ['*'],
-  [ROLES.LC]: ['*'],
-  [ROLES.TECH]: [] 
+  [ROLES.ADMIN]:       ['*'],
+  [ROLES.BILLING]:     ['*'],
+  [ROLES.LC]:          ['*'],
+  [ROLES.TECH]:        []
 };
 
 /**
