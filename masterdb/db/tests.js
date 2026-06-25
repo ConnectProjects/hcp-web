@@ -86,11 +86,6 @@ export function getComingSoonCompanies(monthsThreshold = 6) {
   `, [cutoffStr])
 }
 
-/**
- * Helper to ensure we never send 'undefined' to the SQLite engine.
- * SQLite accepts null, but crashes on JavaScript undefined.
- */
-
 function nullify(v) {
   if (v === undefined || v === null) return null
   if (typeof v === 'number' && isNaN(v)) return null
@@ -98,78 +93,59 @@ function nullify(v) {
 }
 
 export function createTest(data) {
-  // 1. Prepare JSON strings safely
-  const classJson = data.classification ? JSON.stringify(data.classification) : null;
-  const qJson     = data.questionnaire  ? JSON.stringify(data.questionnaire)  : null;
-  
-  // 2. Determine STS Flag safely
-  const cat = (data.classification?.category || data.classification || '').toUpperCase();
-  const stsFlag = ['EW', 'EWC', 'A', 'AC'].includes(cat) ? 1 : 0;
+  const classJson = data.classification ? JSON.stringify(data.classification) : null
+  const qJson     = data.questionnaire  ? JSON.stringify(data.questionnaire)  : null
+  const stsFlag   = data.classification?.category === 'EW'  ||
+                    data.classification?.category === 'EWC' ||
+                    data.classification?.category === 'A'   ||
+                    data.classification?.category === 'AC'  ? 1 : 0
 
-  // 3. Execute Insert with sanitized values
-  run(`INSERT INTO tests (
-      employee_id, location_id, test_date, tech_id, test_type, province,
-      left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
-      right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
-      classification, triggered_rule_id, triggering_freq_hz, triggering_ear,
-      shift_db, sts_flag, counsel_text, tech_notes, questionnaire, packet_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      nullify(data.employee_id),
-      nullify(data.location_id),
-      nullify(data.test_date),
-      nullify(data.tech_id),
-      nullify(data.test_type || 'Periodic'),
-      nullify(data.province),
-      // Left Ear
-      nullify(data.left_500), nullify(data.left_1k), nullify(data.left_2k), 
-      nullify(data.left_3k), nullify(data.left_4k), nullify(data.left_6k), nullify(data.left_8k),
-      // Right Ear
-      nullify(data.right_500), nullify(data.right_1k), nullify(data.right_2k), 
-      nullify(data.right_3k), nullify(data.right_4k), nullify(data.right_6k), nullify(data.right_8k),
-      // Metadata
-      nullify(classJson),
-      nullify(data.classification?.triggered_rule_id),
-      nullify(data.classification?.triggering_freq_hz),
-      nullify(data.classification?.triggering_ear),
-      nullify(data.classification?.shift_db),
-      stsFlag,
-      nullify(data.counsel_text),
-      nullify(data.tech_notes),
-      nullify(qJson),
-      nullify(data.packet_id)
-    ]
-  );
-  
-  return lastInsertId();
-}
-
-export function updateTest(testId, data) {
-  const qJson = data.questionnaire ? JSON.stringify(data.questionnaire) : null
-  run(`UPDATE tests SET
-    test_date = ?, test_type = ?, province = ?,
-    left_500 = ?, left_1k = ?, left_2k = ?, left_3k = ?, left_4k = ?, left_6k = ?, left_8k = ?,
-    right_500 = ?, right_1k = ?, right_2k = ?, right_3k = ?, right_4k = ?, right_6k = ?, right_8k = ?,
-    counsel_text = ?, tech_notes = ?,
-    referral_given_to_worker = ?, referral_sent_to_employer = ?, referral_sent_date = ?,
-    questionnaire = ?
-    WHERE test_id = ?`,
-    [
-      data.test_date,
-      data.test_type ?? 'Periodic',
-      data.province,
-       nullify(data.left_500),  nullify(data.left_1k),  nullify(data.left_2k),  nullify(data.left_3k),
+  run(`INSERT INTO tests
+    (employee_id, location_id, test_date, tech_id, test_type, province,
+     left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+     right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k,
+     classification, triggered_rule_id, triggering_freq_hz, triggering_ear,
+     shift_db, sts_flag, counsel_text, tech_notes, questionnaire, packet_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [data.employee_id,
+     data.location_id ?? null,
+     data.test_date,
+     data.tech_id   ?? null,
+     data.test_type ?? 'Periodic',
+     data.province,
+     nullify(data.left_500),  nullify(data.left_1k),  nullify(data.left_2k),  nullify(data.left_3k),
      nullify(data.left_4k),   nullify(data.left_6k),  nullify(data.left_8k),
      nullify(data.right_500), nullify(data.right_1k), nullify(data.right_2k), nullify(data.right_3k),
      nullify(data.right_4k),  nullify(data.right_6k), nullify(data.right_8k),
-      data.counsel_text ?? null,
-      data.tech_notes ?? null,
-      data.referral_given_to_worker  ?? null,
-      data.referral_sent_to_employer ?? null,
-      data.referral_sent_date        ?? null,
-      qJson,
-      testId
-    ]
+     classJson,
+     data.classification?.triggered_rule_id ?? null,
+     data.classification?.triggering_freq_hz != null
+       ? String(data.classification.triggering_freq_hz) : null,
+     data.classification?.triggering_ear ?? null,
+     data.classification?.shift_db ?? null,
+     stsFlag,
+     data.counsel_text ?? null,
+     data.tech_notes   ?? null,
+     qJson,
+     data.packet_id ?? null]
+  )
+  return lastInsertId()
+}
+
+export function updateTest(testId, data) {
+  run(`UPDATE tests SET
+    test_date = ?, test_type = ?, province = ?,
+    left_500 = ?, left_1k = ?, left_2k = ?, left_3k = ?, left_4k = ?, left_6k = ?, left_8k = ?,
+    right_500 = ?, right_1k = ?, right_2k = ?, right_3k = ?, right_4k = ?, right_6k = ?, right_8k = ?
+    WHERE test_id = ?`,
+    [data.test_date,
+     data.test_type ?? 'Periodic',
+     data.province,
+     nullify(data.left_500),  nullify(data.left_1k),  nullify(data.left_2k),  nullify(data.left_3k),
+     nullify(data.left_4k),   nullify(data.left_6k),  nullify(data.left_8k),
+     nullify(data.right_500), nullify(data.right_1k), nullify(data.right_2k), nullify(data.right_3k),
+     nullify(data.right_4k),  nullify(data.right_6k), nullify(data.right_8k),
+     testId]
   )
 }
 
@@ -178,13 +154,13 @@ export function createHPDAssessment(testId, hpd) {
   run(`INSERT INTO hpd_assessments
     (test_id, hpd_make_model, rated_nrr, derated_nrr, lex8hr, protected_exposure, adequacy)
     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-     [testId,
- hpd.hpd_make_model ?? hpd.hpd_model ?? null,
- nullify(hpd.rated_nrr),
- nullify(hpd.derated_nrr),
- nullify(hpd.lex8hr),
- nullify(hpd.protected_exposure),
- hpd.adequacy ?? null]
+    [testId,
+     hpd.hpd_make_model ?? hpd.hpd_model ?? null,
+     nullify(hpd.rated_nrr),
+     nullify(hpd.derated_nrr),
+     nullify(hpd.lex8hr),
+     nullify(hpd.protected_exposure),
+     hpd.adequacy ?? null]
   )
   return lastInsertId()
 }
@@ -209,24 +185,4 @@ export function getDashboardStats() {
     pendingPackets:  queryOne("SELECT COUNT(*) AS n FROM packets WHERE status = 'pending'")?.n ?? 0,
     incomingPackets: queryOne("SELECT COUNT(*) AS n FROM packets WHERE status = 'submitted'")?.n ?? 0
   }
-}
-
-/**
- * Gets full details for a single test, including worker and HPD info.
- */
-export function getTestById(id) {
-  return queryOne(`
-    SELECT t.*,
-           e.first_name, e.last_name, e.dob, e.job_title,
-           l.name AS location_name, l.province,
-           c.name AS company_name,
-           h.hpd_make_model, h.rated_nrr, h.derated_nrr,
-           h.lex8hr, h.protected_exposure, h.adequacy
-    FROM tests t
-    JOIN employees e ON t.employee_id = e.employee_id
-    JOIN locations l ON t.location_id = l.location_id
-    JOIN companies c ON l.company_id = c.company_id
-    LEFT JOIN hpd_assessments h ON t.test_id = h.test_id
-    WHERE t.test_id = ?
-  `, [id])
 }
