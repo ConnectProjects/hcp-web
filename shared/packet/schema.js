@@ -81,11 +81,12 @@ export function createPacket({ company, location, employees, rules, counselTempl
       sticky_notes: stickyNotes
     },
 
-    location: location ? {
-      location_id: location.location_id,
-      name:        location.name,
-      province:    location.province ?? company.province
-    } : null,
+  location: location ? {
+  location_id: location.location_id ?? null,
+  name:        location.name        ?? null,
+  province:    location.province    ?? company.province ?? null,
+  address:     location.address     ?? null
+} : null,
 
     // Classification rules for this company's province — snapshotted at packet creation time
     rules,
