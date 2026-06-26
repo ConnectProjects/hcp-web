@@ -66,20 +66,31 @@ export function query(sql, params = []) {
 /**
  * Run a single-row SELECT. Returns the first row or null.
  */
+function sanitize(params) {
+  return params.map(v =>
+    v === undefined || (typeof v === 'number' && isNaN(v)) ? null : v
+  )
+}
+
+export function query(sql, params = []) {
+  const db   = getDB()
+  const stmt = db.prepare(sql)
+  stmt.bind(sanitize(params))
+  const rows = []
+  while (stmt.step()) rows.push(stmt.getAsObject())
+  stmt.free()
+  return rows
+}
+
 export function queryOne(sql, params = []) {
   const rows = query(sql, params)
   return rows.length > 0 ? rows[0] : null
 }
 
-/**
- * Execute a write statement (INSERT / UPDATE / DELETE).
- * Schedules an async OPFS save after each mutation.
- */
 export function run(sql, params = []) {
-  getDB().run(sql, params)
+  getDB().run(sql, sanitize(params))
   scheduleSave()
 }
-
 /**
  * Execute multiple statements in a transaction.
  * @param {function} fn — receives { query, run } and executes statements
