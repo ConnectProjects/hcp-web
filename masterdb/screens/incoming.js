@@ -279,9 +279,11 @@ run(`INSERT INTO companies
           if (test.hpd_assessment?.valid) createHPDAssessment(testId, test.hpd_assessment)
 
           if (test.test_type === 'Baseline') {
-            createBaseline(dbEmp.employee_id, defaultLocation.location_id, test.test_date, test.thresholds ?? {})
+           if (effectiveType === 'Baseline') {
+           createBaseline(dbEmp.employee_id, defaultLocation.location_id, test.test_date, test.thresholds ?? {})
           }
 
+          empImportCount++
           imported++
         }
       }
