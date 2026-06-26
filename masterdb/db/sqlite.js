@@ -66,11 +66,6 @@ export function query(sql, params = []) {
 /**
  * Run a single-row SELECT. Returns the first row or null.
  */
-function sanitize(params) {
-  return params.map(v =>
-    v === undefined || (typeof v === 'number' && isNaN(v)) ? null : v
-  )
-}
 
 function sanitize(params) {
   return params.map(v =>
