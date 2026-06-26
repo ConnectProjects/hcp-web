@@ -99,7 +99,7 @@ export function transaction(fn) {
   const db = getDB()
   db.run('BEGIN')
   try {
-    fn({ query, run: (sql, params) => db.run(sql, params) })
+    fn({ query, run: (sql, params) => db.run(sql, sanitize(params ?? [])) })
     db.run('COMMIT')
     scheduleSave()
   } catch (e) {
