@@ -241,6 +241,13 @@ run(`INSERT INTO companies
           if (!dbEmp) { console.warn(`Could not create employee: ${emp.last_name}, ${emp.first_name}`); continue }
         }
 
+        // REPLACE WITH:
+        const hasExistingTests = !!queryOne(
+          'SELECT test_id FROM tests WHERE employee_id = ? LIMIT 1',
+          [dbEmp.employee_id]
+        )
+        let empImportCount = 0
+
         for (const test of emp.completed_tests) {
           const existingTest = queryOne(
             `SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
@@ -250,13 +257,16 @@ run(`INSERT INTO companies
             console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
             continue
           }
+          const effectiveType = (!hasExistingTests && empImportCount === 0)
+            ? 'Baseline'
+            : (test.test_type ?? 'Periodic')
 
           const testId = createTest({
             employee_id:    dbEmp.employee_id,
             location_id:    defaultLocation.location_id,
             test_date:      test.test_date,
             tech_id:        test.tech_id ?? packet.tech?.tech_id,
-            test_type:      test.test_type ?? 'Periodic',
+            test_type:      effectiveType,
             province,
             ...(test.thresholds ?? {}),
             classification: test.classification,
