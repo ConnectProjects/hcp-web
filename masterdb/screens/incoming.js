@@ -226,18 +226,18 @@ function importPacket(packet, packetId) {
 
         let dbEmp = queryOne(
           `SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ?`,
-          [defaultLocation.location_id, emp.first_name, emp.last_name]
+          [defaultLocation.location_id, emp.first_name ?? null, emp.last_name ?? null]
         )
 
         if (!dbEmp) {
           run(`INSERT INTO employees (location_id, first_name, last_name, dob, hire_date, job_title, status)
                VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [defaultLocation.location_id, emp.first_name, emp.last_name,
+            [defaultLocation.location_id, emp.first_name ?? null, emp.last_name ?? null,
              emp.dob ?? null, emp.hire_date ?? null, emp.job_title ?? null, emp.status ?? 'active']
           )
           dbEmp = queryOne(
             `SELECT employee_id FROM employees WHERE location_id = ? AND first_name = ? AND last_name = ? LIMIT 1`,
-            [defaultLocation.location_id, emp.first_name, emp.last_name]
+            [defaultLocation.location_id, emp.first_name ?? null, emp.last_name ?? null]
           )
           if (!dbEmp) { console.warn(`Could not create employee: ${emp.last_name}, ${emp.first_name}`); continue }
         }
