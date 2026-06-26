@@ -260,7 +260,7 @@ const MIGRATIONS = [
   {
     add: `ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT ''`,
     backfill: `UPDATE users SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
-  }
+  },
 
   {
     add: `SELECT 1`, // no-op placeholder, backfill does the real work
