@@ -85,12 +85,15 @@ export const JsonDatabase = {
         continue;
       }
       const toRow = row => {
-        const filtered = {};
-        for (const key of Object.keys(row)) {
-          if (localCols.has(key)) filtered[key] = row[key];
-        }
-        return filtered;
-      };
+  const filtered = {};
+  for (const key of Object.keys(row)) {
+    if (localCols.has(key)) {
+      const v = row[key];
+      filtered[key] = (v === undefined || (typeof v === 'number' && isNaN(v))) ? null : v;
+    }
+  }
+  return filtered;
+};
 
       // --- Non-merge tables: simple cloud-wins overwrite ---
       if (!config || !config.merge) {
