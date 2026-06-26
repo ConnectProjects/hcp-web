@@ -186,19 +186,18 @@ function importPacket(packet, packetId) {
         queryOne('SELECT * FROM companies WHERE name = ?', [packet.company?.name ?? ''])
 
       if (!resolvedCompany) {
-        run(`INSERT INTO companies
-          (name, province, address, contact_name, contact_phone, contact_email, sticky_notes, active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-          [
-            packet.company?.name          ?? '',
-            packet.company?.province      ?? province,
-            packet.company?.address       ?? null,
-            packet.company?.contact_name  ?? null,
-            packet.company?.contact_phone ?? null,
-            packet.company?.contact_email ?? null,
-            packet.company?.sticky_notes  ?? null
-          ]
-        )
+run(`INSERT INTO companies
+  (name, address, contact_name, contact_phone, contact_email, sticky_notes, active)
+  VALUES (?, ?, ?, ?, ?, ?, 1)`,
+  [
+    packet.company?.name          ?? '',
+    packet.company?.address       ?? null,
+    packet.company?.contact_name  ?? null,
+    packet.company?.contact_phone ?? null,
+    packet.company?.contact_email ?? null,
+    packet.company?.sticky_notes  ?? null
+  ]
+)
         resolvedCompany = queryOne(
           `SELECT * FROM companies WHERE name = ? LIMIT 1`,
           [packet.company?.name ?? '']
