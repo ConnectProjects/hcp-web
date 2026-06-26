@@ -261,6 +261,22 @@ const MIGRATIONS = [
     add: `ALTER TABLE users ADD COLUMN updated_at TEXT DEFAULT ''`,
     backfill: `UPDATE users SET updated_at = created_at WHERE updated_at = '' OR updated_at IS NULL`
   }
+
+  {
+    add: `SELECT 1`, // no-op placeholder, backfill does the real work
+    backfill: `
+      UPDATE tests SET test_type = 'Baseline'
+      WHERE test_id IN (
+        SELECT t1.test_id FROM tests t1
+        WHERE t1.test_date = (
+          SELECT MIN(t2.test_date) FROM tests t2
+          WHERE t2.employee_id = t1.employee_id
+        )
+        AND t1.test_type != 'Baseline'
+      )
+    `
+  }
+  
 ];
 
 // ---------------------------------------------------------------------------
