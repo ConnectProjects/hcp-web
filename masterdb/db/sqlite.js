@@ -46,9 +46,11 @@ export function getDB() {
   return _db
 }
 
-// ---------------------------------------------------------------------------
-// Query helpers
-// ---------------------------------------------------------------------------
+function sanitize(params) {
+  return params.map(v =>
+    v === undefined || (typeof v === 'number' && isNaN(v)) ? null : v
+  )
+}
 
 /**
  * Run a SELECT and return all rows as plain objects.
@@ -56,27 +58,7 @@ export function getDB() {
 export function query(sql, params = []) {
   const db   = getDB()
   const stmt = db.prepare(sql)
-  stmt.bind(params)
-  const rows = []
-  while (stmt.step()) rows.push(stmt.getAsObject())
-  stmt.free()
-  return rows
-}
-
-/**
- * Run a single-row SELECT. Returns the first row or null.
- */
-
-function sanitize(params) {
-  return params.map(v =>
-    v === undefined || (typeof v === 'number' && isNaN(v)) ? null : v
-  )
-}
-
-export function query(sql, params = []) {
-  const db   = getDB()
-  const stmt = db.prepare(sql)
-  stmt.bind(sanitize(params)
+  stmt.bind(sanitize(params))
   const rows = []
   while (stmt.step()) rows.push(stmt.getAsObject())
   stmt.free()
