@@ -7,6 +7,22 @@
 
 import { query, queryOne, run, lastInsertId } from './sqlite.js'
 
+export function getTestById(testId) {
+  return queryOne(`
+    SELECT t.*,
+      e.first_name, e.last_name,
+      l.name AS location_name, l.province AS location_province,
+      c.name AS company_name,
+      h.hpd_make_model, h.rated_nrr, h.derated_nrr, h.lex8hr, h.protected_exposure, h.adequacy
+    FROM tests t
+    LEFT JOIN employees e ON e.employee_id = t.employee_id
+    LEFT JOIN locations l ON l.location_id = t.location_id
+    LEFT JOIN companies c ON c.company_id = l.company_id
+    LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
+    WHERE t.test_id = ?
+  `, [testId])
+}
+
 export function getTestsByEmployee(employeeId) {
   return query(`
     SELECT t.*,
@@ -185,20 +201,4 @@ export function getDashboardStats() {
     pendingPackets:  queryOne("SELECT COUNT(*) AS n FROM packets WHERE status = 'pending'")?.n ?? 0,
     incomingPackets: queryOne("SELECT COUNT(*) AS n FROM packets WHERE status = 'submitted'")?.n ?? 0
   }
-}
-
-export function getTestById(testId) {
-  return queryOne(`
-    SELECT t.*,
-      e.first_name, e.last_name,
-      l.name AS location_name, l.province AS location_province,
-      c.name AS company_name,
-      h.hpd_make_model, h.rated_nrr, h.derated_nrr, h.lex8hr, h.protected_exposure, h.adequacy
-    FROM tests t
-    LEFT JOIN employees e ON e.employee_id = t.employee_id
-    LEFT JOIN locations l ON l.location_id = t.location_id
-    LEFT JOIN companies c ON c.company_id = l.company_id
-    LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
-    WHERE t.test_id = ?
-  `, [testId])
 }
