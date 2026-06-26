@@ -72,10 +72,16 @@ function sanitize(params) {
   )
 }
 
+function sanitize(params) {
+  return params.map(v =>
+    v === undefined || (typeof v === 'number' && isNaN(v)) ? null : v
+  )
+}
+
 export function query(sql, params = []) {
   const db   = getDB()
   const stmt = db.prepare(sql)
-  stmt.bind(sanitize(params))
+  stmt.bind(sanitize(params)
   const rows = []
   while (stmt.step()) rows.push(stmt.getAsObject())
   stmt.free()
