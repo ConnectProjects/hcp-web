@@ -219,5 +219,29 @@ export const JsonDatabase = {
     try {
       return await readJsonFile(syncFolder, '', 'branding.json');
     } catch (e) { return null; }
+  },
+
+  /**
+   * Pull company + location directory from sync folder for offline packet creation.
+   * Returns [{company_id, name, province, locations:[{location_id, name, province}]}]
+   * or null if the files aren't present yet.
+   */
+  async pullCompanyDirectory(syncFolder) {
+    if (!syncFolder) return null;
+    try {
+      const [companies, locations] = await Promise.all([
+        readJsonFile(syncFolder, '', 'companies.json').catch(() => []),
+        readJsonFile(syncFolder, '', 'locations.json').catch(() => [])
+      ]);
+      const locsByCompany = {};
+      for (const loc of locations) {
+        if (!locsByCompany[loc.company_id]) locsByCompany[loc.company_id] = [];
+        locsByCompany[loc.company_id].push({ location_id: loc.location_id, name: loc.name, province: loc.province });
+      }
+      return companies
+        .filter(c => c.active !== 0)
+        .map(c => ({ company_id: c.company_id, name: c.name, province: c.province, locations: locsByCompany[c.company_id] ?? [] }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } catch { return null; }
   }
 };

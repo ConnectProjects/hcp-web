@@ -1,4 +1,4 @@
-import { openDB, getSetting, getAllPackets, savePacket } from './db/idb.js'
+import { openDB, getSetting, setSetting, getAllPackets, savePacket } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
 import { JsonDatabase }                      from '@shared/fs/json-database.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
@@ -18,7 +18,7 @@ import { renderNewVisit }       from './screens/new-visit.js'
 
 export const state = {
   screen: 'login',
-  user: null, syncFolder: null, logoUrl: null, packets: [], currentPacket: null,
+  user: null, syncFolder: null, logoUrl: null, packets: [], companies: [], currentPacket: null,
   activeSlot: 0,
   slots: [
     { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '' },
@@ -172,18 +172,29 @@ async function boot() {
     state.packets = await getAllPackets();
     state.syncFolder = await querySyncFolder();
 
-    // Apply branding from MasterDB sync
+    // Apply branding + pull company directory from sync folder
     if (state.syncFolder) {
-      const branding = await JsonDatabase.pullBranding(state.syncFolder);
+      const [branding, directory] = await Promise.all([
+        JsonDatabase.pullBranding(state.syncFolder),
+        JsonDatabase.pullCompanyDirectory(state.syncFolder)
+      ]);
       if (branding?.favicon) {
         const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
         link.rel = 'icon';
         link.href = branding.favicon;
         document.head.appendChild(link);
       }
-      if (branding?.logo) {
-        state.logoUrl = branding.logo;
+      if (branding?.logo) state.logoUrl = branding.logo;
+      if (directory?.length) {
+        state.companies = directory;
+        await setSetting('company_directory', JSON.stringify(directory));
       }
+    }
+
+    // Fall back to cached directory when offline
+    if (!state.companies.length) {
+      const cached = await getSetting('company_directory');
+      if (cached) { try { state.companies = JSON.parse(cached); } catch {} }
     }
 
     navigate('dashboard');
