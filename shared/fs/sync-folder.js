@@ -173,7 +173,21 @@ export async function moveJsonFile(root, fromSub, toSub, filename) {
 }
 
 /**
- * Deletes a file from a subfolder. 
+ * Returns true if a file exists in a subfolder, false if not found.
+ */
+export async function fileExists(root, sub, filename) {
+  try {
+    const dir = await getDir(root, sub)
+    await dir.getFileHandle(filename)
+    return true
+  } catch (e) {
+    if (e.name === 'NotFoundError') return false
+    throw e
+  }
+}
+
+/**
+ * Deletes a file from a subfolder.
  * Returns true if deleted or already missing.
  */
 export async function deleteJsonFile(root, sub, filename) {

@@ -1,16 +1,32 @@
 import { getDashboardStats, getComingSoonCompanies } from '../db/tests.js'
-import { getPacketsByStatus }                 from '../db/packets.js'
+import { getPacketsByStatus, getMyPackets, updatePacketStatus } from '../db/packets.js'
 import { isDemoLoaded, loadDemoData }         from '../db/demo.js'
 import { query, run, queryOne }               from '../db/sqlite.js'
-import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFile } from '@shared/fs/sync-folder.js'
+import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFile,
+         fileExists, deleteJsonFile, writeJsonFile } from '@shared/fs/sync-folder.js'
+import { ROLES }                              from '../../shared/auth-utils.js'
 
 export function renderDashboard(container, state, navigate) {
+  const role  = state.user?.role
+  const isLC  = role === ROLES.LC
+
+  if (isLC) {
+    renderLCDashboard(container, state, navigate)
+  } else {
+    renderAdminDashboard(container, state, navigate)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Admin / Super-Admin dashboard
+// ---------------------------------------------------------------------------
+
+function renderAdminDashboard(container, state, navigate) {
   const stats          = getDashboardStats()
   const comingSoon     = getComingSoonCompanies(6).slice(0, 8)
   const incoming       = getPacketsByStatus('submitted').slice(0, 5)
   const isEmpty        = stats.totalCompanies === 0 && !isDemoLoaded()
 
-  // Pending referrals — tests with A/AC/EW classification not yet marked sent to employer
   const pendingReferrals = query(`
     SELECT t.test_id, t.test_date, t.test_type, t.classification,
            e.first_name, e.last_name, e.employee_id,
@@ -34,9 +50,30 @@ export function renderDashboard(container, state, navigate) {
 
   container.innerHTML = `
     <div class="page">
-      <div class="page-header">
-        <h1>Dashboard</h1>
-        <span class="page-date">${new Date().toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+
+      <!-- KPI Strip -->
+      <div class="kpi-strip">
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${stats.totalCompanies}</span>
+          <span class="kpi-strip-lbl">Companies</span>
+        </div>
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${stats.totalEmployees}</span>
+          <span class="kpi-strip-lbl">Employees</span>
+        </div>
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${stats.testsThisMonth}</span>
+          <span class="kpi-strip-lbl">Tests (30d)</span>
+        </div>
+        <div class="kpi-strip-item ${stats.incomingPackets > 0 ? 'kpi-strip-item--alert' : ''}">
+          <span class="kpi-strip-num">${stats.incomingPackets}</span>
+          <span class="kpi-strip-lbl">Incoming</span>
+        </div>
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${stats.pendingPackets}</span>
+          <span class="kpi-strip-lbl">In Field</span>
+        </div>
+        <div class="kpi-strip-date">${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
       </div>
 
       ${isEmpty ? `
@@ -51,30 +88,6 @@ export function renderDashboard(container, state, navigate) {
           <span class="demo-hint">Remove it any time in Settings → Clear Demo Data.</span>
         </div>
       ` : ''}
-
-      <!-- KPI tiles -->
-      <div class="kpi-row">
-        <div class="kpi-tile" data-action="companies">
-          <div class="kpi-num">${stats.totalCompanies}</div>
-          <div class="kpi-lbl">Companies</div>
-        </div>
-        <div class="kpi-tile" data-action="employees">
-          <div class="kpi-num">${stats.totalEmployees}</div>
-          <div class="kpi-lbl">Active Employees</div>
-        </div>
-        <div class="kpi-tile">
-          <div class="kpi-num">${stats.testsThisMonth}</div>
-          <div class="kpi-lbl">Tests (30 days)</div>
-        </div>
-        <div class="kpi-tile kpi-tile--blue ${stats.incomingPackets > 0 ? 'kpi-tile--alert' : ''}" data-action="incoming">
-          <div class="kpi-num">${stats.incomingPackets}</div>
-          <div class="kpi-lbl">Incoming Packets</div>
-        </div>
-        <div class="kpi-tile">
-          <div class="kpi-num">${stats.pendingPackets}</div>
-          <div class="kpi-lbl">Pending (in field)</div>
-        </div>
-      </div>
 
       <div class="dash-columns">
         <!-- Incoming packets -->
@@ -109,12 +122,12 @@ export function renderDashboard(container, state, navigate) {
             ? '<p class="empty-note">No companies due soon.</p>'
             : `<div class="overdue-list">
                 ${comingSoon.map(c => `
-                <div class="overdue-row company-link" data-location-id="${c.location_id}" style="cursor:pointer">
-  <div class="overdue-info">
-    <div class="overdue-name">${esc(c.name)}</div>
-    <div class="overdue-meta">${esc(c.company_name)} · ${esc(c.province)} · ${c.last_test_date ? 'Last visit: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
-  </div>
-</div>
+                  <div class="overdue-row company-link" data-location-id="${c.location_id}" style="cursor:pointer">
+                    <div class="overdue-info">
+                      <div class="overdue-name">${esc(c.name)}</div>
+                      <div class="overdue-meta">${esc(c.company_name)} · ${esc(c.province)} · ${c.last_test_date ? 'Last: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
+                    </div>
+                  </div>
                 `).join('')}
               </div>`
           }
@@ -142,10 +155,7 @@ export function renderDashboard(container, state, navigate) {
                       ? '<span class="ref-status ref-done">✓ Given to worker</span>'
                       : '<span class="ref-status ref-pending">○ Not confirmed given to worker</span>'}
                   </div>
-                  <button class="btn btn-sm btn-ghost btn-view-referral"
-                    data-emp-id="${t.employee_id}">
-                    View →
-                  </button>
+                  <button class="btn btn-sm btn-ghost btn-view-referral" data-emp-id="${t.employee_id}">View →</button>
                 </div>
               `
             }).join('')}
@@ -155,13 +165,9 @@ export function renderDashboard(container, state, navigate) {
     </div>
   `
 
-  // KPI tile navigation
-  container.querySelectorAll('.kpi-tile[data-action]').forEach(tile => {
-    tile.style.cursor = 'pointer'
-    tile.addEventListener('click', () => navigate(tile.dataset.action))
-  })
-
-  container.querySelector('#btn-check-incoming')?.addEventListener('click', () => checkSyncFolder(container, state, navigate))
+  container.querySelector('#btn-check-incoming')?.addEventListener('click', () =>
+    checkSyncFolder(container, state, navigate)
+  )
   container.querySelector('#btn-load-demo')?.addEventListener('click', () => {
     loadDemoData()
     navigate('dashboard')
@@ -182,7 +188,6 @@ export function renderDashboard(container, state, navigate) {
     })
   })
 
-  // Pending referral → employee detail
   container.querySelectorAll('.btn-view-referral').forEach(btn => {
     btn.addEventListener('click', () => {
       const empId = Number(btn.dataset.empId)
@@ -190,6 +195,178 @@ export function renderDashboard(container, state, navigate) {
     })
   })
 }
+
+// ---------------------------------------------------------------------------
+// LC dashboard — "My Packets"
+// ---------------------------------------------------------------------------
+
+function renderLCDashboard(container, state, navigate) {
+  const userId = state.user?.user_id
+  const allMyPackets = userId ? getMyPackets(userId) : []
+
+  const pending   = allMyPackets.filter(p => p.status === 'pending')
+  const active    = allMyPackets.filter(p => p.status === 'active')
+  const submitted = allMyPackets.filter(p => p.status === 'submitted')
+  const done      = allMyPackets.filter(p => ['imported','cancelled','rejected'].includes(p.status)).slice(0, 5)
+
+  const lcStats = {
+    total:     allMyPackets.length,
+    pending:   pending.length,
+    inField:   active.length + submitted.length
+  }
+
+  container.innerHTML = `
+    <div class="page">
+
+      <!-- KPI Strip -->
+      <div class="kpi-strip">
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${lcStats.total}</span>
+          <span class="kpi-strip-lbl">Generated</span>
+        </div>
+        <div class="kpi-strip-item ${lcStats.pending > 0 ? 'kpi-strip-item--alert' : ''}">
+          <span class="kpi-strip-num">${lcStats.pending}</span>
+          <span class="kpi-strip-lbl">Pending</span>
+        </div>
+        <div class="kpi-strip-item">
+          <span class="kpi-strip-num">${lcStats.inField}</span>
+          <span class="kpi-strip-lbl">In Field</span>
+        </div>
+        <div class="kpi-strip-date">${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+      </div>
+
+      <div class="dash-panel" style="margin-top:0">
+        <div class="panel-head">
+          <h2>My Packets</h2>
+          <button class="btn btn-sm btn-primary" id="btn-go-companies">+ Generate Packet</button>
+        </div>
+
+        ${allMyPackets.length === 0 ? `
+          <p class="empty-note">No packets generated yet. Select a company to create one.</p>
+        ` : `
+
+          ${pending.length > 0 ? `
+            <div class="lc-group">
+              <div class="lc-group-head">
+                <span class="lc-group-label">Pending — awaiting tech pickup</span>
+                <span class="lc-group-count">${pending.length}</span>
+              </div>
+              ${pending.map(p => lcPacketRow(p, true)).join('')}
+            </div>
+          ` : ''}
+
+          ${active.length > 0 ? `
+            <div class="lc-group">
+              <div class="lc-group-head">
+                <span class="lc-group-label">In Field — tech is testing</span>
+                <span class="lc-group-count">${active.length}</span>
+              </div>
+              ${active.map(p => lcPacketRow(p, false)).join('')}
+            </div>
+          ` : ''}
+
+          ${submitted.length > 0 ? `
+            <div class="lc-group">
+              <div class="lc-group-head">
+                <span class="lc-group-label">Submitted — awaiting office import</span>
+                <span class="lc-group-count">${submitted.length}</span>
+              </div>
+              ${submitted.map(p => lcPacketRow(p, false)).join('')}
+            </div>
+          ` : ''}
+
+          ${done.length > 0 ? `
+            <div class="lc-group">
+              <div class="lc-group-head">
+                <span class="lc-group-label">Recently Completed</span>
+              </div>
+              ${done.map(p => lcPacketRow(p, false)).join('')}
+            </div>
+          ` : ''}
+
+        `}
+      </div>
+    </div>
+  `
+
+  container.querySelector('#btn-go-companies')?.addEventListener('click', () => navigate('companies'))
+
+  container.querySelectorAll('.btn-cancel-packet').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const { packetId, techFolder, filename } = btn.dataset
+      await doLCCancel(packetId, techFolder, filename, container, state, navigate)
+    })
+  })
+}
+
+function lcPacketRow(p, cancellable) {
+  const statusLabel = {
+    pending:   '<span class="badge badge-neutral">Pending</span>',
+    active:    '<span class="badge badge-warn">In Field</span>',
+    submitted: '<span class="badge badge-info">Submitted</span>',
+    imported:  '<span class="badge badge-success">Imported</span>',
+    cancelled: '<span class="badge badge-error">Cancelled</span>',
+    rejected:  '<span class="badge badge-error">Rejected</span>'
+  }[p.status] ?? `<span class="badge badge-neutral">${esc(p.status)}</span>`
+
+  return `
+    <div class="lc-packet-row">
+      <div class="lc-packet-info">
+        <div class="lc-packet-company">${esc(p.company_name)}${p.location_name ? ` <span class="lc-packet-loc">— ${esc(p.location_name)}</span>` : ''}</div>
+        <div class="lc-packet-meta">${esc(p.visit_date)} · ${esc(p.tech_name || 'No tech')} · ${statusLabel}</div>
+      </div>
+      ${cancellable ? `
+        <button class="btn btn-sm btn-ghost btn-cancel-packet"
+          data-packet-id="${esc(p.packet_id)}"
+          data-tech-folder="${esc(p.tech_folder_name)}"
+          data-filename="${esc(p.filename)}"
+          style="color:var(--red); white-space:nowrap; flex-shrink:0;">
+          Cancel
+        </button>
+      ` : ''}
+    </div>
+  `
+}
+
+async function doLCCancel(packetId, techFolderName, filename, container, state, navigate) {
+  if (!confirm('Cancel this packet?\n\nIf the tech has not yet loaded it, the file will be removed from their sync folder.')) return
+
+  try {
+    let folder = state.syncFolder
+    if (!folder) {
+      folder = await getSyncFolder()
+      if (!folder) folder = await pickSyncFolder()
+      state.syncFolder = folder
+    }
+
+    // Check if TechTool has already acknowledged picking up this packet
+    const techHasIt = await fileExists(folder, 'status', `${packetId}.json`)
+    if (techHasIt) {
+      alert('The tech has already loaded this packet onto their device.\n\nPlease contact them directly to cancel the visit — they can cancel from TechTool.')
+      return
+    }
+
+    // Remove from tech's sync folder
+    await deleteJsonFile(folder, `techs/${techFolderName}`, filename)
+
+    // Write a cancellation notice in case tech syncs before next check
+    await writeJsonFile(folder, 'status', `${packetId}.json`, {
+      packet_id:    packetId,
+      status:       'cancelled',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: 'office'
+    })
+
+    updatePacketStatus(packetId, 'cancelled')
+    navigate('dashboard')
+  } catch (e) {
+    if (e.name !== 'AbortError') alert(`Could not cancel: ${e.message}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sync folder check (Admin/SuperAdmin incoming scan)
+// ---------------------------------------------------------------------------
 
 async function checkSyncFolder(container, state, navigate) {
   const btn = container.querySelector('#btn-check-incoming')
@@ -199,10 +376,7 @@ async function checkSyncFolder(container, state, navigate) {
   if (!status) {
     status = document.createElement('div')
     status.id = 'sync-status'
-    status.style.fontSize = '12px'
-    status.style.marginTop = '4px'
-    status.style.padding = '4px 8px'
-    status.style.borderRadius = '4px'
+    status.style.cssText = 'font-size:12px; margin-top:4px; padding:4px 8px; border-radius:4px;'
     head.after(status)
   }
 
@@ -224,12 +398,7 @@ async function checkSyncFolder(container, state, navigate) {
 
     if (files.length === 0) {
       status.textContent = 'No new packets found.'
-      status.className = 'alert alert-info'
-      setTimeout(() => { 
-        if (status) status.style.display = 'none'
-        btn.disabled = false
-        btn.textContent = 'Check Sync Folder'
-      }, 2000)
+      setTimeout(() => { status.style.display = 'none'; btn.disabled = false; btn.textContent = 'Check Sync Folder' }, 2000)
       return
     }
 
@@ -247,30 +416,18 @@ async function checkSyncFolder(container, state, navigate) {
         run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
           [`pending_packet_${packet.packet_id}`, JSON.stringify(packet)]
         )
-
         run(`INSERT OR REPLACE INTO packets
           (packet_id, company_id, tech_id, visit_date, filename, status, updated_at)
           VALUES (?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-          [
-            packet.packet_id,
-            companyId,
-            packet.tech?.tech_id ?? null,
-            packet.visit?.visit_date ?? '',
-            name
-          ]
+          [packet.packet_id, companyId, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
         )
-
         await moveJsonFile(folder, 'inbox', 'archive', name)
         saved++
-      } catch (e) {
-        console.warn('Could not process packet:', name, e)
-      }
+      } catch (e) { console.warn('Could not process packet:', name, e) }
     }
 
     status.textContent = `✓ ${saved} packet(s) ready for review.`
     status.className = 'alert alert-success'
-    
-    // Refresh the dashboard to show new packets
     setTimeout(() => navigate('dashboard'), 1500)
   } catch (e) {
     if (e.name !== 'AbortError') {
@@ -283,5 +440,5 @@ async function checkSyncFolder(container, state, navigate) {
 }
 
 function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }

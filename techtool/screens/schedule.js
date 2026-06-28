@@ -1,5 +1,5 @@
-import { getAllPackets, savePacket, packetExists }  from '../db/idb.js'
-import { getSyncFolder, pickSyncFolder, listJsonFiles } from '@shared/fs/sync-folder.js'
+import { getAllPackets, savePacket, packetExists, deletePacket } from '../db/idb.js'
+import { getSyncFolder, pickSyncFolder, listJsonFiles, writeJsonFile } from '@shared/fs/sync-folder.js'
 import { PACKET_STATUS }                            from '@shared/packet/schema.js'
 
 export function renderSchedule(container, state, navigate) {
@@ -71,6 +71,9 @@ function packetCard(packet, today) {
   else
     statusBadge = `<span class="badge badge-neutral">${empCount} employees</span>`
 
+  const canCancel = doneCount === 0 &&
+    (packet.status === PACKET_STATUS.SYNCED || packet.status === PACKET_STATUS.PENDING)
+
   return `
     <div class="packet-card ${isToday ? 'packet-card--today' : ''}" data-packet-id="${packet.packet_id}">
       <div class="packet-card__date">
@@ -83,6 +86,12 @@ function packetCard(packet, today) {
           ${packet.company?.province ?? ''}&nbsp;·&nbsp;${statusBadge}
           ${packet.company?.sticky_notes ? '&nbsp;·&nbsp;<span class="sticky-flag">📌</span>' : ''}
         </div>
+        ${canCancel ? `
+          <button class="btn-cancel-visit" data-cancel-id="${packet.packet_id}"
+            style="margin-top:6px; font-size:11px; color:#9b2335; background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;">
+            Cancel this visit
+          </button>
+        ` : ''}
       </div>
       <div class="packet-card__arrow">›</div>
     </div>
@@ -91,10 +100,18 @@ function packetCard(packet, today) {
 
 function attachCardHandlers(container, state, navigate) {
   container.querySelectorAll('.packet-card').forEach(card => {
-    card.addEventListener('click', () => {
+    card.addEventListener('click', e => {
+      if (e.target.closest('.btn-cancel-visit')) return
       const id = card.dataset.packetId
       const packet = state.packets.find(p => p.packet_id === id)
       if (packet) navigate('company', { currentPacket: packet })
+    })
+  })
+
+  container.querySelectorAll('.btn-cancel-visit').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation()
+      await doCancelVisit(btn.dataset.cancelId, container, state, navigate)
     })
   })
 }
@@ -150,6 +167,17 @@ async function doSync(container, state, navigate) {
       showBanner(banner, 'info', `Loading ${name} (${loaded + 1}/${files.length - skipped})…`)
       packet.status = PACKET_STATUS.SYNCED
       await savePacket(packet)
+
+      // Notify MasterDB that this device has the packet — used to block LC cancel
+      try {
+        await writeJsonFile(folder, 'status', `${packet.packet_id}.json`, {
+          packet_id:    packet.packet_id,
+          status:       'active',
+          picked_up_at: new Date().toISOString(),
+          tech_id:      state.user?.user_id ?? null
+        })
+      } catch (ackErr) { console.warn('Could not write ack file:', ackErr) }
+
       loaded++
     }
 
@@ -179,6 +207,51 @@ async function doSync(container, state, navigate) {
   } finally {
     btn.disabled    = false
     btn.textContent = 'Check Sync Folder'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tech-side cancel
+// ---------------------------------------------------------------------------
+
+async function doCancelVisit(packetId, container, state, navigate) {
+  if (!confirm('Cancel this visit?\n\nThe packet will be removed from your device. Please also notify the office.')) return
+
+  try {
+    // Write cancel status to sync folder so MasterDB knows
+    let folder = state.syncFolder
+    if (!folder) {
+      folder = await getSyncFolder()
+      if (!folder) folder = await pickSyncFolder()
+      state.syncFolder = folder
+    }
+
+    if (folder) {
+      await writeJsonFile(folder, 'status', `${packetId}.json`, {
+        packet_id:    packetId,
+        status:       'cancelled',
+        cancelled_at: new Date().toISOString(),
+        cancelled_by: 'tech'
+      })
+    }
+
+    await deletePacket(packetId)
+    state.packets = await getAllPackets()
+
+    const main   = container.querySelector('.screen-body')
+    const today  = new Date().toISOString().slice(0, 10)
+    const sorted = [...state.packets].sort((a, b) =>
+      (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? '')
+    )
+    main.innerHTML = sorted.length === 0
+      ? '<div class="empty-state"><p>No packets on this device.</p></div>'
+      : sorted.map(p => packetCard(p, today)).join('')
+    attachCardHandlers(container, state, navigate)
+
+    const banner = container.querySelector('#sync-banner')
+    showBanner(banner, 'info', 'Visit cancelled. Please notify the office.')
+  } catch (e) {
+    if (e.name !== 'AbortError') alert('Could not cancel visit: ' + e.message)
   }
 }
 

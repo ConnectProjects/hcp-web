@@ -225,6 +225,7 @@ CREATE TABLE IF NOT EXISTS packets (
   filename      TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'pending',
   testing_duration TEXT,
+  created_by    TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -275,6 +276,12 @@ const MIGRATIONS = [
         AND t1.test_type != 'Baseline'
       )
     `
+  },
+
+  // Track which office user generated each packet (for LC "My Packets" view)
+  {
+    add: `ALTER TABLE packets ADD COLUMN created_by TEXT`,
+    backfill: `SELECT 1`
   },
 
   // Role assignments — conditional so manual promotions via the UI are never downgraded
@@ -424,7 +431,7 @@ const REBUILD_DEFS = {
     )`
   },
   packets: {
-    columns: ['packet_id', 'company_id', 'location_id', 'tech_id', 'visit_date', 'filename', 'status', 'testing_duration', 'created_at', 'updated_at'],
+    columns: ['packet_id', 'company_id', 'location_id', 'tech_id', 'visit_date', 'filename', 'status', 'testing_duration', 'created_by', 'created_at', 'updated_at'],
     sql: `CREATE TABLE packets_new (
       packet_id     TEXT PRIMARY KEY,
       company_id    INTEGER NOT NULL,
@@ -434,6 +441,7 @@ const REBUILD_DEFS = {
       filename      TEXT NOT NULL,
       status        TEXT NOT NULL DEFAULT 'pending',
       testing_duration TEXT,
+      created_by    TEXT,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
     )`

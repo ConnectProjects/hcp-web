@@ -17,13 +17,14 @@
 // ---------------------------------------------------------------------------
 
 export const PACKET_STATUS = {
-  PENDING:   'pending',    // Created by MasterDB, not yet picked up
-  SYNCED:    'synced',     // Downloaded to TechTool IndexedDB
-  IN_PROGRESS: 'in_progress', // At least one test started
-  COMPLETE:  'complete',   // All tests done, ready for /outbox
-  SUBMITTED: 'submitted',  // Dropped to /outbox
-  IMPORTED:  'imported',   // Pulled into MasterDB SQLite
-  ARCHIVED:  'archived'    // Moved to /archive
+  PENDING:     'pending',      // Created by MasterDB, not yet picked up by tech
+  SYNCED:      'synced',       // Downloaded to TechTool IndexedDB
+  IN_PROGRESS: 'in_progress',  // At least one test started
+  COMPLETE:    'complete',     // All tests done, ready for /outbox
+  SUBMITTED:   'submitted',    // Dropped to /outbox
+  IMPORTED:    'imported',     // Pulled into MasterDB SQLite
+  ARCHIVED:    'archived',     // Moved to /archive
+  CANCELLED:   'cancelled'     // Cancelled by LC (before pickup) or tech (before submission)
 }
 
 // ---------------------------------------------------------------------------

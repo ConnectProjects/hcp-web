@@ -204,7 +204,7 @@ async function doGenerate(container, location, state, navigate) {
 
     const techSubfolder = `techs/${techFolder}`
     await writeJsonFile(folder, techSubfolder, packet.filename, packet)
-    createPacketRecord(packet.packet_id, loc.company_id, locationId, techId, visitDate, packet.filename)
+    createPacketRecord(packet.packet_id, loc.company_id, locationId, techId, visitDate, packet.filename, state.user?.user_id)
 
     sucEl.textContent = `✓ Packet "${packet.filename}" saved to ConnectHearing/techs/${techFolder}.`
     sucEl.classList.remove('hidden')

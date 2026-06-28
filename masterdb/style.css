@@ -183,6 +183,8 @@ textarea { resize: vertical; }
 .badge-success { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-bd); }
 .badge-neutral { background: var(--grey-100);  color: var(--grey-700); border: 1px solid var(--grey-300); }
 .badge-warn    { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-bd); }
+.badge-info    { background: #e8f4fd; color: #0c63a4; border: 1px solid #bee3f8; }
+.badge-error   { background: var(--red-bg);    color: var(--red);    border: 1px solid var(--red-bd); }
 
 .class-badge   { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; letter-spacing: .03em; }
 .class-n, .class-nc  { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-bd); }
@@ -222,6 +224,53 @@ textarea { resize: vertical; }
 .sts-chip   { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 700; background: var(--red-bg); color: var(--red); border: 1px solid var(--red-bd); margin-left: 6px; }
 
 /* ---- KPI tiles ------------------------------------------- */
+/* ---- Dashboard KPI strip --------------------------------- */
+.kpi-strip {
+  display: flex; align-items: center; flex-wrap: wrap;
+  background: var(--navy); color: #fff;
+  border-radius: var(--radius); padding: 0 4px;
+  margin-bottom: 20px; gap: 0;
+  font-size: 13px;
+}
+.kpi-strip-item {
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 10px 20px;
+  border-right: 1px solid rgba(255,255,255,.2);
+}
+.kpi-strip-item:last-of-type { border-right: none; }
+.kpi-strip-num  { font-size: 20px; font-weight: 700; line-height: 1; }
+.kpi-strip-lbl  { font-size: 11px; opacity: .8; text-transform: uppercase; letter-spacing: .04em; }
+.kpi-strip-item--alert .kpi-strip-num { color: #ffd166; }
+.kpi-strip-date {
+  margin-left: auto; padding: 10px 16px;
+  font-size: 11px; opacity: .7; white-space: nowrap;
+}
+
+/* ---- LC "My Packets" panel -------------------------------- */
+.lc-group { margin-bottom: 18px; }
+.lc-group-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 0; margin-bottom: 6px;
+  border-bottom: 2px solid var(--grey-100);
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--grey-500);
+}
+.lc-group-count {
+  background: var(--grey-100); color: var(--grey-700);
+  border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700;
+}
+.lc-packet-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0; border-bottom: 1px solid var(--grey-100);
+  gap: 12px;
+}
+.lc-packet-row:last-child { border-bottom: none; }
+.lc-packet-info { flex: 1; min-width: 0; }
+.lc-packet-company { font-weight: 600; font-size: 14px; }
+.lc-packet-loc { font-weight: 400; color: var(--grey-500); }
+.lc-packet-meta { font-size: 12px; color: var(--grey-500); margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* --- keep legacy kpi-row for other screens ------------------- */
 .kpi-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
 .kpi-tile {
   flex: 1; min-width: 130px; background: #fff; border: 1px solid var(--grey-200);
