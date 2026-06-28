@@ -146,7 +146,7 @@ export function createPacket({ company, location, employees, rules, counselTempl
  * @returns {object} Updated packet (mutates in place)
  */
 export function appendTestResult(packet, employeeId, testResult) {
-  const emp = packet.employees.find(e => e.employee_id === employeeId)
+  const emp = packet.employees.find(e => e.employee_id == employeeId)
   if (!emp) throw new Error(`Employee ${employeeId} not found in packet ${packet.packet_id}`)
 
   // Hardened duplicate prevention: If we already have a test for this employee in this packet, 
@@ -180,7 +180,7 @@ export function appendTestResult(packet, employeeId, testResult) {
  * @returns {object} Updated packet (mutates in place)
  */
 export function markEmployeeSkipped(packet, employeeId, reason) {
-  const emp = packet.employees.find(e => e.employee_id === employeeId)
+  const emp = packet.employees.find(e => e.employee_id == employeeId)
   if (!emp) throw new Error(`Employee ${employeeId} not found in packet`)
   emp.skipped_at  = new Date().toISOString()
   emp.skip_reason = reason ?? null
