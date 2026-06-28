@@ -275,8 +275,26 @@ const MIGRATIONS = [
         AND t1.test_type != 'Baseline'
       )
     `
+  },
+
+  // Role assignments — conditional so manual promotions via the UI are never downgraded
+  {
+    add: `SELECT 1`,
+    backfill: `UPDATE users SET role = 'super-admin', updated_at = datetime('now')
+               WHERE name IN ('Norm-Super', 'Jan') AND role != 'super-admin'`
+  },
+  {
+    add: `SELECT 1`,
+    backfill: `UPDATE users SET role = 'admin', updated_at = datetime('now')
+               WHERE name IN ('Heather', 'Judy') AND role NOT IN ('super-admin', 'admin')`
+  },
+  {
+    add: `SELECT 1`,
+    backfill: `UPDATE users SET role = 'lc', updated_at = datetime('now')
+               WHERE name IN ('Cliff', 'Darren', 'David', 'Logistical Coordinator', 'Paul', 'Tanya')
+               AND role NOT IN ('super-admin', 'admin', 'billing', 'lc')`
   }
-  
+
 ];
 
 // ---------------------------------------------------------------------------

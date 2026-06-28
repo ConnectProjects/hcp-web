@@ -7,20 +7,24 @@
 
 // 1. Define available user roles
 export const ROLES = {
-  SUPER_ADMIN: 'super-admin', // Jan - Full unrestricted access
-  ADMIN:       'admin',       // Standard Admin - Full access
-  BILLING:     'billing',     // Billing - Everything except Data Tools and Settings
-  LC:          'lc',          // Logistical Coordinator - Companies, Packets, Help only
-  TECH:        'aud-tech'     // Technician - TechTool only (Blocked from MasterDB)
+  SUPER_ADMIN: 'super-admin', // Full unrestricted access — all screens
+  ADMIN:       'admin',       // All screens except Settings, Data Tools, Logs
+  BILLING:     'billing',     // Same visibility as Admin
+  LC:          'lc',          // Dashboard, Companies, Packets only
+  TECH:        'aud-tech'     // TechTool only — blocked from MasterDB entirely
 };
 
-// 2. Define screen-level permissions for MasterDB
-// Note: 'super-admin' and 'admin' are handled as "Full Access" in app.js logic
+// 2. Sidebar screens each role may see in MasterDB.
+// Super-Admin is handled separately as wildcard '*' in app.js.
+// Aud-Tech has no screens — they are blocked at the navigate guard level.
+const ADMIN_SCREENS = ['dashboard', 'companies', 'employees', 'packets', 'reports', 'users', 'help'];
+const LC_SCREENS    = ['dashboard', 'companies', 'packets'];
+
 export const PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: ['*'],
-  [ROLES.ADMIN]:       ['*'],
-  [ROLES.BILLING]:     ['*'],
-  [ROLES.LC]:          ['*'],
+  [ROLES.ADMIN]:       ADMIN_SCREENS,
+  [ROLES.BILLING]:     ADMIN_SCREENS,
+  [ROLES.LC]:          LC_SCREENS,
   [ROLES.TECH]:        []
 };
 
@@ -56,7 +60,7 @@ export async function hashPin(pin, userId) {
  * Used primarily by the Navigation Guard.
  */
 export function canUserAccess(role, screen) {
-    if (role === ROLES.SUPER_ADMIN || role === ROLES.ADMIN) return true;
+    if (role === ROLES.SUPER_ADMIN) return true;
     const allowedScreens = PERMISSIONS[role] || [];
     if (allowedScreens.includes('*')) return true;
     return allowedScreens.includes(screen);

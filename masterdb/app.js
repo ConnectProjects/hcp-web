@@ -67,7 +67,7 @@ export function navigate(screen, params = {}) {
         return;
     }
     const allowed = PERMISSIONS[role] || [];
-    if (role !== ROLES.SUPER_ADMIN && role !== ROLES.ADMIN && !allowed.includes('*') && !allowed.includes(screen)) {
+    if (role !== ROLES.SUPER_ADMIN && !allowed.includes('*') && !allowed.includes(screen)) {
         alert("Access Denied.");
         return;
     }
@@ -100,9 +100,9 @@ function paint() {
   }
 
   const filteredNavItems = NAV_ITEMS.filter(item => {
-    if (state.user?.role === ROLES.SUPER_ADMIN || state.user?.role === ROLES.ADMIN) return true;
+    if (state.user?.role === ROLES.SUPER_ADMIN) return true;
     const p = PERMISSIONS[state.user?.role] || [];
-return p.includes('*') || p.includes(item.screen);
+    return p.includes('*') || p.includes(item.screen);
   });
 
   app.innerHTML = `
