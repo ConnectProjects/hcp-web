@@ -18,7 +18,7 @@ export const ROLES = {
 // Super-Admin is handled separately as wildcard '*' in app.js.
 // Aud-Tech has no screens — they are blocked at the navigate guard level.
 const ADMIN_SCREENS = ['dashboard', 'companies', 'employees', 'packets', 'reports', 'users', 'help'];
-const LC_SCREENS    = ['dashboard', 'companies', 'packets'];
+const LC_SCREENS    = ['dashboard', 'companies', 'company-detail', 'location-detail', 'generate-packet'];
 
 export const PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: ['*'],
