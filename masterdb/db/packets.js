@@ -44,6 +44,11 @@ export function createPacketRecord(packetId, companyId, locationId, techId, visi
     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, datetime('now'), datetime('now'))`,
     [packetId, companyId, locationId ?? null, techId ?? null, visitDate, filename, createdBy ?? null]
   )
+  // Stamp created_by even if INSERT was ignored (pre-existing record missing it)
+  if (createdBy) {
+    run(`UPDATE packets SET created_by = ? WHERE packet_id = ? AND created_by IS NULL`,
+      [createdBy, packetId])
+  }
 }
 
 export function getMyPackets(userId) {
@@ -59,6 +64,7 @@ export function getMyPackets(userId) {
     LEFT JOIN locations l ON l.location_id = p.location_id
     LEFT JOIN users u     ON u.user_id = p.tech_id
     WHERE p.created_by = ?
+       OR (p.created_by IS NULL AND p.status IN ('pending','active','submitted'))
     ORDER BY p.visit_date DESC
   `, [userId])
 }
