@@ -292,6 +292,8 @@ run(`INSERT INTO companies
     run('UPDATE packets SET testing_duration = ? WHERE packet_id = ?', [packet.testing_duration ?? null, packetId])
     run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
 
+    run(`UPDATE tests SET test_type = 'Baseline' WHERE test_id IN (SELECT t1.test_id FROM tests t1 WHERE t1.test_date = (SELECT MIN(t2.test_date) FROM tests t2 WHERE t2.employee_id = t1.employee_id) AND t1.test_type != 'Baseline')`)
+
     return { imported, error: null }
   } catch (e) {
     console.error('IMPORT ERROR:', e)
