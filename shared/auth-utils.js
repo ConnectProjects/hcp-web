@@ -17,7 +17,17 @@ export const ROLES = {
 // 2. Sidebar screens each role may see in MasterDB.
 // Super-Admin is handled separately as wildcard '*' in app.js.
 // Aud-Tech has no screens — they are blocked at the navigate guard level.
-const ADMIN_SCREENS = ['dashboard', 'companies', 'employees', 'packets', 'reports', 'users', 'help'];
+const ADMIN_SCREENS = [
+  'dashboard',
+  // Companies and sub-screens
+  'companies', 'company-detail', 'location-detail',
+  // Employees and sub-screens
+  'employees', 'employee-detail', 'test-detail',
+  // Packets and sub-screens
+  'packets', 'incoming', 'import-confirm', 'rejected-packets', 'generate-packet',
+  // Other top-level
+  'reports', 'users', 'help',
+];
 const LC_SCREENS    = ['dashboard', 'companies', 'company-detail', 'location-detail', 'generate-packet'];
 
 export const PERMISSIONS = {
