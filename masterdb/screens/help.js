@@ -150,8 +150,7 @@ export function renderHelp(container, state, navigate) {
       const html = editor.innerHTML.trim();
       run("INSERT OR REPLACE INTO help_content (section_id, content) VALUES (?, ?)", [currentSection, html]);
       if (state.syncFolder) {
-        const allHelp = query("SELECT * FROM help_content");
-        await JsonDatabase.pushTable(state.syncFolder, 'help_content', allHelp);
+        await JsonDatabase.pushTable(state.syncFolder, query, 'help_content');
       }
       editModal.classList.add('hidden');
       showSection(currentSection);

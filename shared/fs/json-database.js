@@ -9,20 +9,22 @@ import { readJsonFile, writeJsonFile } from './sync-folder.js'
 export const JsonDatabase = {
 
   // Synced table list
-  tables: ['companies', 'locations', 'employees', 'tests', 'baselines', 'techs', 'schedules', 'users'],
+  tables: ['companies', 'locations', 'employees', 'tests', 'baselines', 'techs', 'schedules', 'users', 'packets', 'hpd_assessments'],
 
   // Primary keys and merge strategy per table
   // merge: true  = row-level merge by PK + updated_at (two-way)
   // merge: false = cloud-wins overwrite (derived/mirror data)
   tableConfig: {
-    companies: { pk: 'company_id',  merge: true },
-    locations: { pk: 'location_id', merge: true },
-    employees: { pk: 'employee_id', merge: true },
-    tests:     { pk: 'test_id',     merge: true },
-    baselines: { pk: 'baseline_id', merge: true },
-    users:     { pk: 'user_id',     merge: true },
-    techs:     { pk: 'tech_id',     merge: false },
-    schedules: { pk: null,          merge: false }
+    companies:       { pk: 'company_id',  merge: true },
+    locations:       { pk: 'location_id', merge: true },
+    employees:       { pk: 'employee_id', merge: true },
+    tests:           { pk: 'test_id',     merge: true },
+    baselines:       { pk: 'baseline_id', merge: true },
+    users:           { pk: 'user_id',     merge: true },
+    techs:           { pk: 'tech_id',     merge: false },
+    schedules:       { pk: null,          merge: false },
+    packets:         { pk: 'packet_id',   merge: true  },
+    hpd_assessments: { pk: 'hpd_id',      merge: true  },
   },
 
   /**
