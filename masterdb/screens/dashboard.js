@@ -22,15 +22,30 @@ export function renderDashboard(container, state, navigate) {
 // ---------------------------------------------------------------------------
 
 function renderAdminDashboard(container, state, navigate) {
-  const stats          = getDashboardStats()
-  const comingSoon     = getComingSoonCompanies(6).slice(0, 8)
-  const incoming       = getPacketsByStatus('submitted').slice(0, 5)
-  const isEmpty        = stats.totalCompanies === 0 && !isDemoLoaded()
+  const stats    = getDashboardStats()
+  const isEmpty  = stats.totalCompanies === 0 && !isDemoLoaded()
+
+  const incoming         = getPacketsByStatus('submitted')
+  const inField          = getPacketsByStatus('pending')
+  const comingSoon       = getComingSoonCompanies(6)
+  const recentlyImported = query(`
+    SELECT p.*,
+      COALESCE(c.name, '')  AS company_name,
+      COALESCE(l.name, '')  AS location_name,
+      COALESCE(u.name, '')  AS tech_name
+    FROM packets p
+    LEFT JOIN companies c ON c.company_id = p.company_id
+    LEFT JOIN locations l ON l.location_id = p.location_id
+    LEFT JOIN users u     ON u.user_id = p.tech_id
+    WHERE p.status = 'imported'
+    ORDER BY p.updated_at DESC
+    LIMIT 30
+  `)
 
   const pendingReferrals = query(`
-    SELECT t.test_id, t.test_date, t.test_type, t.classification,
+    SELECT t.test_id, t.test_date, t.classification,
            e.first_name, e.last_name, e.employee_id,
-           c.name AS company_name, c.company_id,
+           c.name AS company_name,
            t.referral_given_to_worker
     FROM tests t
     JOIN employees e ON e.employee_id = t.employee_id
@@ -40,7 +55,6 @@ function renderAdminDashboard(container, state, navigate) {
       AND (t.referral_sent_to_employer IS NULL OR t.referral_sent_to_employer = 0)
       AND c.active = 1
     ORDER BY t.test_date DESC
-    LIMIT 10
   `).filter(t => {
     try {
       const cls = typeof t.classification === 'string' ? JSON.parse(t.classification) : t.classification
@@ -69,6 +83,10 @@ function renderAdminDashboard(container, state, navigate) {
           <span class="kpi-strip-num">${stats.incomingPackets}</span>
           <span class="kpi-strip-lbl">Incoming</span>
         </div>
+        <div class="kpi-strip-item ${stats.stsFlags > 0 ? 'kpi-strip-item--alert' : ''}">
+          <span class="kpi-strip-num">${stats.stsFlags}</span>
+          <span class="kpi-strip-lbl">STS Flags</span>
+        </div>
         <div class="kpi-strip-item">
           <span class="kpi-strip-num">${stats.pendingPackets}</span>
           <span class="kpi-strip-lbl">In Field</span>
@@ -89,44 +107,66 @@ function renderAdminDashboard(container, state, navigate) {
         </div>
       ` : ''}
 
-      <div class="dash-columns">
-        <!-- Incoming packets -->
-        <div class="dash-panel">
+      <!-- Row 1: three panels -->
+      <div class="dash-grid-3">
+
+        <!-- Incoming Completed Packets -->
+        <div class="dash-panel ${incoming.length > 0 ? 'dash-panel--alert' : ''}">
           <div class="panel-head">
-            <h2>Incoming Completed Packets</h2>
-            <button class="btn btn-sm btn-outline" id="btn-check-incoming">Check Sync Folder</button>
+            <h2>Incoming <span class="panel-count ${incoming.length > 0 ? 'panel-count--alert' : ''}">${incoming.length}</span></h2>
+            <button class="btn btn-sm btn-outline" id="btn-check-incoming">Check Folder</button>
           </div>
           ${incoming.length === 0
             ? '<p class="empty-note">No packets awaiting import.</p>'
-            : `<div class="incoming-list">
+            : `<div class="panel-scroll">
                 ${incoming.map(p => `
-                  <div class="incoming-row" data-packet-id="${p.packet_id}">
+                  <div class="incoming-row">
                     <div class="incoming-info">
                       <div class="incoming-company">${esc(p.company_name)}</div>
                       <div class="incoming-meta">${esc(p.province)} · ${p.visit_date}</div>
                     </div>
-                    <button class="btn btn-sm btn-primary" data-packet-id="${p.packet_id}">Review →</button>
+                    <button class="btn btn-sm btn-primary btn-review-packet" data-packet-id="${esc(p.packet_id)}">Review →</button>
                   </div>
                 `).join('')}
               </div>
-              <button class="btn btn-link" id="btn-view-all-incoming">View all incoming →</button>`
+              <button class="btn btn-link" id="btn-view-all-incoming">View all →</button>`
+          }
+        </div>
+
+        <!-- Packets in the Field -->
+        <div class="dash-panel">
+          <div class="panel-head">
+            <h2>In the Field <span class="panel-count">${inField.length}</span></h2>
+            <button class="btn btn-sm btn-ghost" id="btn-go-packets">All Packets →</button>
+          </div>
+          ${inField.length === 0
+            ? '<p class="empty-note">No packets currently out with techs.</p>'
+            : `<div class="panel-scroll">
+                ${inField.map(p => `
+                  <div class="overdue-row">
+                    <div class="overdue-name">${esc(p.company_name)}</div>
+                    <div class="overdue-meta">
+                      ${p.visit_date} · ${esc(p.tech_name || p.tech_id || 'Unassigned')}
+                      ${p.location_name ? ` · ${esc(p.location_name)}` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>`
           }
         </div>
 
         <!-- Coming Soon -->
         <div class="dash-panel">
           <div class="panel-head">
-            <h2>Coming Soon <span class="panel-head-hint">(due within 6 months)</span></h2>
+            <h2>Coming Soon <span class="panel-head-hint">(6 mo)</span></h2>
           </div>
           ${comingSoon.length === 0
-            ? '<p class="empty-note">No companies due soon.</p>'
-            : `<div class="overdue-list">
+            ? '<p class="empty-note">No companies due within 6 months.</p>'
+            : `<div class="panel-scroll">
                 ${comingSoon.map(c => `
                   <div class="overdue-row company-link" data-location-id="${c.location_id}" style="cursor:pointer">
-                    <div class="overdue-info">
-                      <div class="overdue-name">${esc(c.name)}</div>
-                      <div class="overdue-meta">${esc(c.company_name)} · ${esc(c.province)} · ${c.last_test_date ? 'Last: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
-                    </div>
+                    <div class="overdue-name">${esc(c.name)}</div>
+                    <div class="overdue-meta">${esc(c.company_name)} · ${esc(c.province)} · ${c.last_test_date ? 'Last: ' + c.last_test_date : 'Never tested'} · ${c.active_emp_count} emp</div>
                   </div>
                 `).join('')}
               </div>`
@@ -134,34 +174,60 @@ function renderAdminDashboard(container, state, navigate) {
         </div>
       </div>
 
-      <!-- Pending referrals -->
-      ${pendingReferrals.length > 0 ? `
-        <div class="dash-panel dash-panel--referrals" style="margin-top:20px">
+      <!-- Row 2: referrals + recently imported -->
+      <div class="dash-columns" style="margin-top:16px">
+
+        <!-- Pending Referrals -->
+        <div class="dash-panel ${pendingReferrals.length > 0 ? 'dash-panel--referrals' : ''}">
           <div class="panel-head">
-            <h2>⚠ Pending Referrals <span class="panel-head-hint">(not yet sent to employer)</span></h2>
+            <h2>${pendingReferrals.length > 0 ? '⚠ ' : ''}Pending Referrals
+              <span class="panel-count ${pendingReferrals.length > 0 ? 'panel-count--alert' : ''}">${pendingReferrals.length}</span>
+            </h2>
           </div>
-          <div class="referral-list">
-            ${pendingReferrals.map(t => {
-              let cls = null
-              try { cls = typeof t.classification === 'string' ? JSON.parse(t.classification) : t.classification } catch {}
-              const cat = cls?.category ?? '?'
-              return `
-                <div class="referral-row">
-                  <div class="referral-info">
-                    <span class="class-badge class-${cat.toLowerCase()}">${esc(cat)}</span>
-                    <div class="referral-name">${esc(t.last_name)}, ${esc(t.first_name)}</div>
-                    <div class="referral-meta">${esc(t.company_name)} · ${esc(t.test_date)}</div>
-                    ${t.referral_given_to_worker
-                      ? '<span class="ref-status ref-done">✓ Given to worker</span>'
-                      : '<span class="ref-status ref-pending">○ Not confirmed given to worker</span>'}
-                  </div>
-                  <button class="btn btn-sm btn-ghost btn-view-referral" data-emp-id="${t.employee_id}">View →</button>
-                </div>
-              `
-            }).join('')}
-          </div>
+          ${pendingReferrals.length === 0
+            ? '<p class="empty-note">No outstanding referrals.</p>'
+            : `<div class="panel-scroll referral-list">
+                ${pendingReferrals.map(t => {
+                  let cls = null
+                  try { cls = typeof t.classification === 'string' ? JSON.parse(t.classification) : t.classification } catch {}
+                  const cat = cls?.category ?? '?'
+                  return `
+                    <div class="referral-row">
+                      <div class="referral-info">
+                        <span class="class-badge class-${cat.toLowerCase()}">${esc(cat)}</span>
+                        <div class="referral-name">${esc(t.last_name)}, ${esc(t.first_name)}</div>
+                        <div class="referral-meta">${esc(t.company_name)} · ${esc(t.test_date)}</div>
+                        ${t.referral_given_to_worker
+                          ? '<span class="ref-status ref-done">✓ Given to worker</span>'
+                          : '<span class="ref-status ref-pending">○ Not given to worker</span>'}
+                      </div>
+                      <button class="btn btn-sm btn-ghost btn-view-referral" data-emp-id="${t.employee_id}">View →</button>
+                    </div>
+                  `
+                }).join('')}
+              </div>`
+          }
         </div>
-      ` : ''}
+
+        <!-- Recently Imported -->
+        <div class="dash-panel">
+          <div class="panel-head">
+            <h2>Recently Imported <span class="panel-count">${recentlyImported.length}</span></h2>
+          </div>
+          ${recentlyImported.length === 0
+            ? '<p class="empty-note">No imported packets yet.</p>'
+            : `<div class="panel-scroll">
+                ${recentlyImported.map(p => `
+                  <div class="overdue-row">
+                    <div class="overdue-name">${esc(p.company_name)}</div>
+                    <div class="overdue-meta">Visit: ${p.visit_date} · Imported: ${(p.updated_at ?? '').slice(0,10)}${p.tech_name ? ` · ${esc(p.tech_name)}` : ''}</div>
+                  </div>
+                `).join('')}
+              </div>`
+          }
+        </div>
+
+      </div>
     </div>
   `
 
@@ -169,30 +235,27 @@ function renderAdminDashboard(container, state, navigate) {
     checkSyncFolder(container, state, navigate)
   )
   container.querySelector('#btn-load-demo')?.addEventListener('click', () => {
-    loadDemoData()
-    navigate('dashboard')
+    loadDemoData(); navigate('dashboard')
   })
   container.querySelector('#btn-view-all-incoming')?.addEventListener('click', () => navigate('incoming'))
+  container.querySelector('#btn-go-packets')?.addEventListener('click', () => navigate('packets'))
 
-  container.querySelectorAll('[data-packet-id]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.dataset.packetId
-      navigate('import-confirm', { params: { packetId: id } })
-    })
+  container.querySelectorAll('.btn-review-packet').forEach(btn => {
+    btn.addEventListener('click', () =>
+      navigate('import-confirm', { params: { packetId: btn.dataset.packetId } })
+    )
   })
 
   container.querySelectorAll('.company-link').forEach(row => {
-    row.addEventListener('click', () => {
-      const id = Number(row.dataset.locationId)
-      navigate('location-detail', { currentLocation: { location_id: id } })
-    })
+    row.addEventListener('click', () =>
+      navigate('location-detail', { currentLocation: { location_id: Number(row.dataset.locationId) } })
+    )
   })
 
   container.querySelectorAll('.btn-view-referral').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const empId = Number(btn.dataset.empId)
-      navigate('employee-detail', { currentEmployee: { employee_id: empId } })
-    })
+    btn.addEventListener('click', () =>
+      navigate('employee-detail', { currentEmployee: { employee_id: Number(btn.dataset.empId) } })
+    )
   })
 }
 
