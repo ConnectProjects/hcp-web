@@ -1,5 +1,6 @@
-import { getAllPackets, deletePacketRecord } from '../db/packets.js'
-import { deleteJsonFile } from '@shared/fs/sync-folder.js'
+import { getAllPackets, createPacketRecord, deletePacketRecord } from '../db/packets.js'
+import { deleteJsonFile, listSubdirectories, listJsonFiles, readJsonFile } from '@shared/fs/sync-folder.js'
+import { queryOne } from '../db/sqlite.js'
 
 export function renderPackets(container, state, navigate) {
   state.packetFilters = state.packetFilters || { search: '', status: 'all', sort: 'desc' };
@@ -47,6 +48,7 @@ export function renderPackets(container, state, navigate) {
           <h1>Packets</h1>
           <div class="header-actions">
             <button class="btn btn-outline btn-sm" id="btn-rejected">View Rejected</button>
+            <button class="btn btn-outline btn-sm" id="btn-scan-folder">↺ Scan Folder</button>
             <button class="btn btn-outline btn-sm" id="btn-check-inbox">↙ Check Inbox</button>
             <button class="btn btn-primary"        id="btn-new-packet">+ New Packet</button>
           </div>
@@ -115,9 +117,58 @@ export function renderPackets(container, state, navigate) {
     container.querySelector('#pkt-status').onchange = e => { state.packetFilters.status = e.target.value; render(); };
     container.querySelector('#pkt-sort').onchange   = e => { state.packetFilters.sort   = e.target.value; render(); };
 
-    container.querySelector('#btn-rejected').onclick  = () => navigate('rejected-packets');
-    container.querySelector('#btn-new-packet').onclick = () => navigate('generate-packet');
+    container.querySelector('#btn-rejected').onclick   = () => navigate('rejected-packets');
+    container.querySelector('#btn-new-packet').onclick  = () => navigate('generate-packet');
     container.querySelector('#btn-check-inbox').onclick = () => navigate('incoming');
+
+    container.querySelector('#btn-scan-folder').onclick = async () => {
+      if (!state.syncFolder) {
+        alert('No sync folder connected. Go to Settings → OneDrive Sync first.')
+        return
+      }
+      const btn = container.querySelector('#btn-scan-folder')
+      btn.disabled = true
+      btn.textContent = 'Scanning…'
+      try {
+        let recovered = 0
+        let scanned   = 0
+        const techDirs = await listSubdirectories(state.syncFolder, 'techs').catch(() => [])
+        for (const dir of techDirs) {
+          const files = await listJsonFiles(state.syncFolder, `techs/${dir}`).catch(() => [])
+          for (const { name } of files) {
+            try {
+              const packet = await readJsonFile(state.syncFolder, `techs/${dir}`, name)
+              if (!packet?.packet_id) continue
+              scanned++
+              const exists = queryOne('SELECT 1 FROM packets WHERE packet_id = ?', [packet.packet_id])
+              if (!exists) {
+                const companyId = packet.company?.company_id
+                const visitDate = packet.visit?.visit_date
+                const filename  = packet.filename ?? name
+                if (!companyId || !visitDate) continue
+                createPacketRecord(
+                  packet.packet_id,
+                  companyId,
+                  packet.location?.location_id ?? null,
+                  packet.tech?.tech_id ?? null,
+                  visitDate,
+                  filename,
+                  null
+                )
+                recovered++
+              }
+            } catch { /* skip malformed files */ }
+          }
+        }
+        alert(`Scan complete — ${scanned} packet file${scanned !== 1 ? 's' : ''} checked, ${recovered} recovered.`)
+        render()
+      } catch (e) {
+        alert(`Scan failed: ${e.message}`)
+      } finally {
+        btn.disabled = false
+        btn.textContent = '↺ Scan Folder'
+      }
+    };
 
     container.querySelectorAll('.btn-review').forEach(btn => {
       btn.onclick = () => navigate('import-confirm', { params: { packetId: btn.dataset.packetId } });

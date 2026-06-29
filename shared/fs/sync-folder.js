@@ -127,6 +127,19 @@ async function getDir(root, sub) {
 }
 
 /**
+ * List all immediate subdirectory names within a subfolder.
+ * Returns string[], sorted alphabetically.
+ */
+export async function listSubdirectories(root, sub) {
+  const dir  = await getDir(root, sub)
+  const dirs = []
+  for await (const [name, handle] of dir) {
+    if (handle.kind === 'directory') dirs.push(name)
+  }
+  return dirs.sort()
+}
+
+/**
  * List all .json files in a subfolder.
  * Returns [{ name: string, handle: FileSystemFileHandle }], sorted by name.
  */
