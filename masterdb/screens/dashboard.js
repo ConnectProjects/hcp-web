@@ -266,6 +266,20 @@ function renderAdminDashboard(container, state, navigate) {
 // LC dashboard — "My Packets"
 // ---------------------------------------------------------------------------
 
+async function refreshLCPacketStatuses(packets, syncFolder) {
+  if (!syncFolder || !packets.length) return 0
+  let updated = 0
+  for (const p of packets) {
+    try {
+      const sf = await readJsonFile(syncFolder, 'status', `${p.packet_id}.json`)
+      const remote = sf?.status
+      if (remote === 'active'    && p.status === 'pending')              { updatePacketStatus(p.packet_id, 'active');    updated++ }
+      if (remote === 'cancelled' && !['cancelled','imported'].includes(p.status)) { updatePacketStatus(p.packet_id, 'cancelled'); updated++ }
+    } catch { /* no status file yet — still pending */ }
+  }
+  return updated
+}
+
 function renderLCDashboard(container, state, navigate) {
   const userId = state.user?.user_id
   const allMyPackets = userId ? getMyPackets(userId) : []
@@ -278,7 +292,8 @@ function renderLCDashboard(container, state, navigate) {
   const lcStats = {
     total:     allMyPackets.length,
     pending:   pending.length,
-    inField:   active.length + submitted.length
+    inField:   active.length,
+    submitted: submitted.length,
   }
 
   container.innerHTML = `
@@ -292,11 +307,15 @@ function renderLCDashboard(container, state, navigate) {
         </div>
         <div class="kpi-strip-item ${lcStats.pending > 0 ? 'kpi-strip-item--alert' : ''}">
           <span class="kpi-strip-num">${lcStats.pending}</span>
-          <span class="kpi-strip-lbl">Pending</span>
+          <span class="kpi-strip-lbl">Awaiting Pickup</span>
         </div>
         <div class="kpi-strip-item">
           <span class="kpi-strip-num">${lcStats.inField}</span>
           <span class="kpi-strip-lbl">In Field</span>
+        </div>
+        <div class="kpi-strip-item ${lcStats.submitted > 0 ? 'kpi-strip-item--alert' : ''}">
+          <span class="kpi-strip-num">${lcStats.submitted}</span>
+          <span class="kpi-strip-lbl">Submitted</span>
         </div>
         <div class="kpi-strip-date">
           <span>${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
@@ -307,7 +326,10 @@ function renderLCDashboard(container, state, navigate) {
       <div class="dash-panel" style="margin-top:0">
         <div class="panel-head">
           <h2>My Packets</h2>
-          <button class="btn btn-sm btn-primary" id="btn-go-companies">+ Generate Packet</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-sm btn-outline" id="btn-refresh-status">↺ Refresh Status</button>
+            <button class="btn btn-sm btn-primary" id="btn-go-companies">+ Generate Packet</button>
+          </div>
         </div>
 
         ${allMyPackets.length === 0 ? `
@@ -317,8 +339,8 @@ function renderLCDashboard(container, state, navigate) {
           ${pending.length > 0 ? `
             <div class="lc-group">
               <div class="lc-group-head">
-                <span class="lc-group-label">Pending — awaiting tech pickup</span>
-                <span class="lc-group-count">${pending.length}</span>
+                <span class="lc-group-label">Awaiting Tech Pickup</span>
+                <span class="lc-group-count lc-group-count--warn">${pending.length}</span>
               </div>
               ${pending.map(p => lcPacketRow(p, true)).join('')}
             </div>
@@ -327,7 +349,7 @@ function renderLCDashboard(container, state, navigate) {
           ${active.length > 0 ? `
             <div class="lc-group">
               <div class="lc-group-head">
-                <span class="lc-group-label">In Field — tech is testing</span>
+                <span class="lc-group-label">In Field — Tech is Testing</span>
                 <span class="lc-group-count">${active.length}</span>
               </div>
               ${active.map(p => lcPacketRow(p, false)).join('')}
@@ -337,8 +359,8 @@ function renderLCDashboard(container, state, navigate) {
           ${submitted.length > 0 ? `
             <div class="lc-group">
               <div class="lc-group-head">
-                <span class="lc-group-label">Submitted — awaiting office import</span>
-                <span class="lc-group-count">${submitted.length}</span>
+                <span class="lc-group-label">Submitted — Awaiting Office Import</span>
+                <span class="lc-group-count lc-group-count--info">${submitted.length}</span>
               </div>
               ${submitted.map(p => lcPacketRow(p, false)).join('')}
             </div>
@@ -366,6 +388,41 @@ function renderLCDashboard(container, state, navigate) {
       await doLCCancel(packetId, techFolder, filename, container, state, navigate)
     })
   })
+
+  // Manual refresh button
+  container.querySelector('#btn-refresh-status')?.addEventListener('click', async () => {
+    const btn = container.querySelector('#btn-refresh-status')
+    btn.disabled = true
+    btn.textContent = 'Checking…'
+    try {
+      let folder = state.syncFolder
+      if (!folder) {
+        folder = await getSyncFolder()
+        if (!folder) folder = await pickSyncFolder()
+        state.syncFolder = folder
+      }
+      const toCheck = getMyPackets(userId).filter(p => p.status === 'pending' || p.status === 'active')
+      const n = await refreshLCPacketStatuses(toCheck, folder)
+      if (n > 0) {
+        renderLCDashboard(container, state, navigate)
+      } else {
+        btn.disabled = false
+        btn.textContent = '↺ Refresh Status'
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') alert(`Could not check status: ${e.message}`)
+      btn.disabled = false
+      btn.textContent = '↺ Refresh Status'
+    }
+  })
+
+  // Auto-refresh if sync folder is already connected this session
+  const toCheck = allMyPackets.filter(p => p.status === 'pending' || p.status === 'active')
+  if (state.syncFolder && toCheck.length) {
+    refreshLCPacketStatuses(toCheck, state.syncFolder).then(n => {
+      if (n > 0) renderLCDashboard(container, state, navigate)
+    })
+  }
 }
 
 function lcPacketRow(p, cancellable) {
