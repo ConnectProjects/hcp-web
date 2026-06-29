@@ -297,36 +297,7 @@ function row(label, value, raw = false) {
 }
 
 function renderQuestionnaire(q) {
-  const sections = []
-
-  if (q.pre) {
-    const p = q.pre
-    sections.push(`
-      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:4px 0 2px">Pre-Test</div>
-      ${qrow('Noise exposure < 2h',   p.noise_2h   != null ? (p.noise_2h   ? 'Yes' + (p.noise_2h_duration ? ' · ' + p.noise_2h_duration + 'h' : '') : 'No') : null)}
-      ${qrow('Wears HPD',             p.wear_hpd   != null ? (p.wear_hpd   ? 'Yes' : 'No') : null)}
-      ${qrow('HPD Class',             p.hpd_class)}
-      ${qrow('HPD Style',             p.hpd_style)}
-      ${qrow('Reason not wearing',    p.hpd_no_reason)}
-      ${qrow('Employer info given',   p.employer_info != null ? (p.employer_info ? 'Yes' : 'No') : null)}
-    `)
-  }
-
-  if (q.post) {
-    const p = q.post
-    sections.push(`
-      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:12px 0 2px">Medical History</div>
-      ${qrow('Ear infection',         p.ear_infection  ? 'Yes' : 'No')}
-      ${qrow('Ear surgery',           p.ear_surgery    ? 'Yes' : 'No')}
-      ${qrow('Head injury',           p.head_injury    ? 'Yes' : 'No')}
-      ${qrow('Childhood hearing loss',p.childhood_loss ? 'Yes' : 'No')}
-      ${qrow('Tinnitus',              p.tinnitus ? 'Yes' + (p.tinnitus_ear ? ' · ' + p.tinnitus_ear : '') + (p.tinnitus_duration ? ' · ' + p.tinnitus_duration : '') : 'No')}
-      <div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--grey-500);margin:12px 0 2px">Recreational Noise</div>
-      ${qrow('Firearms',              p.firearms ? 'Yes' + (p.firearms_type ? ' · ' + p.firearms_type : '') + (p.firearms_shoulder ? ' · ' + p.firearms_shoulder + ' shoulder' : '') + (p.firearms_duration ? ' · ' + p.firearms_duration : '') : 'No')}
-    `)
-  }
-
-  // Fallback: unknown structure — flat display
+  // Fallback: flat structure with no pre/post sections
   if (!q.pre && !q.post) {
     return Object.entries(q)
       .filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
@@ -334,7 +305,65 @@ function renderQuestionnaire(q) {
       .join('')
   }
 
-  return sections.join('')
+  const out = []
+
+  if (q.pre != null) {
+    const p = q.pre
+    out.push(qsection('Pre-Test'))
+    out.push(qrow('Exposed to noise in the last 2 hours?',
+      p.noise_2h != null
+        ? (p.noise_2h ? `Yes${p.noise_2h_duration ? ' — ' + p.noise_2h_duration + ' hrs' : ''}` : 'No')
+        : null))
+    out.push(qrow('Regularly wears hearing protection?',
+      p.wear_hpd != null ? (p.wear_hpd ? 'Yes' : 'No') : null))
+    if (p.wear_hpd) {
+      out.push(qrow('HPD Class', p.hpd_class || null))
+      out.push(qrow('HPD Style', p.hpd_style || null))
+    }
+    if (p.wear_hpd === false || p.wear_hpd === 0) {
+      out.push(qrow('Reason not wearing HPD', p.hpd_no_reason || null))
+    }
+    out.push(qrow('Employer provided noise information in the last year?',
+      p.employer_info != null ? (p.employer_info ? 'Yes' : 'No') : null))
+  }
+
+  if (q.post != null) {
+    const p = q.post
+    out.push(qsection('Medical History'))
+    out.push(qrow('Ever had a severe ear infection?',     yn(p.ear_infection)))
+    out.push(qrow('Ever had ear surgery?',                yn(p.ear_surgery)))
+    out.push(qrow('Ever had a serious head injury?',      yn(p.head_injury)))
+    out.push(qrow('Hearing loss during childhood?',       yn(p.childhood_loss)))
+    if (p.tinnitus || p.tinnitus === false || p.tinnitus === 0) {
+      let tinVal = p.tinnitus ? 'Yes' : 'No'
+      if (p.tinnitus) {
+        if (p.tinnitus_ear)      tinVal += ' — ' + p.tinnitus_ear + ' ear'
+        if (p.tinnitus_duration) tinVal += ' · ' + p.tinnitus_duration
+      }
+      out.push(qrow('Ringing in ears (tinnitus)?', tinVal))
+    }
+    out.push(qsection('Recreational Noise'))
+    if (p.firearms || p.firearms === false || p.firearms === 0) {
+      let faVal = p.firearms ? 'Yes' : 'No'
+      if (p.firearms) {
+        const parts = [p.firearms_type, p.firearms_shoulder ? p.firearms_shoulder + ' shoulder' : null, p.firearms_duration].filter(Boolean)
+        if (parts.length) faVal += ' — ' + parts.join(' · ')
+      }
+      out.push(qrow('Uses firearms?', faVal))
+    }
+  }
+
+  return out.filter(Boolean).join('')
+}
+
+function yn(v) {
+  if (v === null || v === undefined) return null
+  return (v === true || v === 1 || v === 'true') ? 'Yes' : 'No'
+}
+
+function qsection(label) {
+  return `<div style="grid-column:span 2;font-size:11px;font-weight:700;text-transform:uppercase;
+    color:var(--grey-500);margin:10px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--grey-100)">${label}</div>`
 }
 
 function qrow(label, value) {

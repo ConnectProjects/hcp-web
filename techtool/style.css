@@ -169,6 +169,20 @@ html, body {
 .folder-indicator { font-size: 11px; }
 .folder-ok   { color: #6fcf97; }
 .folder-none { color: rgba(255,255,255,.35); }
+.btn-logout {
+  margin-top: 4px;
+  background: none;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 6px;
+  color: rgba(255,255,255,.55);
+  font-size: 11px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background .15s, color .15s;
+}
+.btn-logout:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.9); }
 
 /* ---- Screen shell ---------------------------------------- */
 .screen {

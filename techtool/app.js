@@ -1,4 +1,4 @@
-import { openDB, getSetting, setSetting, getAllPackets, savePacket } from './db/idb.js'
+import { openDB, getSetting, setSetting, removeSetting, getAllPackets, savePacket } from './db/idb.js'
 import { querySyncFolder }                   from '@shared/fs/sync-folder.js'
 import { JsonDatabase }                      from '@shared/fs/json-database.js'
 import { BrandLogo }                         from '@shared/components/brand-logo.js'
@@ -120,6 +120,7 @@ function paint() {
     <div class="sidebar-footer">
       <span class="user-name">${state.user?.name ?? 'Tech'}</span>
       <span class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">${state.syncFolder ? '●' : '○'} Sync</span>
+      <button class="btn-logout" id="btn-logout" title="Log out">⏻ Log Out</button>
     </div>`;
 
   // Update Switcher
@@ -157,12 +158,31 @@ function paint() {
     navigate(btn.dataset.screen);
   });
   document.getElementById('btn-new-visit')?.addEventListener('click', () => navigate('new-visit'));
+  document.getElementById('btn-logout')?.addEventListener('click', doLogout);
 }
 
 const SCREENS = { 'login': renderLogin, 'dashboard': renderDashboard, 'schedule': renderSchedule, 'calendar': renderCalendar, 'company': renderCompany, 'employee-list': renderEmployeeList, 'test-entry': renderTestEntry, 'sync': renderSync, 'settings': renderSettings, 'help': renderHelp, 'training': renderTraining, 'new-visit': renderNewVisit };
 const NAV_ITEMS = [ { screen: 'dashboard', label: 'Dashboard', icon: '⊞' }, { screen: 'schedule', label: 'Packets', icon: '📅' }, { screen: 'settings', label: 'Settings', icon: '⚙' } ];
 const NAV_PARENT = { 'company': 'schedule', 'employee-list': 'schedule', 'test-entry': 'schedule', 'new-visit': 'dashboard' };
 function isNavActive(current, navScreen) { return current === navScreen || NAV_PARENT[current] === navScreen; }
+
+async function doLogout() {
+  if (!confirm('Log out of TechTool?')) return
+  await removeSetting('tech_name')
+  await removeSetting('tech_folder_name')
+  state.user        = null
+  state.syncFolder  = null
+  state.packets     = []
+  state.companies   = []
+  state.currentPacket = null
+  state.logoUrl     = null
+  state.activeSlot  = 0
+  state.slots = [
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '' },
+    { screen: 'dashboard', currentEmployee: null, testData: {}, techNotes: '' }
+  ]
+  navigate('login')
+}
 
 async function boot() {
   applyTheme(loadThemeColor());

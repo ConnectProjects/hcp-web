@@ -397,12 +397,20 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
             continue
           }
 
+          // If this employee has no prior tests at this location, it's their first —
+          // automatically treat it as the baseline regardless of what TechTool tagged it.
+          const priorCount = queryOne(
+            'SELECT COUNT(*) AS n FROM tests WHERE employee_id = ? AND location_id = ?',
+            [dbEmp.employee_id, defaultLocation.location_id]
+          )?.n ?? 0
+          const isFirstTest = priorCount === 0
+
           const testId = createTest({
             employee_id:              dbEmp.employee_id,
             location_id:              defaultLocation.location_id,
             test_date:                test.test_date,
             tech_id:                  test.tech_id ?? packet.tech?.tech_id,
-            test_type:                test.test_type ?? 'Periodic',
+            test_type:                isFirstTest ? 'Baseline' : (test.test_type ?? 'Periodic'),
             province,
             ...(test.thresholds ?? {}),
             classification:           test.classification,
@@ -417,7 +425,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
             createHPDAssessment(testId, test.hpd_assessment)
           }
 
-          if (test.test_type === 'Baseline') {
+          if (isFirstTest || test.test_type === 'Baseline') {
             createBaseline(
               dbEmp.employee_id,
               defaultLocation.location_id,

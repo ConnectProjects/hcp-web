@@ -398,23 +398,9 @@ function buildEmployeeReport(employeeId) {
 
   const testRows = tests.map(t => {
     const cat     = parseCat(t.classification)
-    const q       = t.questionnaire ? parseJson(t.questionnaire) : null
     const hpdText = t.adequacy
       ? `${esc(t.adequacy)}${t.derated_nrr != null ? ` (${t.derated_nrr} dB)` : ''}`
       : '—'
-
-    const qLabels = []
-    if (q?.pre) {
-      if (q.pre.noise_2h === true) qLabels.push(`Noise < 2h (${q.pre.noise_2h_duration})`)
-      if (q.pre.wear_hpd === true) {
-        let details = q.pre.hpd_class || 'Yes'
-        if (q.pre.hpd_style) details += ` / ${q.pre.hpd_style}`
-        qLabels.push(`HPD: ${details}`)
-      } else if (q.pre.wear_hpd === false) {
-        qLabels.push(`No HPD (${q.pre.hpd_no_reason || 'No'})`)
-      }
-      if (q.pre.employer_info) qLabels.push('Emp Info')
-    }
 
     return `<tr>
       <td>${t.test_date}</td>
@@ -422,7 +408,6 @@ function buildEmployeeReport(employeeId) {
       <td>${catBadge(cat)}</td>
       <td>${esc(t.tech_id ?? '—')}</td>
       <td>${hpdText}</td>
-      <td>${qLabels.join(', ') || '—'}</td>
       <td style="max-width:180px;font-size:11px;line-height:1.3">${t.tech_notes ? esc(t.tech_notes) : '—'}</td>
     </tr>`
   }).join('')
@@ -461,7 +446,7 @@ function buildEmployeeReport(employeeId) {
         <div class="report-section-label">Test History (${tests.length} record${tests.length !== 1 ? 's' : ''})</div>
         <table class="report-table">
           <thead>
-            <tr><th>Date</th><th>Type</th><th>Result</th><th>Tech</th><th>HPD</th><th>Survey</th><th>Tech Notes</th></tr>
+            <tr><th>Date</th><th>Type</th><th>Result</th><th>Tech</th><th>HPD</th><th>Tech Notes</th></tr>
           </thead>
           <tbody>${testRows}</tbody>
         </table>
