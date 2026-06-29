@@ -267,7 +267,15 @@ textarea { resize: vertical; }
 .kpi-strip-date {
   margin-left: auto; padding: 10px 16px;
   font-size: 11px; opacity: .7; white-space: nowrap;
+  display: flex; align-items: center; gap: 10px;
 }
+.btn-hard-refresh {
+  background: none; border: 1px solid rgba(255,255,255,.3);
+  color: rgba(255,255,255,.7); border-radius: 4px;
+  padding: 2px 7px; cursor: pointer; font-size: 14px; line-height: 1;
+  transition: background .15s, color .15s; opacity: 1;
+}
+.btn-hard-refresh:hover { background: rgba(255,255,255,.15); color: #fff; }
 
 /* ---- LC "My Packets" panel -------------------------------- */
 .lc-group { margin-bottom: 18px; }

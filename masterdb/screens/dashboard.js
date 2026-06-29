@@ -91,7 +91,10 @@ function renderAdminDashboard(container, state, navigate) {
           <span class="kpi-strip-num">${stats.pendingPackets}</span>
           <span class="kpi-strip-lbl">In Field</span>
         </div>
-        <div class="kpi-strip-date">${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        <div class="kpi-strip-date">
+          <span>${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          <button class="btn-hard-refresh" onclick="location.reload(true)" title="Hard refresh (Ctrl+Shift+R)">↺</button>
+        </div>
       </div>
 
       ${isEmpty ? `
@@ -295,7 +298,10 @@ function renderLCDashboard(container, state, navigate) {
           <span class="kpi-strip-num">${lcStats.inField}</span>
           <span class="kpi-strip-lbl">In Field</span>
         </div>
-        <div class="kpi-strip-date">${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+        <div class="kpi-strip-date">
+          <span>${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          <button class="btn-hard-refresh" onclick="location.reload(true)" title="Hard refresh (Ctrl+Shift+R)">↺</button>
+        </div>
       </div>
 
       <div class="dash-panel" style="margin-top:0">
