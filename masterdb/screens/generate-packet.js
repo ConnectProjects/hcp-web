@@ -5,6 +5,7 @@ import { getTechs, createPacketRecord } from '../db/packets.js'
 import { query }                 from '../db/sqlite.js'
 import { createPacket }          from '@shared/packet/schema.js'
 import { getSyncFolder, pickSyncFolder, writeJsonFile } from '@shared/fs/sync-folder.js'
+import { JsonDatabase }          from '@shared/fs/json-database.js'
 
 export function renderGeneratePacket(container, state, navigate) {
   const location = state.currentLocation?.location_id
@@ -205,6 +206,7 @@ async function doGenerate(container, location, state, navigate) {
     const techSubfolder = `techs/${techFolder}`
     await writeJsonFile(folder, techSubfolder, packet.filename, packet)
     createPacketRecord(packet.packet_id, loc.company_id, locationId, techId, visitDate, packet.filename, state.user?.user_id)
+    await JsonDatabase.pushTable(folder, query, 'packets')
 
     sucEl.textContent = `✓ Packet "${packet.filename}" saved to ConnectHearing/techs/${techFolder}.`
     sucEl.classList.remove('hidden')

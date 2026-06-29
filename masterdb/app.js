@@ -154,6 +154,7 @@ function paint() {
       if (trigger) trigger.textContent = '⟳ Syncing…';
       state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
       await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+      startHeartbeat();
       state.isOutofSync = false;
       document.getElementById('sync-warning-banner')?.remove();
       navigate(state.screen, state.params);
@@ -174,8 +175,10 @@ export function logout() {
   navigate('login');
 }
 
+let _heartbeatRunning = false
 async function startHeartbeat() {
-  if (!state.syncFolder) return;
+  if (!state.syncFolder || _heartbeatRunning) return;
+  _heartbeatRunning = true;
   setInterval(async () => {
     if (!state.user || state.screen === 'login') return;
     try {
@@ -184,6 +187,8 @@ async function startHeartbeat() {
     } catch (e) {}
   }, 60000);
 }
+
+export function ensureHeartbeat() { startHeartbeat(); }
 
 function showSyncWarning() {
   if (document.getElementById('sync-warning-banner')) return;
