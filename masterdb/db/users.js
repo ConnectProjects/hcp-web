@@ -23,6 +23,13 @@ export async function createUser(data, syncFolder) {
   return userId;
 }
 
+export async function updateUser(userId, data, syncFolder) {
+  run(`UPDATE users SET name = ?, initials = ?, role = ?, folder_name = ?, updated_at = datetime('now')
+       WHERE user_id = ?`,
+    [data.name, data.initials, data.role, data.folder_name ?? null, userId])
+  if (syncFolder) await pushUsersToCloud(syncFolder)
+}
+
 export async function deactivateUser(userId, syncFolder) {
   run("UPDATE users SET active = 0 WHERE user_id = ?", [userId]);
   if (syncFolder) await pushUsersToCloud(syncFolder);
