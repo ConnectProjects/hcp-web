@@ -1,32 +1,34 @@
 import { getDashboardStats, getComingSoonCompanies } from '../db/tests.js'
-import { getPacketsByStatus, getMyPackets, updatePacketStatus } from '../db/packets.js'
+import { getPacketsByStatus, updatePacketStatus } from '../db/packets.js'
 import { isDemoLoaded, loadDemoData }         from '../db/demo.js'
 import { query, run, queryOne }               from '../db/sqlite.js'
 import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFile,
          fileExists, deleteJsonFile, writeJsonFile } from '@shared/fs/sync-folder.js'
-import { ROLES }                              from '../../shared/auth-utils.js'
 
-export function renderDashboard(container, state, navigate) {
-  const role  = state.user?.role
-  const isLC  = role === ROLES.LC
+// ---------------------------------------------------------------------------
+// Unified dashboard — same for all roles
+// ---------------------------------------------------------------------------
 
-  if (isLC) {
-    renderLCDashboard(container, state, navigate)
-  } else {
-    renderAdminDashboard(container, state, navigate)
+async function refreshPacketStatuses(packets, syncFolder) {
+  if (!syncFolder || !packets.length) return 0
+  let updated = 0
+  for (const p of packets) {
+    try {
+      const sf = await readJsonFile(syncFolder, 'status', `${p.packet_id}.json`)
+      const remote = sf?.status
+      if (remote === 'active'    && p.status === 'pending')                        { updatePacketStatus(p.packet_id, 'active');    updated++ }
+      if (remote === 'cancelled' && !['cancelled', 'imported'].includes(p.status)) { updatePacketStatus(p.packet_id, 'cancelled'); updated++ }
+    } catch { /* no status file yet */ }
   }
+  return updated
 }
 
-// ---------------------------------------------------------------------------
-// Admin / Super-Admin dashboard
-// ---------------------------------------------------------------------------
-
-function renderAdminDashboard(container, state, navigate) {
+export function renderDashboard(container, state, navigate) {
   const stats    = getDashboardStats()
   const isEmpty  = stats.totalCompanies === 0 && !isDemoLoaded()
 
   const incoming         = getPacketsByStatus('submitted')
-  const inField          = getPacketsByStatus('pending')
+  const inField          = [...getPacketsByStatus('pending'), ...getPacketsByStatus('active')]
   const comingSoon       = getComingSoonCompanies(6)
   const recentlyImported = query(`
     SELECT p.*,
@@ -88,7 +90,7 @@ function renderAdminDashboard(container, state, navigate) {
           <span class="kpi-strip-lbl">STS Flags</span>
         </div>
         <div class="kpi-strip-item">
-          <span class="kpi-strip-num">${stats.pendingPackets}</span>
+          <span class="kpi-strip-num">${inField.length}</span>
           <span class="kpi-strip-lbl">In Field</span>
         </div>
         <div class="kpi-strip-date">
@@ -140,7 +142,10 @@ function renderAdminDashboard(container, state, navigate) {
         <div class="dash-panel">
           <div class="panel-head">
             <h2>In the Field <span class="panel-count">${inField.length}</span></h2>
-            <button class="btn btn-sm btn-ghost" id="btn-go-packets">All Packets →</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button class="btn btn-sm btn-outline" id="btn-refresh-status">↺ Status</button>
+              <button class="btn btn-sm btn-ghost"   id="btn-go-packets">All Packets →</button>
+            </div>
           </div>
           ${inField.length === 0
             ? '<p class="empty-note">No packets currently out with techs.</p>'
@@ -241,7 +246,7 @@ function renderAdminDashboard(container, state, navigate) {
     loadDemoData(); navigate('dashboard')
   })
   container.querySelector('#btn-view-all-incoming')?.addEventListener('click', () => navigate('incoming'))
-  container.querySelector('#btn-go-packets')?.addEventListener('click', () => navigate('packets'))
+  container.querySelector('#btn-go-packets')?.addEventListener('click',  () => navigate('packets'))
 
   container.querySelectorAll('.btn-review-packet').forEach(btn => {
     btn.addEventListener('click', () =>
@@ -260,140 +265,11 @@ function renderAdminDashboard(container, state, navigate) {
       navigate('employee-detail', { currentEmployee: { employee_id: Number(btn.dataset.empId) } })
     )
   })
-}
 
-// ---------------------------------------------------------------------------
-// LC dashboard — "My Packets"
-// ---------------------------------------------------------------------------
-
-async function refreshLCPacketStatuses(packets, syncFolder) {
-  if (!syncFolder || !packets.length) return 0
-  let updated = 0
-  for (const p of packets) {
-    try {
-      const sf = await readJsonFile(syncFolder, 'status', `${p.packet_id}.json`)
-      const remote = sf?.status
-      if (remote === 'active'    && p.status === 'pending')              { updatePacketStatus(p.packet_id, 'active');    updated++ }
-      if (remote === 'cancelled' && !['cancelled','imported'].includes(p.status)) { updatePacketStatus(p.packet_id, 'cancelled'); updated++ }
-    } catch { /* no status file yet — still pending */ }
-  }
-  return updated
-}
-
-function renderLCDashboard(container, state, navigate) {
-  const userId = state.user?.user_id
-  const allMyPackets = userId ? getMyPackets(userId) : []
-
-  const pending   = allMyPackets.filter(p => p.status === 'pending')
-  const active    = allMyPackets.filter(p => p.status === 'active')
-  const submitted = allMyPackets.filter(p => p.status === 'submitted')
-  const done      = allMyPackets.filter(p => ['imported','cancelled','rejected'].includes(p.status)).slice(0, 5)
-
-  const lcStats = {
-    total:     allMyPackets.length,
-    pending:   pending.length,
-    inField:   active.length,
-    submitted: submitted.length,
-  }
-
-  container.innerHTML = `
-    <div class="page">
-
-      <!-- KPI Strip -->
-      <div class="kpi-strip">
-        <div class="kpi-strip-item">
-          <span class="kpi-strip-num">${lcStats.total}</span>
-          <span class="kpi-strip-lbl">Generated</span>
-        </div>
-        <div class="kpi-strip-item ${lcStats.pending > 0 ? 'kpi-strip-item--alert' : ''}">
-          <span class="kpi-strip-num">${lcStats.pending}</span>
-          <span class="kpi-strip-lbl">Awaiting Pickup</span>
-        </div>
-        <div class="kpi-strip-item">
-          <span class="kpi-strip-num">${lcStats.inField}</span>
-          <span class="kpi-strip-lbl">In Field</span>
-        </div>
-        <div class="kpi-strip-item ${lcStats.submitted > 0 ? 'kpi-strip-item--alert' : ''}">
-          <span class="kpi-strip-num">${lcStats.submitted}</span>
-          <span class="kpi-strip-lbl">Submitted</span>
-        </div>
-        <div class="kpi-strip-date">
-          <span>${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-          <button class="btn-hard-refresh" onclick="location.reload(true)" title="Hard refresh (Ctrl+Shift+R)">↺</button>
-        </div>
-      </div>
-
-      <div class="dash-panel" style="margin-top:0">
-        <div class="panel-head">
-          <h2>My Packets</h2>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button class="btn btn-sm btn-outline" id="btn-refresh-status">↺ Refresh Status</button>
-            <button class="btn btn-sm btn-primary" id="btn-go-companies">+ Generate Packet</button>
-          </div>
-        </div>
-
-        ${allMyPackets.length === 0 ? `
-          <p class="empty-note">No packets generated yet. Select a company to create one.</p>
-        ` : `
-
-          ${pending.length > 0 ? `
-            <div class="lc-group">
-              <div class="lc-group-head">
-                <span class="lc-group-label">Awaiting Tech Pickup</span>
-                <span class="lc-group-count lc-group-count--warn">${pending.length}</span>
-              </div>
-              ${pending.map(p => lcPacketRow(p, true)).join('')}
-            </div>
-          ` : ''}
-
-          ${active.length > 0 ? `
-            <div class="lc-group">
-              <div class="lc-group-head">
-                <span class="lc-group-label">In Field — Tech is Testing</span>
-                <span class="lc-group-count">${active.length}</span>
-              </div>
-              ${active.map(p => lcPacketRow(p, false)).join('')}
-            </div>
-          ` : ''}
-
-          ${submitted.length > 0 ? `
-            <div class="lc-group">
-              <div class="lc-group-head">
-                <span class="lc-group-label">Submitted — Awaiting Office Import</span>
-                <span class="lc-group-count lc-group-count--info">${submitted.length}</span>
-              </div>
-              ${submitted.map(p => lcPacketRow(p, false)).join('')}
-            </div>
-          ` : ''}
-
-          ${done.length > 0 ? `
-            <div class="lc-group">
-              <div class="lc-group-head">
-                <span class="lc-group-label">Recently Completed</span>
-              </div>
-              ${done.map(p => lcPacketRow(p, false)).join('')}
-            </div>
-          ` : ''}
-
-        `}
-      </div>
-    </div>
-  `
-
-  container.querySelector('#btn-go-companies')?.addEventListener('click', () => navigate('companies'))
-
-  container.querySelectorAll('.btn-cancel-packet').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const { packetId, techFolder, filename } = btn.dataset
-      await doLCCancel(packetId, techFolder, filename, container, state, navigate)
-    })
-  })
-
-  // Manual refresh button
+  // ↺ Status button — checks status files in sync folder for all in-field packets
   container.querySelector('#btn-refresh-status')?.addEventListener('click', async () => {
     const btn = container.querySelector('#btn-refresh-status')
-    btn.disabled = true
-    btn.textContent = 'Checking…'
+    btn.disabled = true; btn.textContent = 'Checking…'
     try {
       let folder = state.syncFolder
       if (!folder) {
@@ -401,97 +277,26 @@ function renderLCDashboard(container, state, navigate) {
         if (!folder) folder = await pickSyncFolder()
         state.syncFolder = folder
       }
-      const toCheck = getMyPackets(userId).filter(p => p.status === 'pending' || p.status === 'active')
-      const n = await refreshLCPacketStatuses(toCheck, folder)
-      if (n > 0) {
-        renderLCDashboard(container, state, navigate)
-      } else {
-        btn.disabled = false
-        btn.textContent = '↺ Refresh Status'
-      }
+      const toCheck = [...getPacketsByStatus('pending'), ...getPacketsByStatus('active')]
+      const n = await refreshPacketStatuses(toCheck, folder)
+      if (n > 0) renderDashboard(container, state, navigate)
+      else { btn.disabled = false; btn.textContent = '↺ Status' }
     } catch (e) {
       if (e.name !== 'AbortError') alert(`Could not check status: ${e.message}`)
-      btn.disabled = false
-      btn.textContent = '↺ Refresh Status'
+      btn.disabled = false; btn.textContent = '↺ Status'
     }
   })
 
-  // Auto-refresh if sync folder is already connected this session
-  const toCheck = allMyPackets.filter(p => p.status === 'pending' || p.status === 'active')
-  if (state.syncFolder && toCheck.length) {
-    refreshLCPacketStatuses(toCheck, state.syncFolder).then(n => {
-      if (n > 0) renderLCDashboard(container, state, navigate)
+  // Auto-refresh if sync folder already connected
+  if (state.syncFolder && inField.length) {
+    refreshPacketStatuses(inField, state.syncFolder).then(n => {
+      if (n > 0) renderDashboard(container, state, navigate)
     })
-  }
-}
-
-function lcPacketRow(p, cancellable) {
-  const statusLabel = {
-    pending:   '<span class="badge badge-neutral">Pending</span>',
-    active:    '<span class="badge badge-warn">In Field</span>',
-    submitted: '<span class="badge badge-info">Submitted</span>',
-    imported:  '<span class="badge badge-success">Imported</span>',
-    cancelled: '<span class="badge badge-error">Cancelled</span>',
-    rejected:  '<span class="badge badge-error">Rejected</span>'
-  }[p.status] ?? `<span class="badge badge-neutral">${esc(p.status)}</span>`
-
-  return `
-    <div class="lc-packet-row">
-      <div class="lc-packet-info">
-        <div class="lc-packet-company">${esc(p.company_name)}${p.location_name ? ` <span class="lc-packet-loc">— ${esc(p.location_name)}</span>` : ''}</div>
-        <div class="lc-packet-meta">${esc(p.visit_date)} · ${esc(p.tech_name || 'No tech')} · ${statusLabel}</div>
-      </div>
-      ${cancellable ? `
-        <button class="btn btn-sm btn-ghost btn-cancel-packet"
-          data-packet-id="${esc(p.packet_id)}"
-          data-tech-folder="${esc(p.tech_folder_name)}"
-          data-filename="${esc(p.filename)}"
-          style="color:var(--red); white-space:nowrap; flex-shrink:0;">
-          Cancel
-        </button>
-      ` : ''}
-    </div>
-  `
-}
-
-async function doLCCancel(packetId, techFolderName, filename, container, state, navigate) {
-  if (!confirm('Cancel this packet?\n\nIf the tech has not yet loaded it, the file will be removed from their sync folder.')) return
-
-  try {
-    let folder = state.syncFolder
-    if (!folder) {
-      folder = await getSyncFolder()
-      if (!folder) folder = await pickSyncFolder()
-      state.syncFolder = folder
-    }
-
-    // Check if TechTool has already acknowledged picking up this packet
-    const techHasIt = await fileExists(folder, 'status', `${packetId}.json`)
-    if (techHasIt) {
-      alert('The tech has already loaded this packet onto their device.\n\nPlease contact them directly to cancel the visit — they can cancel from TechTool.')
-      return
-    }
-
-    // Remove from tech's sync folder
-    await deleteJsonFile(folder, `techs/${techFolderName}`, filename)
-
-    // Write a cancellation notice in case tech syncs before next check
-    await writeJsonFile(folder, 'status', `${packetId}.json`, {
-      packet_id:    packetId,
-      status:       'cancelled',
-      cancelled_at: new Date().toISOString(),
-      cancelled_by: 'office'
-    })
-
-    updatePacketStatus(packetId, 'cancelled')
-    navigate('dashboard')
-  } catch (e) {
-    if (e.name !== 'AbortError') alert(`Could not cancel: ${e.message}`)
   }
 }
 
 // ---------------------------------------------------------------------------
-// Sync folder check (Admin/SuperAdmin incoming scan)
+// Sync folder check — incoming packets from inbox
 // ---------------------------------------------------------------------------
 
 async function checkSyncFolder(container, state, navigate) {

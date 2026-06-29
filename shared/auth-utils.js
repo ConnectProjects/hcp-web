@@ -28,7 +28,12 @@ const ADMIN_SCREENS = [
   // Other top-level
   'reports', 'users', 'help',
 ];
-const LC_SCREENS    = ['dashboard', 'companies', 'company-detail', 'location-detail', 'generate-packet'];
+const LC_SCREENS    = [
+  'dashboard',
+  'companies', 'company-detail', 'location-detail',
+  'packets', 'incoming', 'import-confirm', 'rejected-packets', 'generate-packet',
+  'reports', 'help',
+];
 
 export const PERMISSIONS = {
   [ROLES.SUPER_ADMIN]: ['*'],
