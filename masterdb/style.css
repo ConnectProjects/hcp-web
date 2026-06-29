@@ -104,9 +104,24 @@ html, body { height: 100%; font-family: var(--font); font-size: 14px; color: var
   flex-direction: column;
   gap: 4px;
 }
+.user-name { font-weight: 600; color: rgba(255,255,255,.85); }
 .folder-indicator { font-size: 11px; }
 .folder-ok   { color: #6fcf97; }
 .folder-none { color: rgba(255,255,255,.35); }
+.btn-logout {
+  margin-top: 4px;
+  background: none;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 6px;
+  color: rgba(255,255,255,.55);
+  font-size: 11px;
+  padding: 5px 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background .15s, color .15s;
+}
+.btn-logout:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.9); }
 
 .folder-status-row { margin: 8px 0 4px; }
 .status-online  { color: var(--green);  font-weight: 500; }

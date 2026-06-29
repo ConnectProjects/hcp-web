@@ -126,14 +126,12 @@ function paint() {
           `).join('')}
         </ul>
         <div class="sidebar-footer">
-          <div style="display:flex; flex-direction:column; gap:2px; margin-bottom:8px;">
-            <span class="user-name">${esc(state.user?.name)}</span>
-            <span class="user-role-tag">${state.user?.role.toUpperCase()}</span>
-            <button id="btn-logout" class="logout-link">Logout</button>
-          </div>
+          <span class="user-name">${esc(state.user?.name)}</span>
+          <span class="user-role-tag">${state.user?.role.toUpperCase()}</span>
           <div id="sync-trigger" class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
             ${state.syncFolder ? '●' : '○'} Sync
           </div>
+          <button id="btn-logout" class="btn-logout">⏻ Log Out</button>
         </div>
       </nav>
       <div class="main-area">
