@@ -5,11 +5,14 @@
  * by the assigned tech's TechTool. Completed packets are written to inbox/ by TechTool
  * and imported by MasterDB. After import, packets are moved to archive/.
  *
- * Filename format: {CompanyName}_{YYYY-MM-DD}_{TechInitials}.json
- * Example:         SunriseMillingLP_2026-04-15_NR.json
+ * Filename format: {CompanySlug}_{LocationSlug}_{YYYY-MM-DD}_{TechInitials}.json
+ * Example:         SunriseMilling_Edmonton_2026-04-15_NR.json
  *
- * Packet ID format: {PROVINCE}-{CompanySlug}-{YYYYMMDD}-{TechInitials}
- * Example:          AB-SunriseMilling-20260415-NR
+ * Packet ID format: {PROVINCE}-{CompanySlug}-{LocationSlug}-{YYYYMMDD}-{TechInitials}
+ * Example:          AB-SunriseMilling-Edmonton-20260415-NR
+ *
+ * Location is included in both so that multiple locations of the same company
+ * can have packets generated for the same date and tech without colliding.
  */
 
 // ---------------------------------------------------------------------------
@@ -48,8 +51,10 @@ export const PACKET_STATUS = {
  * @returns {object} packet
  */
 export function createPacket({ company, location, employees, rules, counselTemplates, hpdInventory, techId, techInitials, visitDate, stickyNotes = '' }) {
-  const slug = company.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 20)
-  const dateCompact = visitDate.replace(/-/g, '')
+  const companySlug  = company.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 15)
+  const locationSlug = (location?.name ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12)
+  const slug         = locationSlug ? `${companySlug}-${locationSlug}` : companySlug
+  const dateCompact  = visitDate.replace(/-/g, '')
   const packetId = `${company.province}-${slug}-${dateCompact}-${techInitials}`
   const filename = `${slug}_${visitDate}_${techInitials}.json`
 

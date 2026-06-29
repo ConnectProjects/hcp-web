@@ -82,17 +82,20 @@ export function renderSync(container, state, navigate) {
 
         let newCount = 0;
         for (const file of files) {
-            // Check if we already have this packet locally
-            const exists = state.packets.find(p => p.packet_id === file.name.replace('.json', ''));
-            
-            if (!exists) {
-                addLog(`Downloading ${file.name}...`);
+            try {
                 const packetData = await readJsonFile(state.syncFolder, subfolder, file.name);
-                
-                // Save to local IndexedDB
-                await savePacket(packetData);
-                state.packets.push(packetData);
-                newCount++;
+                const pid = packetData?.packet_id;
+                if (!pid) { addLog(`Skipped ${file.name}: no packet_id`); continue; }
+
+                const exists = state.packets.find(p => p.packet_id === pid);
+                if (!exists) {
+                    await savePacket(packetData);
+                    state.packets.push(packetData);
+                    newCount++;
+                    addLog(`Downloaded ${file.name}`);
+                }
+            } catch (e) {
+                addLog(`Skipped ${file.name}: ${e.message}`);
             }
         }
 
