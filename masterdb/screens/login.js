@@ -60,21 +60,24 @@ export async function renderLogin(container, state, navigate) {
         <h1 style="color:#76B214; margin-bottom:10px;">MasterDB</h1>
         <p style="color:#666; margin-bottom:30px;">Authorized Staff Login</p>
 
-        <div class="form-group" style="text-align:left;">
-          <label>Select Your Name</label>
-          <select id="user-select" class="search-input" style="width:100%; margin-bottom:20px; height: 40px;">
-            <option value="">-- Select --</option>
-            ${activeUsers.map(u => `<option value="${u.user_id}">${esc(u.name)}</option>`).join('')}
-          </select>
-        </div>
+        <form id="login-form" autocomplete="off" novalidate>
+          <div class="form-group" style="text-align:left;">
+            <label>Select Your Name</label>
+            <select id="user-select" class="search-input" style="width:100%; margin-bottom:20px; height: 40px;">
+              <option value="">-- Select --</option>
+              ${activeUsers.map(u => `<option value="${u.user_id}">${esc(u.name)}</option>`).join('')}
+            </select>
+          </div>
 
-        <div class="form-group" style="text-align:left;">
-          <label>Enter 4-Digit PIN</label>
-          <input id="user-pin" type="password" maxlength="4" placeholder="· · · ·" 
-                 style="width:100%; text-align:center; letter-spacing:15px; font-size:24px; height: 50px;" />
-        </div>
+          <div class="form-group" style="text-align:left;">
+            <label>Enter 4-Digit PIN</label>
+            <input id="user-pin" type="password" maxlength="4" placeholder="· · · ·"
+                   autocomplete="current-password"
+                   style="width:100%; text-align:center; letter-spacing:15px; font-size:24px; height: 50px;" />
+          </div>
 
-        <button class="btn btn-primary btn-block" id="btn-login" style="margin-top:20px; padding: 12px;">Login</button>
+          <button type="submit" class="btn btn-primary btn-block" id="btn-login" style="margin-top:20px; padding: 12px;">Login</button>
+        </form>
         
         <div style="margin-top: 25px;">
             <button class="btn btn-link btn-sm" id="btn-change-folder" style="color: #999; font-size: 11px;">Change OneDrive Folder</button>
@@ -87,7 +90,8 @@ export async function renderLogin(container, state, navigate) {
 
   const errorEl = container.querySelector('#login-error');
 
-  container.querySelector('#btn-login').onclick = async () => {
+  container.querySelector('#login-form').onsubmit = async (e) => {
+    e.preventDefault();
     const userId = container.querySelector('#user-select').value;
     const pin = container.querySelector('#user-pin').value;
 

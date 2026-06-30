@@ -35,23 +35,26 @@ export async function renderLogin(container, state, navigate) {
         <div id="section-login">
           <h2>Technician Login</h2>
           <p class="help-text">Select your name and enter your 4-digit PIN.</p>
-          
-          <div class="form-group">
-            <label for="user-select">Your Name</label>
-            <select id="user-select" class="search-input" style="width: 100%; height: 44px;">
-              <option value="">-- Select --</option>
-              ${activeTechs.map(u => `<option value="${u.user_id}">${esc(u.name)}</option>`).join('')}
-            </select>
-          </div>
 
-          <div class="form-group">
-            <label for="user-pin">PIN</label>
-            <input id="user-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" 
-                   placeholder="0 0 0 0" style="text-align: center; letter-spacing: 10px; font-size: 20px;" />
-          </div>
+          <form id="login-form" autocomplete="off" novalidate>
+            <div class="form-group">
+              <label for="user-select">Your Name</label>
+              <select id="user-select" class="search-input" style="width: 100%; height: 44px;">
+                <option value="">-- Select --</option>
+                ${activeTechs.map(u => `<option value="${u.user_id}">${esc(u.name)}</option>`).join('')}
+              </select>
+            </div>
 
-          <button class="btn btn-primary btn-block" id="btn-login">Login</button>
-          
+            <div class="form-group">
+              <label for="user-pin">PIN</label>
+              <input id="user-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+                     autocomplete="current-password"
+                     placeholder="0 0 0 0" style="text-align: center; letter-spacing: 10px; font-size: 20px;" />
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" id="btn-login">Login</button>
+          </form>
+
           <div style="margin-top: 20px; text-align: center;">
             <button class="btn btn-link btn-sm" id="btn-switch-folder">Change Sync Folder</button>
           </div>
@@ -67,7 +70,8 @@ export async function renderLogin(container, state, navigate) {
   const errorEl = container.querySelector('#login-error');
   const showError = (msg) => { errorEl.textContent = msg; errorEl.classList.remove('hidden'); };
 
-  container.querySelector('#btn-login').onclick = async () => {
+  container.querySelector('#login-form').onsubmit = async (e) => {
+    e.preventDefault();
     const userId = container.querySelector('#user-select').value;
     const pin = container.querySelector('#user-pin').value;
     const btn = container.querySelector('#btn-login');
