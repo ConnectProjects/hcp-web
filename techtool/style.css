@@ -2161,7 +2161,7 @@ select.thresh-cell {
 /* Divider between different dates within the same day column */
 .day-divider {
     height: 2px;
-    background: #d1d5db;
+    background: #6b7280;
     border-radius: 1px;
     margin: 4px 0;
 }
