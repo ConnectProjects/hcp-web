@@ -210,7 +210,15 @@ export const JsonDatabase = {
     if (!syncFolder) return;
     const logo    = queryOneFn("SELECT value FROM settings WHERE key = 'company_logo'")?.value ?? null;
     const favicon = queryOneFn("SELECT value FROM settings WHERE key = 'company_favicon'")?.value ?? null;
-    await writeJsonFile(syncFolder, '', 'branding.json', { logo, favicon });
+    // Don't overwrite existing cloud branding with nulls — merge so an instance
+    // without local branding settings doesn't wipe what another instance pushed.
+    if (!logo && !favicon) return;
+    let existing = {};
+    try { existing = await readJsonFile(syncFolder, '', 'branding.json') ?? {} } catch {}
+    await writeJsonFile(syncFolder, '', 'branding.json', {
+      logo:    logo    ?? existing.logo    ?? null,
+      favicon: favicon ?? existing.favicon ?? null,
+    });
   },
 
   /**
