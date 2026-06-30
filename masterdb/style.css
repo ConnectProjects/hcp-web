@@ -105,9 +105,66 @@ html, body { height: 100%; font-family: var(--font); font-size: 14px; color: var
   gap: 4px;
 }
 .user-name { font-weight: 600; color: rgba(255,255,255,.85); }
-.folder-indicator { font-size: 11px; }
-.folder-ok   { color: #6fcf97; }
-.folder-none { color: rgba(255,255,255,.35); }
+.folder-indicator { font-size: 11px; cursor: pointer; }
+.folder-ok      { color: #6fcf97; }
+.folder-none    { color: rgba(255,255,255,.35); }
+.folder-pending { color: #f2c94c; }
+.sync-badge {
+  display: inline-block;
+  background: rgba(242,201,76,.25);
+  color: #f2c94c;
+  border-radius: 8px;
+  padding: 0 5px;
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: middle;
+  line-height: 16px;
+}
+.pending-sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fffbeb;
+  border-bottom: 1px solid #f59e0b;
+  font-size: 13px;
+  color: #92400e;
+  flex-shrink: 0;
+}
+.pending-sync-banner button {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sync-alert-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #fef3cd;
+  border-bottom: 1px solid #e9a800;
+  font-size: 13px;
+  color: #7a5400;
+  z-index: 1000;
+}
+.sync-alert-banner button {
+  padding: 4px 12px;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .btn-logout {
   margin-top: 4px;
   background: none;

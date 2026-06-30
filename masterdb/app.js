@@ -105,6 +105,12 @@ function paint() {
     return p.includes('*') || p.includes(item.screen);
   });
 
+  const pending     = countPendingRows()
+  const connected   = !!state.syncFolder
+  const syncClass   = connected ? (pending > 0 ? 'folder-pending' : 'folder-ok') : (pending > 0 ? 'folder-pending' : 'folder-none')
+  const syncDot     = connected ? '●' : '○'
+  const syncBadge   = pending > 0 ? ` <span class="sync-badge">${pending}</span>` : ''
+
   app.innerHTML = `
     <div class="app-shell">
       <nav class="sidebar" id="sidebar">
@@ -128,13 +134,19 @@ function paint() {
         <div class="sidebar-footer">
           <span class="user-name">${esc(state.user?.name)}</span>
           <span class="user-role-tag">${state.user?.role.toUpperCase()}</span>
-          <div id="sync-trigger" class="folder-indicator ${state.syncFolder ? 'folder-ok' : 'folder-none'}">
-            ${state.syncFolder ? '●' : '○'} Sync
+          <div id="sync-trigger" class="folder-indicator ${syncClass}">
+            ${syncDot} Sync${syncBadge}
           </div>
           <button id="btn-logout" class="btn-logout">⏻ Log Out</button>
         </div>
       </nav>
       <div class="main-area">
+        ${!connected && pending > 0 ? `
+          <div class="pending-sync-banner">
+            <span>📤 ${pending} unsynced record${pending === 1 ? '' : 's'} — connect your sync folder to push.</span>
+            <button id="btn-connect-sync">Connect →</button>
+          </div>
+        ` : ''}
         <div id="main-content" class="main-content"></div>
       </div>
     </div>
@@ -146,7 +158,7 @@ function paint() {
 
   app.querySelector('#btn-logout').onclick = logout;
 
-  app.querySelector('#sync-trigger').onclick = async () => {
+  const doConnect = async () => {
     const handle = await getSyncFolder();
     if (handle) {
       state.syncFolder = handle;
@@ -154,6 +166,7 @@ function paint() {
       if (trigger) trigger.textContent = '⟳ Syncing…';
       state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
       await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+      recordSyncTime();
       startHeartbeat();
       state.isOutofSync = false;
       document.getElementById('sync-warning-banner')?.remove();
@@ -161,8 +174,40 @@ function paint() {
     }
     else { const newH = await pickSyncFolder(); if (newH) location.reload(); }
   };
+  app.querySelector('#sync-trigger').onclick = doConnect;
+  app.querySelector('#btn-connect-sync')?.addEventListener('click', doConnect);
 
   renderFn(document.getElementById('main-content'), state, navigate)
+}
+
+// ---------------------------------------------------------------------------
+// Pending-sync tracking
+// ---------------------------------------------------------------------------
+
+const MERGE_TABLES = ['companies','locations','employees','tests','baselines','users','packets','hpd_assessments']
+
+function recordSyncTime() {
+  try { run(`INSERT OR REPLACE INTO settings (key, value) VALUES ('last_synced_at', datetime('now'))`) } catch {}
+}
+
+function countPendingRows() {
+  const lastSync = queryOne(`SELECT value FROM settings WHERE key = 'last_synced_at'`)?.value ?? '1970-01-01'
+  let total = 0
+  for (const t of MERGE_TABLES) {
+    try {
+      total += queryOne(`SELECT COUNT(*) as n FROM ${t} WHERE updated_at > ?`, [lastSync])?.n ?? 0
+    } catch {}
+  }
+  return total
+}
+
+function updateSyncIndicator() {
+  const trigger = document.getElementById('sync-trigger')
+  if (!trigger) return
+  const pending   = countPendingRows()
+  const connected = !!state.syncFolder
+  trigger.className = `folder-indicator ${connected ? (pending > 0 ? 'folder-pending' : 'folder-ok') : (pending > 0 ? 'folder-pending' : 'folder-none')}`
+  trigger.innerHTML = `${connected ? '●' : '○'} Sync${pending > 0 ? ` <span class="sync-badge">${pending}</span>` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +230,8 @@ async function startHeartbeat() {
       state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
       await JsonDatabase.pushBranding(state.syncFolder, queryOne);
       await scanAndImportInbox(state.syncFolder);
+      recordSyncTime();
+      updateSyncIndicator();
     } catch (e) {}
   }, 60000);
 }
@@ -239,6 +286,7 @@ async function boot() {
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     try { await scanAndImportInbox(state.syncFolder); } catch {}
+    recordSyncTime();
     startHeartbeat();
   }
 
