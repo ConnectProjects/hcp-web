@@ -5,7 +5,7 @@ import { BrandLogo }                         from '@shared/components/brand-logo
 import { applyTheme, loadThemeColor }        from './theme.js'
 import { renderLogin }          from './screens/login.js'
 import { renderDashboard }      from './screens/dashboard.js'
-import { renderSchedule }       from './screens/schedule.js'
+import { renderSchedule, pullPacketsFromFolder } from './screens/schedule.js'
 import { renderCalendar }       from './screens/calendar.js'
 import { renderCompany }        from './screens/company.js'
 import { renderEmployeeList }   from './screens/employee-list.js'
@@ -209,6 +209,14 @@ async function boot() {
         state.companies = directory;
         await setSetting('company_directory', JSON.stringify(directory));
       }
+
+      // Auto-download any new packets assigned since last session
+      try {
+        const newCount = await pullPacketsFromFolder(state.syncFolder, state.user);
+        if (newCount > 0) state.packets = await getAllPackets();
+      } catch {}
+
+      startHeartbeat();
     }
 
     // Fall back to cached directory when offline
@@ -221,6 +229,22 @@ async function boot() {
   } else {
     navigate('login');
   }
+}
+
+let _ttHeartbeatRunning = false;
+async function startHeartbeat() {
+  if (!state.syncFolder || _ttHeartbeatRunning) return;
+  _ttHeartbeatRunning = true;
+  setInterval(async () => {
+    if (!state.user || !state.syncFolder || state.screen === 'login') return;
+    try {
+      const newCount = await pullPacketsFromFolder(state.syncFolder, state.user);
+      if (newCount > 0) {
+        state.packets = await getAllPackets();
+        if (state.screen === 'dashboard' || state.screen === 'schedule') paint();
+      }
+    } catch {}
+  }, 60000);
 }
 
 openDB().then(boot);

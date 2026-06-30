@@ -18,7 +18,7 @@ import { renderEmployeeDetail}from './screens/employee-detail.js'
 import { renderEmployees }    from './screens/employees.js'
 import { renderGeneratePacket}from './screens/generate-packet.js'
 import { renderPackets }      from './screens/packets.js'
-import { renderIncoming }     from './screens/incoming.js'
+import { renderIncoming, scanAndImportInbox } from './screens/incoming.js'
 import { renderRejectedPackets } from './screens/rejected-packets.js'
 import { renderImportConfirm }from './screens/import-confirm.js'
 import { renderSettings }     from './screens/settings.js'
@@ -184,6 +184,7 @@ async function startHeartbeat() {
     try {
       state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
       await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+      await scanAndImportInbox(state.syncFolder);
     } catch (e) {}
   }, 60000);
 }
@@ -237,6 +238,7 @@ async function boot() {
   if (state.syncFolder) {
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+    try { await scanAndImportInbox(state.syncFolder); } catch {}
     startHeartbeat();
   }
 

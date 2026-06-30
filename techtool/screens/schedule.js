@@ -2,6 +2,41 @@ import { getAllPackets, savePacket, packetExists, deletePacket } from '../db/idb
 import { getSyncFolder, pickSyncFolder, listJsonFiles, writeJsonFile } from '@shared/fs/sync-folder.js'
 import { PACKET_STATUS }                            from '@shared/packet/schema.js'
 
+/**
+ * Download any new packets from techs/{folderName}/ without touching the DOM.
+ * Returns the number of newly downloaded packets.
+ */
+export async function pullPacketsFromFolder(folder, user) {
+  const folderName = user?.folder_name
+  if (!folderName || !folder) return 0
+
+  const files = await listJsonFiles(folder, `techs/${folderName}`)
+  let loaded = 0
+
+  for (const { name, handle } of files) {
+    const file   = await handle.getFile()
+    const packet = JSON.parse(await file.text())
+
+    if (await packetExists(packet.packet_id)) continue
+
+    packet.status = PACKET_STATUS.SYNCED
+    await savePacket(packet)
+
+    try {
+      await writeJsonFile(folder, 'status', `${packet.packet_id}.json`, {
+        packet_id:    packet.packet_id,
+        status:       'active',
+        picked_up_at: new Date().toISOString(),
+        tech_id:      user?.user_id ?? null
+      })
+    } catch {}
+
+    loaded++
+  }
+
+  return loaded
+}
+
 export function renderSchedule(container, state, navigate) {
   const user    = state.user
   const packets = state.packets ?? []

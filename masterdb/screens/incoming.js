@@ -92,6 +92,44 @@ function incomingCard(p) {
   `
 }
 
+/**
+ * Scan inbox/ and import any completed packets without touching the DOM.
+ * Returns { imported: number, files: number }.
+ */
+export async function scanAndImportInbox(folder) {
+  const files = await listJsonFiles(folder, 'inbox')
+  if (files.length === 0) return { imported: 0, files: 0 }
+
+  let totalImported = 0
+
+  for (const { name } of files) {
+    try {
+      const packet   = await readJsonFile(folder, 'inbox', name)
+      const packetId = packet.packet_id
+
+      await moveJsonFile(folder, 'inbox', 'archive', name)
+
+      const coName    = packet.company?.name ?? ''
+      const companyId = queryOne(
+        `SELECT company_id FROM companies WHERE name = ? LIMIT 1`, [coName]
+      )?.company_id ?? coName
+
+      run(`INSERT OR REPLACE INTO packets
+        (packet_id, company_id, tech_id, visit_date, filename, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+        [packetId, companyId, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+      )
+
+      const { imported } = importPacket(packet, packetId)
+      totalImported += imported
+    } catch (e) {
+      console.warn('Could not process packet:', name, e)
+    }
+  }
+
+  return { imported: totalImported, files: files.length }
+}
+
 async function checkInbox(container, state, navigate) {
   const btn    = container.querySelector('#btn-check-inbox')
   const status = container.querySelector('#check-status')
