@@ -188,8 +188,12 @@ async function boot() {
   applyTheme(loadThemeColor());
   const techName = await getSetting('tech_name');
   if (techName) {
-    state.user = { name: techName, folder_name: await getSetting('tech_folder_name') };
-    state.packets = await getAllPackets();
+    const techUserId = await getSetting('tech_user_id');
+    state.user = { name: techName, user_id: techUserId, folder_name: await getSetting('tech_folder_name') };
+    const allPackets = await getAllPackets();
+    state.packets = techUserId
+      ? allPackets.filter(p => p.tech?.tech_id === techUserId)
+      : allPackets;
     state.syncFolder = await querySyncFolder();
 
     // Apply branding + pull company directory from sync folder

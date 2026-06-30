@@ -1,4 +1,4 @@
-import { setSetting, getAllPackets, savePacket } from '../db/idb.js'
+import { setSetting, getSetting, getAllPackets, savePacket, deletePacket } from '../db/idb.js'
 import { pickSyncFolder, readJsonFile } from '@shared/fs/sync-folder.js'
 import { BrandLogo }      from '@shared/components/brand-logo.js'
 import { hashPin }        from '@shared/auth-utils.js'
@@ -88,13 +88,24 @@ export async function renderLogin(container, state, navigate) {
     const inputHash = await hashPin(pin, userId);
 
     if (user && user.pin_hash === inputHash) {
-        // Success! Save user to state and local storage
+        // If a different tech was logged in before, purge their packets from IndexedDB.
+        // They will re-download their own packets from OneDrive when they log back in.
+        const prevUserId = await getSetting('tech_user_id');
+        if (prevUserId && prevUserId !== user.user_id) {
+          const all = await getAllPackets();
+          await Promise.all(
+            all.filter(p => p.tech?.tech_id && p.tech.tech_id !== user.user_id)
+               .map(p => deletePacket(p.packet_id))
+          );
+        }
+
         state.user = user;
         await setSetting('tech_name', user.name);
+        await setSetting('tech_user_id', user.user_id);
         await setSetting('tech_initials', user.initials || user.name.substring(0,2).toUpperCase());
         await setSetting('tech_folder_name', user.folder_name || user.name.split(' ')[0]);
-        
-        state.packets = await getAllPackets();
+
+        state.packets = (await getAllPackets()).filter(p => p.tech?.tech_id === user.user_id);
         navigate('dashboard');
     } else {
         showError("Invalid PIN. Please try again.");
