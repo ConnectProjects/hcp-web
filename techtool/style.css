@@ -2145,7 +2145,7 @@ select.thresh-cell {
 .packet-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 15px;
+    gap: 10px;
 }
 
 .packet-card {
@@ -2154,60 +2154,76 @@ select.thresh-cell {
     border: 1px solid #e0e0e0;
     cursor: pointer;
     overflow: hidden;
-    transition: transform 0.1s, box-shadow 0.1s;
+    transition: box-shadow 0.1s;
 }
 
-.packet-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    transform: translateY(-2px);
-}
+.packet-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
 
-.packet-card__body {
+/* Card body: date badge | info | right actions */
+.pc-body {
     display: flex;
-    justify-content: space-between;
-    padding: 15px;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 12px;
 }
 
-.packet-name {
-    font-weight: bold;
-    font-size: 16px;
-    color: #333;
-    margin-bottom: 4px;
-}
-
-.packet-meta {
-    font-size: 13px;
-    color: #777;
-}
-
-.btn-archive {
-    background: #f5f5f5;
-    border: none;
-    color: #ccc;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    cursor: pointer;
-    line-height: 26px;
+/* Date badge */
+.pc-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    border-radius: 6px;
+    padding: 5px 4px;
+    flex-shrink: 0;
     text-align: center;
 }
+.pc-date--today    { background: #e8f0fe; color: #1a56db; }
+.pc-date--overdue  { background: #fde8e8; color: #c81e1e; }
+.pc-date--upcoming { background: #f3f4f6; color: #6b7280; }
 
-.btn-archive:hover {
-    background: #ff4d4d;
-    color: white;
-}
+.pc-month { font-size: 9px;  font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+.pc-day   { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.pc-label { font-size: 8px;  font-weight: 700; letter-spacing: .5px; margin-top: 2px; text-transform: uppercase; }
 
-.progress-bar {
-    height: 6px;
-    background: #eee;
-    width: 100%;
-}
+/* Info column */
+.pc-info  { flex: 1; min-width: 0; }
+.pc-company { font-weight: 600; font-size: 14px; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-sub     { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.pc-address { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+.pc-notes   { font-size: 11px; color: #92400e; background: #fffbeb; border-radius: 4px; padding: 2px 6px; margin-top: 4px; }
 
-.progress-fill {
-    height: 100%;
-    background: #76B214; /* Connect Hearing Green */
-    transition: width 0.3s ease;
+/* Right column: progress count + archive */
+.pc-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
 }
+.pc-progress-text { font-size: 12px; font-weight: 600; color: #6b7280; white-space: nowrap; }
+
+/* Progress bar */
+.pc-bar  { height: 4px; background: #f3f4f6; }
+.pc-fill { height: 100%; background: #76B214; transition: width 0.3s ease; }
+.pc-fill--done { background: #059669; }
+
+.btn-archive {
+    background: none;
+    border: none;
+    color: #d1d5db;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.btn-archive:hover { background: #ff4d4d; color: white; }
 
 .empty-state {
     text-align: center;

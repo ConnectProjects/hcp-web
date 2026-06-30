@@ -18,22 +18,47 @@ export function renderDashboard(container, state, navigate) {
       </div>
       
       <div class="packet-grid">
-        ${activePackets.length > 0 ? activePackets.map(p => `
+        ${activePackets.length > 0 ? activePackets.map(p => {
+          const visitDate   = p.visit?.visit_date || ''
+          const today       = new Date().toISOString().slice(0, 10)
+          const isPast      = visitDate && visitDate < today
+          const isToday     = visitDate === today
+          const dateLabel   = isToday ? 'TODAY' : (isPast ? 'OVERDUE' : '')
+          const dateClass   = isToday ? 'pc-date--today' : (isPast ? 'pc-date--overdue' : 'pc-date--upcoming')
+          const [yr, mo, dy] = visitDate ? visitDate.split('-') : ['','','']
+          const monthAbbr   = visitDate ? new Date(visitDate + 'T12:00:00').toLocaleString('en-CA', { month: 'short' }).toUpperCase() : ''
+          const empCount    = (p.employees || []).length
+          const done        = (p.employees || []).filter(e => (e.completed_tests?.length > 0) || e.skipped_at).length
+          const pct         = empCount > 0 ? Math.round((done / empCount) * 100) : 0
+          const province    = p.visit?.province || p.company?.province || ''
+          const locName     = p.location?.name || p.location_name || ''
+          const address     = p.location?.address || p.company?.address || ''
+          const notes       = p.company?.sticky_notes || ''
+          const subParts    = [locName, province, `${empCount} worker${empCount === 1 ? '' : 's'}`].filter(Boolean)
+          return `
           <div class="packet-card" data-id="${p.packet_id}">
-          <div class="progress-bar">
-            <div class="progress-fill" style="width: ${calculateProgress(p)}%"></div>
-          </div>
-            <div class="packet-card__body">
-                <div class="packet-info">
-                  <div class="packet-name">${esc(p.company_name || p.company?.name || 'Unknown')}</div>
-                  <div class="packet-meta">
-                    ${esc(p.location?.name || p.location_name || '')} · ${(p.employees || []).length} workers
-                  </div>
-                </div>
+            <div class="pc-body">
+              <div class="pc-date ${dateClass}">
+                <span class="pc-month">${monthAbbr || '—'}</span>
+                <span class="pc-day">${dy || '?'}</span>
+                ${dateLabel ? `<span class="pc-label">${dateLabel}</span>` : ''}
+              </div>
+              <div class="pc-info">
+                <div class="pc-company">${esc(p.company?.name || p.company_name || 'Unknown')}</div>
+                <div class="pc-sub">${esc(subParts.join(' · '))}</div>
+                ${address ? `<div class="pc-address">${esc(address)}</div>` : ''}
+                ${notes   ? `<div class="pc-notes">📌 ${esc(notes)}</div>` : ''}
+              </div>
+              <div class="pc-right">
+                <span class="pc-progress-text">${done}/${empCount}</span>
                 <button class="btn-archive" data-id="${p.packet_id}" title="Hide from Dashboard">✕</button>
+              </div>
+            </div>
+            <div class="pc-bar">
+              <div class="pc-fill ${pct === 100 ? 'pc-fill--done' : ''}" style="width:${pct}%"></div>
             </div>
           </div>
-        `).join('') : `
+        `}).join('') : `
           <div class="empty-state">
             <p>No active packets found on this device.</p>
             <p style="font-size: 13px; color: #999; margin-bottom: 20px;">Packets are hidden once they are submitted to the office.</p>
@@ -74,12 +99,6 @@ export function renderDashboard(container, state, navigate) {
   });
 }
 
-function calculateProgress(p) {
-    if (!p.employees || p.employees.length === 0) return 0;
-    // Count workers who have a completed test OR were marked as skipped
-    const done = p.employees.filter(e => (e.completed_tests && e.completed_tests.length > 0) || e.skipped_at).length;
-    return Math.round((done / p.employees.length) * 100);
-}
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
