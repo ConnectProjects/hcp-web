@@ -2142,13 +2142,40 @@ select.thresh-cell {
     letter-spacing: 1px;
 }
 
-.packet-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
+/* Day columns layout */
+.day-columns {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    align-items: flex-start;
+    padding-bottom: 12px;
+}
+.day-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 200px;
+    flex: 1;
 }
 
-.packet-card {
+/* Column header — acts as the date label for all cards in that column */
+.day-col-header {
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.day-col--today    { background: #e8f0fe; border: 1px solid #c7d7fb; color: #1a56db; }
+.day-col--overdue  { background: #fde8e8; border: 1px solid #fca5a5; color: #c81e1e; }
+.day-col--upcoming { background: #f9fafb; border: 1px solid #e5e7eb; color: #6b7280; }
+
+.day-col-name  { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+.day-col-date  { font-size: 17px; font-weight: 700; line-height: 1.2; }
+.day-col-badge { font-size: 9px;  font-weight: 700; letter-spacing: .5px; text-transform: uppercase; margin-top: 2px; }
+
+/* Packet card within a column (no date badge needed) */
+.col-card {
     background: white;
     border-radius: 8px;
     border: 1px solid #e0e0e0;
@@ -2156,45 +2183,21 @@ select.thresh-cell {
     overflow: hidden;
     transition: box-shadow 0.1s;
 }
+.col-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
 
-.packet-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
-
-/* Card body: date badge | info | right actions */
-.pc-body {
+.col-card__body {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 11px 12px;
+    gap: 8px;
+    padding: 10px 11px;
 }
+.col-card__info { flex: 1; min-width: 0; }
 
-/* Date badge */
-.pc-date {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-width: 44px;
-    border-radius: 6px;
-    padding: 5px 4px;
-    flex-shrink: 0;
-    text-align: center;
-}
-.pc-date--today    { background: #e8f0fe; color: #1a56db; }
-.pc-date--overdue  { background: #fde8e8; color: #c81e1e; }
-.pc-date--upcoming { background: #f3f4f6; color: #6b7280; }
-
-.pc-month { font-size: 9px;  font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
-.pc-day   { font-size: 20px; font-weight: 700; line-height: 1.1; }
-.pc-label { font-size: 8px;  font-weight: 700; letter-spacing: .5px; margin-top: 2px; text-transform: uppercase; }
-
-/* Info column */
-.pc-info  { flex: 1; min-width: 0; }
-.pc-company { font-weight: 600; font-size: 14px; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-company { font-weight: 600; font-size: 13px; color: #111; }
 .pc-sub     { font-size: 12px; color: #6b7280; margin-top: 2px; }
 .pc-address { font-size: 11px; color: #9ca3af; margin-top: 2px; }
 .pc-notes   { font-size: 11px; color: #92400e; background: #fffbeb; border-radius: 4px; padding: 2px 6px; margin-top: 4px; }
 
-/* Right column: progress count + archive */
 .pc-right {
     display: flex;
     flex-direction: column;
@@ -2202,9 +2205,8 @@ select.thresh-cell {
     gap: 6px;
     flex-shrink: 0;
 }
-.pc-progress-text { font-size: 12px; font-weight: 600; color: #6b7280; white-space: nowrap; }
+.pc-progress-text { font-size: 11px; font-weight: 600; color: #6b7280; white-space: nowrap; }
 
-/* Progress bar */
 .pc-bar  { height: 4px; background: #f3f4f6; }
 .pc-fill { height: 100%; background: #76B214; transition: width 0.3s ease; }
 .pc-fill--done { background: #059669; }
@@ -2224,43 +2226,6 @@ select.thresh-cell {
     flex-shrink: 0;
 }
 .btn-archive:hover { background: #ff4d4d; color: white; }
-
-/* Day tile — groups multiple packets on the same date */
-.day-tile {
-    background: white;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
-    overflow: hidden;
-}
-.day-tile__header {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 12px 8px;
-    border-bottom: 1px solid #f3f4f6;
-}
-.day-tile__summary {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-.day-tile__count    { font-size: 13px; font-weight: 600; color: #111; }
-.day-tile__progress { font-size: 11px; color: #6b7280; }
-
-/* Individual packet row within a day tile */
-.day-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 9px 12px;
-    border-bottom: 1px solid #f3f4f6;
-    cursor: pointer;
-    transition: background 0.1s;
-}
-.day-row:last-child { border-bottom: none; }
-.day-row:hover      { background: #f9fafb; }
-.day-row__info      { flex: 1; min-width: 0; }
 
 .empty-state {
     text-align: center;
