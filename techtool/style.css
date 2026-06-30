@@ -2142,10 +2142,10 @@ select.thresh-cell {
     letter-spacing: 1px;
 }
 
-/* Day columns layout */
+/* Day-of-week column layout */
 .day-columns {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     overflow-x: auto;
     align-items: flex-start;
     padding-bottom: 12px;
@@ -2153,61 +2153,62 @@ select.thresh-cell {
 .day-column {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    min-width: 200px;
+    gap: 6px;
+    min-width: 160px;
     flex: 1;
 }
 
-/* Column header — acts as the date label for all cards in that column */
+/* Column header — just the day name, like a calendar */
 .day-col-header {
-    border-radius: 8px;
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #9ca3af;
+    padding: 2px 4px 6px;
+    border-bottom: 2px solid #e5e7eb;
 }
-.day-col--today    { background: #e8f0fe; border: 1px solid #c7d7fb; color: #1a56db; }
-.day-col--overdue  { background: #fde8e8; border: 1px solid #fca5a5; color: #c81e1e; }
-.day-col--upcoming { background: #f9fafb; border: 1px solid #e5e7eb; color: #6b7280; }
 
-.day-col-name  { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-.day-col-date  { font-size: 17px; font-weight: 700; line-height: 1.2; }
-.day-col-badge { font-size: 9px;  font-weight: 700; letter-spacing: .5px; text-transform: uppercase; margin-top: 2px; }
-
-/* Packet card within a column (no date badge needed) */
+/* Packet card within a column */
 .col-card {
     background: white;
-    border-radius: 8px;
-    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
     cursor: pointer;
     overflow: hidden;
     transition: box-shadow 0.1s;
 }
-.col-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); }
+.col-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 
-.col-card__body {
+/* Top row: date + progress + archive */
+.col-card__top {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 10px 11px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 8px 0;
+    gap: 6px;
 }
-.col-card__info { flex: 1; min-width: 0; }
+.cc-date         { font-size: 11px; font-weight: 600; color: #6b7280; }
+.cc-date--today  { color: #1a56db; }
+.cc-date--overdue{ color: #c81e1e; }
 
+/* Body: company + sub */
+.col-card__body {
+    padding: 3px 8px 7px;
+}
 .pc-company { font-weight: 600; font-size: 13px; color: #111; }
-.pc-sub     { font-size: 12px; color: #6b7280; margin-top: 2px; }
-.pc-address { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-.pc-notes   { font-size: 11px; color: #92400e; background: #fffbeb; border-radius: 4px; padding: 2px 6px; margin-top: 4px; }
+.pc-sub     { font-size: 11px; color: #6b7280; margin-top: 1px; }
+.pc-notes   { font-size: 10px; color: #92400e; background: #fffbeb; border-radius: 3px; padding: 1px 5px; margin-top: 3px; display: inline-block; }
 
 .pc-right {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
+    align-items: center;
+    gap: 4px;
     flex-shrink: 0;
 }
-.pc-progress-text { font-size: 11px; font-weight: 600; color: #6b7280; white-space: nowrap; }
+.pc-progress-text { font-size: 11px; font-weight: 600; color: #6b7280; }
 
-.pc-bar  { height: 4px; background: #f3f4f6; }
+.pc-bar  { height: 3px; background: #f3f4f6; }
 .pc-fill { height: 100%; background: #76B214; transition: width 0.3s ease; }
 .pc-fill--done { background: #059669; }
 
@@ -2215,15 +2216,16 @@ select.thresh-cell {
     background: none;
     border: none;
     color: #d1d5db;
-    width: 22px;
-    height: 22px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 11px;
+    font-size: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    padding: 0;
 }
 .btn-archive:hover { background: #ff4d4d; color: white; }
 

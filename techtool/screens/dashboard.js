@@ -7,55 +7,49 @@ export function renderDashboard(container, state, navigate) {
   });
 
   const today = new Date().toISOString().slice(0, 10)
+  const DOW   = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 
-  // Group packets by visit date, sorted chronologically
-  const groups = new Map()
+  // Group by day-of-week; within each group sort chronologically
+  const byDow = new Map() // dow index (0-6) → packets[]
   for (const p of [...activePackets].sort((a, b) =>
     (a.visit?.visit_date || '').localeCompare(b.visit?.visit_date || '')
   )) {
-    const d = p.visit?.visit_date || ''
-    if (!groups.has(d)) groups.set(d, [])
-    groups.get(d).push(p)
+    const d = p.visit?.visit_date
+    const dow = d ? new Date(d + 'T12:00:00').getDay() : -1
+    if (!byDow.has(dow)) byDow.set(dow, [])
+    byDow.get(dow).push(p)
   }
-
-  function colHeader(visitDate) {
-    const isPast  = visitDate && visitDate < today
-    const isToday = visitDate === today
-    const cls     = isToday ? 'day-col--today' : (isPast ? 'day-col--overdue' : 'day-col--upcoming')
-    const label   = isToday ? 'TODAY' : (isPast ? 'OVERDUE' : '')
-    const dt      = visitDate ? new Date(visitDate + 'T12:00:00') : null
-    const dayName = dt ? dt.toLocaleString('en-CA', { weekday: 'short' }).toUpperCase() : '—'
-    const dayNum  = dt ? dt.getDate() : '?'
-    const month   = dt ? dt.toLocaleString('en-CA', { month: 'short' }).toUpperCase() : ''
-    return `<div class="day-col-header ${cls}">
-      <span class="day-col-name">${dayName}</span>
-      <span class="day-col-date">${month} ${dayNum}</span>
-      ${label ? `<span class="day-col-badge">${label}</span>` : ''}
-    </div>`
-  }
+  // Order columns Mon→Sun (treat Sun=7 so Mon comes first)
+  const orderedDows = [...byDow.keys()].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
 
   function colCard(p) {
+    const d        = p.visit?.visit_date || ''
+    const isPast   = d && d < today
+    const isToday  = d === today
+    const dateCls  = isToday ? 'cc-date--today' : (isPast ? 'cc-date--overdue' : '')
+    const dateLabel= isToday ? 'TODAY' : (isPast ? 'OVERDUE' : '')
+    const dt       = d ? new Date(d + 'T12:00:00') : null
+    const dateStr  = dt ? dt.toLocaleString('en-CA', { month: 'short', day: 'numeric' }) : '—'
     const empCount = (p.employees || []).length
     const done     = (p.employees || []).filter(e => (e.completed_tests?.length > 0) || e.skipped_at).length
     const pct      = empCount > 0 ? Math.round((done / empCount) * 100) : 0
     const locName  = p.location?.name || p.location_name || ''
     const province = p.visit?.province || p.company?.province || ''
-    const address  = p.location?.address || p.company?.address || ''
     const notes    = p.company?.sticky_notes || ''
-    const subParts = [locName, province, `${empCount} worker${empCount === 1 ? '' : 's'}`].filter(Boolean)
+    const subParts = [locName, province, `${empCount}w`].filter(Boolean)
     return `
       <div class="col-card" data-id="${p.packet_id}">
-        <div class="col-card__body">
-          <div class="col-card__info">
-            <div class="pc-company">${esc(p.company?.name || p.company_name || 'Unknown')}</div>
-            <div class="pc-sub">${esc(subParts.join(' · '))}</div>
-            ${address ? `<div class="pc-address">${esc(address)}</div>` : ''}
-            ${notes   ? `<div class="pc-notes">📌 ${esc(notes)}</div>` : ''}
-          </div>
+        <div class="col-card__top">
+          <span class="cc-date ${dateCls}">${dateStr}${dateLabel ? ` · ${dateLabel}` : ''}</span>
           <div class="pc-right">
             <span class="pc-progress-text">${done}/${empCount}</span>
             <button class="btn-archive" data-id="${p.packet_id}" title="Hide">✕</button>
           </div>
+        </div>
+        <div class="col-card__body">
+          <div class="pc-company">${esc(p.company?.name || p.company_name || 'Unknown')}</div>
+          <div class="pc-sub">${esc(subParts.join(' · '))}</div>
+          ${notes ? `<div class="pc-notes">📌 ${esc(notes)}</div>` : ''}
         </div>
         <div class="pc-bar"><div class="pc-fill ${pct === 100 ? 'pc-fill--done' : ''}" style="width:${pct}%"></div></div>
       </div>`
@@ -74,10 +68,10 @@ export function renderDashboard(container, state, navigate) {
 
       ${activePackets.length > 0 ? `
         <div class="day-columns">
-          ${[...groups.entries()].map(([date, packets]) => `
+          ${orderedDows.map(dow => `
             <div class="day-column">
-              ${colHeader(date)}
-              ${packets.map(p => colCard(p)).join('')}
+              <div class="day-col-header">${DOW[dow]}</div>
+              ${byDow.get(dow).map(p => colCard(p)).join('')}
             </div>
           `).join('')}
         </div>
