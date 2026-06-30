@@ -2158,6 +2158,14 @@ select.thresh-cell {
     flex: 1;
 }
 
+/* Divider between different dates within the same day column */
+.day-divider {
+    height: 2px;
+    background: #d1d5db;
+    border-radius: 1px;
+    margin: 4px 0;
+}
+
 /* Column header — just the day name, like a calendar */
 .day-col-header {
     font-size: 10px;

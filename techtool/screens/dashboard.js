@@ -68,12 +68,21 @@ export function renderDashboard(container, state, navigate) {
 
       ${activePackets.length > 0 ? `
         <div class="day-columns">
-          ${orderedDows.map(dow => `
-            <div class="day-column">
-              <div class="day-col-header">${DOW[dow]}</div>
-              ${byDow.get(dow).map(p => colCard(p)).join('')}
-            </div>
-          `).join('')}
+          ${orderedDows.map(dow => {
+            const packets = byDow.get(dow)
+            let lastDate  = null
+            const cards   = packets.map(p => {
+              const d      = p.visit?.visit_date || ''
+              const divider = (lastDate !== null && d !== lastDate) ? '<div class="day-divider"></div>' : ''
+              lastDate = d
+              return divider + colCard(p)
+            }).join('')
+            return `
+              <div class="day-column">
+                <div class="day-col-header">${DOW[dow]}</div>
+                ${cards}
+              </div>`
+          }).join('')}
         </div>
       ` : `
         <div class="empty-state">
