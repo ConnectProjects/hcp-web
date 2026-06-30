@@ -2225,6 +2225,43 @@ select.thresh-cell {
 }
 .btn-archive:hover { background: #ff4d4d; color: white; }
 
+/* Day tile — groups multiple packets on the same date */
+.day-tile {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    overflow: hidden;
+}
+.day-tile__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 12px 8px;
+    border-bottom: 1px solid #f3f4f6;
+}
+.day-tile__summary {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.day-tile__count    { font-size: 13px; font-weight: 600; color: #111; }
+.day-tile__progress { font-size: 11px; color: #6b7280; }
+
+/* Individual packet row within a day tile */
+.day-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.day-row:last-child { border-bottom: none; }
+.day-row:hover      { background: #f9fafb; }
+.day-row__info      { flex: 1; min-width: 0; }
+
 .empty-state {
     text-align: center;
     padding: 60px 20px;
