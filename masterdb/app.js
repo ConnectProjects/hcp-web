@@ -3,7 +3,7 @@ import { renderDataTools } from './screens/data-tools.js'
 import { renderUsers }     from './screens/users.js'
 import { renderLogin }     from './screens/login.js'
 import { renderTestDetail }from './screens/test-detail.js'
-import { initDB, query, queryOne, run, logAction, backupToSyncFolder, exportExcelToSyncFolder } from './db/sqlite.js'
+import { initDB, query, queryOne, run, logAction, backupToSyncFolder, exportExcelToSyncFolder, saveToOPFS } from './db/sqlite.js'
 import { initSchema }         from './db/schema.js'
 import { getSyncFolder, querySyncFolder, pickSyncFolder } from '@shared/fs/sync-folder.js'
 import { JsonDatabase }       from '@shared/fs/json-database.js'
@@ -47,6 +47,9 @@ export const state = {
 }
 
 window.state = state;
+window._q    = query;
+window._r    = run;
+window._save = saveToOPFS;
 
 // ---------------------------------------------------------------------------
 // Navigation & Guard
