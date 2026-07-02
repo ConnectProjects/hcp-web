@@ -201,9 +201,9 @@ export function renderDataTools(container, state, navigate) {
   // --- DUPLICATE SCANNER ---
   container.querySelector('#btn-scan-dupes').onclick = () => {
     const dupeNames = query(`
-      SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, COUNT(*) AS cnt
+      SELECT LOWER(first_name) AS fn, LOWER(last_name) AS ln, location_id, COUNT(*) AS cnt
       FROM employees
-      GROUP BY LOWER(first_name), LOWER(last_name)
+      GROUP BY LOWER(first_name), LOWER(last_name), location_id
       HAVING cnt > 1
       ORDER BY ln, fn
     `);
@@ -226,9 +226,9 @@ export function renderDataTools(container, state, navigate) {
         FROM employees e
         LEFT JOIN locations l ON l.location_id = e.location_id
         LEFT JOIN companies c ON c.company_id = l.company_id
-        WHERE LOWER(e.first_name) = ? AND LOWER(e.last_name) = ?
+        WHERE LOWER(e.first_name) = ? AND LOWER(e.last_name) = ? AND e.location_id = ?
         ORDER BY test_count DESC
-      `, [d.fn, d.ln]);
+      `, [d.fn, d.ln, d.location_id]);
 
       const groupId = `grp-${records[0].employee_id}`;
       html += `
