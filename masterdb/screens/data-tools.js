@@ -103,6 +103,20 @@ export function renderDataTools(container, state, navigate) {
           <button class="btn btn-outline" id="btn-scan-dupes">🔍 Scan for Duplicates</button>
           <div id="dupe-results" style="margin-top:20px"></div>
         </div>
+
+        <div class="form-card" style="margin-top:20px">
+          <h3>Duplicate Location Cleanup</h3>
+          <p class="help-text">Finds locations where one name is another plus a province suffix (e.g. "#719 Saskatoon" vs "#719 Saskatoon, SK"). The province-suffixed location is merged into the canonical one — employees matched by full name + DOB are merged, unmatched employees are moved.</p>
+          <button class="btn btn-outline" id="btn-scan-loc-dupes">🔍 Scan for Duplicate Locations</button>
+          <div id="loc-dupe-results" style="margin-top:20px"></div>
+        </div>
+
+        <div class="form-card" style="margin-top:20px">
+          <h3>Baseline Integrity Fix</h3>
+          <p class="help-text">Ensures each employee has exactly one Baseline test (the earliest by date). In the baselines table, only the earliest record per employee+location remains active — any extras are archived. Run this after a location merge.</p>
+          <button class="btn btn-outline" id="btn-scan-baselines">🔍 Scan for Baseline Issues</button>
+          <div id="baseline-results" style="margin-top:20px"></div>
+        </div>
       </div>
 
       <!-- TAB 4: LEGACY IMPORT -->
@@ -304,6 +318,242 @@ export function renderDataTools(container, state, navigate) {
         }
       };
     });
+  };
+
+  // --- LOCATION DUPLICATE CLEANUP ---
+  container.querySelector('#btn-scan-loc-dupes').onclick = () => {
+    const pairs = query(`
+      SELECT
+        l_good.location_id AS canonical_id,
+        l_good.name        AS canonical_name,
+        l_bad.location_id  AS bad_id,
+        l_bad.name         AS bad_name,
+        c.name             AS company_name,
+        (SELECT COUNT(*) FROM employees WHERE location_id = l_bad.location_id)  AS bad_emp_count,
+        (SELECT COUNT(*) FROM tests     WHERE location_id = l_bad.location_id)  AS bad_test_count,
+        (SELECT COUNT(*) FROM employees WHERE location_id = l_good.location_id) AS good_emp_count,
+        (SELECT COUNT(*) FROM tests     WHERE location_id = l_good.location_id) AS good_test_count
+      FROM locations l_bad
+      JOIN locations l_good
+        ON  l_bad.company_id = l_good.company_id
+        AND (
+              l_bad.name = l_good.name || ', SK' OR
+              l_bad.name = l_good.name || ', AB' OR
+              l_bad.name = l_good.name || ', BC'
+            )
+      JOIN companies c ON c.company_id = l_bad.company_id
+      WHERE l_bad.active = 1 AND l_good.active = 1
+      ORDER BY c.name, l_good.name
+    `);
+
+    const res = container.querySelector('#loc-dupe-results');
+    if (pairs.length === 0) {
+      res.innerHTML = '<p style="color:green">✓ No duplicate location names found.</p>';
+      return;
+    }
+
+    let html = `<p style="margin-bottom:16px"><strong>${pairs.length} duplicate location pair(s) found.</strong> Review below, then merge individually or all at once.</p>`;
+    html += `<button class="btn" id="btn-merge-all-locs" style="margin-bottom:20px; background:#d9534f; color:#fff">⚠ Merge All ${pairs.length} Pairs</button>`;
+
+    for (const p of pairs) {
+      html += `
+        <div class="form-card" style="margin-bottom:16px; border-left:4px solid #d9534f">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <strong>${esc(p.company_name)}</strong>
+            <button class="btn btn-sm btn-primary btn-merge-loc-pair"
+              data-canonical="${p.canonical_id}"
+              data-bad="${p.bad_id}"
+              data-label="${esc(p.canonical_name)}">Merge This Pair →</button>
+          </div>
+          <table class="data-table" style="font-size:12px; width:100%">
+            <thead><tr><th>Role</th><th>Location Name</th><th>Employees</th><th>Tests</th></tr></thead>
+            <tbody>
+              <tr style="background:#f0fff0">
+                <td><strong>Keep</strong></td><td>${esc(p.canonical_name)}</td>
+                <td>${p.good_emp_count}</td><td>${p.good_test_count}</td>
+              </tr>
+              <tr style="background:#fff0f0">
+                <td><strong>Remove</strong></td><td>${esc(p.bad_name)}</td>
+                <td>${p.bad_emp_count}</td><td>${p.bad_test_count}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    res.innerHTML = html;
+
+    // Executes one canonical←bad location merge; returns counts for logging.
+    const doMerge = (canonicalId, badId, label) => {
+      const badEmps = query('SELECT * FROM employees WHERE location_id = ?', [badId]);
+
+      const toMerge = [], toMove = [];
+      for (const e of badEmps) {
+        const match = queryOne(
+          `SELECT employee_id FROM employees
+            WHERE location_id = ?
+              AND LOWER(first_name) = LOWER(?)
+              AND LOWER(last_name)  = LOWER(?)
+              AND (dob = ? OR (dob IS NULL AND ? IS NULL))`,
+          [canonicalId, e.first_name, e.last_name, e.dob, e.dob]
+        );
+        if (match) toMerge.push({ badEmpId: e.employee_id, canonicalEmpId: match.employee_id });
+        else        toMove.push(e.employee_id);
+      }
+
+      transaction(({ run }) => {
+        for (const { badEmpId, canonicalEmpId } of toMerge) {
+          run('UPDATE tests       SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+          run('UPDATE baselines   SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+          run('UPDATE employment  SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+          run('DELETE FROM employees WHERE employee_id = ?', [badEmpId]);
+        }
+        for (const id of toMove) {
+          run("UPDATE employees SET location_id = ?, updated_at = datetime('now') WHERE employee_id = ?", [canonicalId, id]);
+        }
+        run('UPDATE tests      SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+        run('UPDATE baselines  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+        run('UPDATE packets    SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+        run('UPDATE schedules  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+        run('UPDATE employment SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+        run("UPDATE locations SET active = 0, updated_at = datetime('now') WHERE location_id = ?", [badId]);
+      });
+
+      logAction(state, 'MERGE_LOCATIONS',
+        `Merged location id=${badId} into "${label}" (id=${canonicalId}): ${toMerge.length} emp(s) merged by DOB match, ${toMove.length} emp(s) moved`);
+      return { merged: toMerge.length, moved: toMove.length };
+    };
+
+    res.querySelectorAll('.btn-merge-loc-pair').forEach(btn => {
+      btn.onclick = async () => {
+        const canonicalId = parseInt(btn.dataset.canonical);
+        const badId       = parseInt(btn.dataset.bad);
+        const label       = btn.dataset.label;
+        if (!confirm(`Merge location pair for "${label}"?\n\nEmployees and tests from the province-suffixed location will be merged or moved into the canonical one. This cannot be undone.`)) return;
+        try {
+          const { merged, moved } = doMerge(canonicalId, badId, label);
+          await JsonDatabase.pushMaster(state.syncFolder, query);
+          btn.closest('.form-card').innerHTML = `<p style="color:green">✓ Done: ${merged} employee(s) merged, ${moved} moved. Synced to OneDrive.</p>`;
+        } catch (err) {
+          alert('Merge failed: ' + err.message);
+        }
+      };
+    });
+
+    res.querySelector('#btn-merge-all-locs').onclick = async () => {
+      if (!confirm(`Merge all ${pairs.length} location pairs across all companies?\n\nProvince-suffixed duplicates will be merged into their canonical counterparts. This cannot be undone.`)) return;
+      let totalMerged = 0, totalMoved = 0, errors = 0;
+      for (const p of pairs) {
+        try {
+          const { merged, moved } = doMerge(p.canonical_id, p.bad_id, p.canonical_name);
+          totalMerged += merged;
+          totalMoved  += moved;
+        } catch (err) {
+          errors++;
+          console.error(`Failed to merge location ${p.bad_id} → ${p.canonical_id}:`, err);
+        }
+      }
+      try { await JsonDatabase.pushMaster(state.syncFolder, query); } catch (e) { console.error('Sync failed:', e); }
+      res.innerHTML = `<p style="color:green">✓ All pairs merged: ${totalMerged} employee(s) merged by DOB match, ${totalMoved} moved across ${pairs.length} location pairs.${errors > 0 ? ` ⚠ ${errors} pair(s) failed — check console.` : ''} Synced to OneDrive.</p>`;
+    };
+  };
+
+  // --- BASELINE INTEGRITY FIX ---
+  container.querySelector('#btn-scan-baselines').onclick = () => {
+    const dupTestRows = query(`
+      SELECT employee_id, COUNT(*) AS cnt
+      FROM tests
+      WHERE test_type = 'Baseline'
+      GROUP BY employee_id
+      HAVING cnt > 1
+    `);
+    const dupBaselineRows = query(`
+      SELECT employee_id, location_id, COUNT(*) AS cnt
+      FROM baselines
+      WHERE archived = 0
+      GROUP BY employee_id, location_id
+      HAVING cnt > 1
+    `);
+
+    const res = container.querySelector('#baseline-results');
+    if (dupTestRows.length === 0 && dupBaselineRows.length === 0) {
+      res.innerHTML = '<p style="color:green">✓ No baseline integrity issues found.</p>';
+      return;
+    }
+
+    res.innerHTML = `
+      <p>
+        ${dupTestRows.length} employee(s) have more than one test marked as Baseline.<br>
+        ${dupBaselineRows.length} employee–location pair(s) have more than one active baseline record.
+      </p>
+      <button class="btn btn-primary" id="btn-fix-baselines">Fix Baseline Integrity</button>
+    `;
+
+    res.querySelector('#btn-fix-baselines').onclick = async () => {
+      if (!confirm(
+        `Fix baseline integrity?\n\n` +
+        `• Each employee's earliest test will be kept as Baseline; all others set to Periodic.\n` +
+        `• In the baselines table, only the earliest record per employee+location stays active — extras are archived.\n\n` +
+        `This cannot be undone.`
+      )) return;
+
+      try {
+        transaction(({ run }) => {
+          // Demote any Baseline test that isn't the employee's earliest
+          run(`
+            UPDATE tests SET test_type = 'Periodic', updated_at = datetime('now')
+            WHERE test_type = 'Baseline'
+              AND test_id NOT IN (
+                SELECT MIN(t.test_id)
+                FROM tests t
+                JOIN (
+                  SELECT employee_id, MIN(test_date) AS min_date
+                  FROM tests GROUP BY employee_id
+                ) e ON e.employee_id = t.employee_id AND t.test_date = e.min_date
+                GROUP BY t.employee_id
+              )
+          `);
+          // Promote the earliest test to Baseline if it isn't already
+          run(`
+            UPDATE tests SET test_type = 'Baseline', updated_at = datetime('now')
+            WHERE test_type != 'Baseline'
+              AND test_id IN (
+                SELECT MIN(t.test_id)
+                FROM tests t
+                JOIN (
+                  SELECT employee_id, MIN(test_date) AS min_date
+                  FROM tests GROUP BY employee_id
+                ) e ON e.employee_id = t.employee_id AND t.test_date = e.min_date
+                GROUP BY t.employee_id
+              )
+          `);
+          // Archive duplicate active baselines — keep only the earliest per employee+location
+          run(`
+            UPDATE baselines SET archived = 1, updated_at = datetime('now')
+            WHERE archived = 0
+              AND baseline_id NOT IN (
+                SELECT MIN(b.baseline_id)
+                FROM baselines b
+                JOIN (
+                  SELECT employee_id, location_id, MIN(test_date) AS min_date
+                  FROM baselines WHERE archived = 0
+                  GROUP BY employee_id, location_id
+                ) e ON e.employee_id = b.employee_id
+                   AND (b.location_id = e.location_id OR (b.location_id IS NULL AND e.location_id IS NULL))
+                   AND b.test_date = e.min_date
+                GROUP BY b.employee_id, b.location_id
+              )
+          `);
+        });
+
+        logAction(state, 'FIX_BASELINES',
+          `Baseline integrity fix: ${dupTestRows.length} employee(s) had extra Baseline tests demoted to Periodic; ${dupBaselineRows.length} employee-location pair(s) had duplicate baseline records archived`);
+        await JsonDatabase.pushMaster(state.syncFolder, query);
+        res.innerHTML = `<p style="color:green">✓ Fixed: ${dupTestRows.length} employee(s) corrected in tests table; ${dupBaselineRows.length} employee–location pair(s) had duplicates archived. Synced to OneDrive.</p>`;
+      } catch (err) {
+        alert('Fix failed: ' + err.message);
+      }
+    };
   };
 
   // --- LEGACY IMPORT LOGIC ---
