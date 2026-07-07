@@ -6,6 +6,8 @@ import { showToast } from './toast.js';
 let allCompanies = [];   // all non-deleted companies from DB
 let naicsList    = [];   // all noise-hazard NAICS for filter/modal
 
+const REFRESH_INTERVAL = 60_000; // 1 minute
+
 const filters = {
   province: '', rbs_status: '', score_min: '', score_max: '',
   naics_code: '', source: '', search: ''
@@ -361,8 +363,6 @@ document.getElementById('modal-save-btn').addEventListener('click', async () => 
 });
 
 // ---- Auto-refresh -------------------------------------------
-const REFRESH_INTERVAL = 60_000; // 1 minute, matching MasterDB heartbeat
-
 function stampLastUpdated() {
   const el = document.getElementById('last-updated');
   if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
@@ -383,7 +383,7 @@ function startAutoRefresh() {
   setInterval(doRefresh, REFRESH_INTERVAL);
 }
 
-document.getElementById('refresh-btn').addEventListener('click', async () => {
+document.getElementById('refresh-btn')?.addEventListener('click', async () => {
   const btn = document.getElementById('refresh-btn');
   btn.textContent = '…';
   btn.disabled = true;
