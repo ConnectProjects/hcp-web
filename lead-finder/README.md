@@ -8,6 +8,20 @@ Lead Finder helps LCs (Licensed Consultants) find companies likely to have worke
 
 ---
 
+## Hazard score reference
+
+| Score | Meaning | Example industries |
+|---|---|---|
+| **5** | Near-certain hazardous exposure — 100+ dBA common, hearing loss expected without protection | Sawmills (gang saws), foundries, rock crushers, metal stamping |
+| **4** | High likelihood — 90–100 dBA typical for significant portions of the workday | Machine shops, auto body, heavy equipment operators, forge shops |
+| **3** | Moderate — some operations hit hazardous levels but not all workers/all shifts | Printing, woodworking shops, concrete plants |
+| **2** | Lower — noise is a secondary concern, occasional exposure | General construction, light fabrication |
+| **1** | Flagged by keyword but noise is situational or incidental | Equipment rental offices, some aggregate admin |
+
+Scores are set per NAICS code in the **Admin** screen and can be overridden per company on the Dashboard. The Dashboard default sort is score descending so highest-priority leads surface first. The summary bar counts scores 4–5 as "High hazard."
+
+---
+
 ## Framework choice
 
 Plain HTML + CSS + vanilla JavaScript modules — no build step, no framework.
