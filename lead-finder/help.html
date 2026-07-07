@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#76B214">
+  <title>Lead Finder — Help</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+  <style>
+    .help-content { max-width: 780px; }
+    .help-section { background: #fff; border: 1px solid var(--grey-200); border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 18px; box-shadow: var(--shadow); }
+    .help-section h2 { font-size: 17px; font-weight: 700; color: var(--grey-900); margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--grey-100); display: flex; align-items: center; gap: 8px; }
+    .help-section h3 { font-size: 14px; font-weight: 700; color: var(--grey-700); margin: 16px 0 8px; }
+    .help-section p  { font-size: 13.5px; color: var(--grey-700); line-height: 1.65; margin-bottom: 10px; }
+    .help-section ul, .help-section ol { padding-left: 20px; margin-bottom: 10px; }
+    .help-section li { font-size: 13.5px; color: var(--grey-700); line-height: 1.65; margin-bottom: 4px; }
+    .help-section table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+    .help-section th { background: var(--grey-50); padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--grey-500); border-bottom: 1px solid var(--grey-200); }
+    .help-section td { padding: 8px 12px; border-bottom: 1px solid var(--grey-100); vertical-align: top; }
+    .help-section tr:last-child td { border-bottom: none; }
+    .tip { background: var(--brand-light); border-left: 3px solid var(--brand); border-radius: 0 var(--radius) var(--radius) 0; padding: 10px 14px; margin: 12px 0; font-size: 13px; color: var(--grey-700); }
+    .tip strong { color: var(--brand-dark); }
+    .step { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
+    .step-num { background: var(--brand); color: #fff; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .step-body { flex: 1; font-size: 13.5px; color: var(--grey-700); line-height: 1.6; }
+    .step-body strong { color: var(--grey-900); }
+    .kbd { display: inline-block; background: var(--grey-100); border: 1px solid var(--grey-300); border-radius: 4px; padding: 1px 6px; font-size: 11.5px; font-family: monospace; color: var(--grey-700); }
+    .toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .toc a { background: #fff; border: 1px solid var(--grey-200); border-radius: 100px; padding: 5px 14px; font-size: 12.5px; color: var(--grey-700); text-decoration: none; transition: all .12s; }
+    .toc a:hover { border-color: var(--brand); color: var(--brand-dark); background: var(--brand-light); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-name">Lead Finder</div>
+      <div class="sidebar-brand-sub">Industrial Division</div>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="./dashboard.html"  class="nav-item"><span class="nav-icon">📋</span> Dashboard</a></li>
+      <li><a href="./discovery.html"  class="nav-item"><span class="nav-icon">🔍</span> Discover</a></li>
+      <li><a href="./admin.html"      class="nav-item"><span class="nav-icon">⚙️</span> NAICS Admin</a></li>
+      <li><a href="./help.html"       class="nav-item active"><span class="nav-icon">❓</span> Help</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="sidebar-user" data-user-email></div>
+      <button class="btn-logout" id="logout-btn"><span>↩</span> Sign out</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-area">
+    <div class="main-header">
+      <h1>Help</h1>
+      <p>How to use Lead Finder</p>
+    </div>
+    <div class="main-content">
+      <div class="help-content">
+
+        <!-- TOC -->
+        <div class="toc">
+          <a href="#overview">Overview</a>
+          <a href="#dashboard">Dashboard</a>
+          <a href="#discover">Discover</a>
+          <a href="#rbs">RBS Status</a>
+          <a href="#scores">Hazard Scores</a>
+          <a href="#naics-admin">NAICS Admin</a>
+          <a href="#workflow">Typical Workflow</a>
+          <a href="#faq">FAQ</a>
+        </div>
+
+        <!-- Overview -->
+        <div class="help-section" id="overview">
+          <h2><span>📌</span> Overview</h2>
+          <p>Lead Finder is a prospecting tool for the Connect Hearing Industrial Division. It helps LCs (Licensed Consultants) find companies that are likely to have workers exposed to hazardous occupational noise, and keep track of which leads have been submitted to RBS (the external sales CRM).</p>
+          <p><strong>What Lead Finder does:</strong></p>
+          <ul>
+            <li>Searches Google Maps / Places for businesses in noise-hazard industries in a given area</li>
+            <li>Scores each lead by noise-hazard likelihood (1–5 scale)</li>
+            <li>Tracks whether each lead has been submitted to RBS or not</li>
+            <li>Keeps notes and contact info for each company</li>
+          </ul>
+          <p><strong>What Lead Finder does NOT do:</strong></p>
+          <ul>
+            <li>Replace RBS — it only tracks a single "submitted / not submitted" flag</li>
+            <li>Log calls, schedule follow-ups, or manage pipeline stages</li>
+          </ul>
+          <div class="tip"><strong>Tip:</strong> The app has three screens — Dashboard, Discover, and NAICS Admin — accessible from the left sidebar.</div>
+        </div>
+
+        <!-- Dashboard -->
+        <div class="help-section" id="dashboard">
+          <h2><span>📋</span> Dashboard</h2>
+          <p>The Dashboard is your main working screen. It shows all your leads in a sortable, filterable table.</p>
+
+          <h3>Stats bar</h3>
+          <p>The row of cards at the top shows a live count of total leads, how many are still not submitted to RBS, how many are submitted, how many are high-hazard (score 4–5), and a breakdown by province.</p>
+
+          <h3>Filters</h3>
+          <p>Use the filter bar to narrow down the list:</p>
+          <table>
+            <thead><tr><th>Filter</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Province</strong></td><td>Show only leads in a specific province</td></tr>
+              <tr><td><strong>RBS Status</strong></td><td>Show only submitted or not-yet-submitted leads</td></tr>
+              <tr><td><strong>Score min / max</strong></td><td>Filter by hazard score range (e.g. min 4 to focus on high-priority leads)</td></tr>
+              <tr><td><strong>NAICS Category</strong></td><td>Filter by industry type</td></tr>
+              <tr><td><strong>Source</strong></td><td>Discovered (from Google Places) vs. field capture</td></tr>
+              <tr><td><strong>Search</strong></td><td>Filter by company name or city</td></tr>
+            </tbody>
+          </table>
+          <p>Click <strong>Clear</strong> to reset all filters at once.</p>
+
+          <h3>Sorting</h3>
+          <p>Click any column header to sort by that column. Click again to reverse the direction. The default sort is <strong>Hazard Score descending</strong> — your highest-priority leads are always at the top. You can also use the sort dropdown in the filter bar.</p>
+
+          <h3>Row actions</h3>
+          <table>
+            <thead><tr><th>Action</th><th>How</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Toggle RBS status</strong></td><td>Click the status button on the row (e.g. "Not submitted"). It flips immediately and a green confirmation appears in the bottom-right corner.</td></tr>
+              <tr><td><strong>Edit a lead</strong></td><td>Click the ✏️ pencil icon. A panel opens where you can update name, address, phone, NAICS code, hazard score, and notes.</td></tr>
+              <tr><td><strong>Archive a lead</strong></td><td>Click the 🗑 icon (or use the Archive button inside the edit panel). The lead is hidden from the dashboard but not permanently deleted.</td></tr>
+            </tbody>
+          </table>
+
+          <h3>Adding a lead manually</h3>
+          <p>Click <strong>+ Add lead</strong> (top-right of the table) to manually enter a company that wasn't found via Google Places.</p>
+
+          <div class="tip"><strong>Tip:</strong> Notes you add to a lead show as a preview under the company name in the table. Hover over the preview to see the full text.</div>
+        </div>
+
+        <!-- Discover -->
+        <div class="help-section" id="discover">
+          <h2><span>🔍</span> Discover</h2>
+          <p>The Discover screen searches Google Places for businesses matching your query and lets you import them as leads in one click.</p>
+
+          <h3>Running a search</h3>
+          <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Search query</strong> — enter a business type or industry keyword. Examples: <em>sawmill</em>, <em>machine shop</em>, <em>auto body</em>, <em>foundry</em>, <em>Kal Tire</em>.</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Location</strong> — enter a city and province. Examples: <em>Prince George BC</em>, <em>Surrey BC</em>, <em>Fort McMurray AB</em>.</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body"><strong>NAICS filter (optional)</strong> — check one or more noise-hazard industry categories to refine the search. This appends keywords to the Google query.</div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body">Click <strong>Search Google Places</strong>. Up to 20 results appear in the preview table below.</div></div>
+
+          <h3>Reviewing and importing results</h3>
+          <p>Each result shows the business name, address, phone, website, Google Places category, and a best-guess NAICS code. Results already in your leads show an "Already added" badge and cannot be re-imported.</p>
+          <ul>
+            <li>Check the boxes next to the companies you want to import</li>
+            <li>Use <strong>Select all</strong> to check all available results at once</li>
+            <li>Click <strong>Import selected</strong> — the companies are added to your Dashboard immediately</li>
+          </ul>
+
+          <div class="tip"><strong>Tip:</strong> Be specific with your search query. <em>"sawmill Prince George BC"</em> gives better results than just <em>"industrial"</em>. Try multiple searches for the same area with different keywords to build a thorough lead list.</div>
+
+          <h3>NAICS auto-match</h3>
+          <p>When a result is imported, Lead Finder tries to match the business name and Google category against the NAICS code list. If a match is found, the lead is tagged as <strong>inferred</strong>. If no match is found, the NAICS field is left blank and marked <strong>unknown</strong>. You can always correct this in the edit panel on the Dashboard.</p>
+        </div>
+
+        <!-- RBS Status -->
+        <div class="help-section" id="rbs">
+          <h2><span>✅</span> RBS Status</h2>
+          <p>Every lead has one of two statuses:</p>
+          <table>
+            <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge badge-not-submitted" style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600;background:var(--grey-100);color:var(--grey-500);border:1px solid var(--grey-300)">Not submitted</span></td><td>This lead has not yet been entered into RBS. Default for all new leads.</td></tr>
+              <tr><td><span class="badge badge-submitted" style="display:inline-flex;align-items:center;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:600;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)">✓ Submitted</span></td><td>This lead has been submitted to the RBS CRM system.</td></tr>
+            </tbody>
+          </table>
+          <p>To toggle the status, click the status button directly on the row — no confirmation dialog, just a quick flip and a green toast notification to confirm it saved. The timestamp of when a lead was submitted is recorded automatically.</p>
+          <p>Lead Finder does <strong>not</strong> submit anything to RBS itself. "Submitted" is simply a flag you set here to remember what you've already entered into RBS manually.</p>
+        </div>
+
+        <!-- Hazard Scores -->
+        <div class="help-section" id="scores">
+          <h2><span>⚡</span> Hazard Scores</h2>
+          <p>Each lead gets a hazard score from 1 to 5 indicating how likely workers at that company are to be exposed to hazardous noise (≥85 dBA TWA, the WorkSafeBC action level).</p>
+          <table>
+            <thead><tr><th style="width:60px">Score</th><th>Meaning</th><th>Example industries</th></tr></thead>
+            <tbody>
+              <tr><td><span class="badge badge-score-5" style="display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:100px;font-size:12px;font-weight:700;background:var(--orange-bg);color:var(--orange);border:1px solid var(--orange-bd)">5</span></td><td>Near-certain hazardous exposure — 100+ dBA common, hearing loss expected without protection</td><td>Sawmills (gang saws), foundries, rock crushers, metal stamping</td></tr>
+              <tr><td><span class="badge badge-score-4" style="display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:100px;font-size:12px;font-weight:700;background:var(--orange-bg);color:var(--orange);border:1px solid var(--orange-bd)">4</span></td><td>High likelihood — 90–100 dBA typical for significant portions of the workday</td><td>Machine shops, auto body, heavy equipment operators, forge shops</td></tr>
+              <tr><td><span class="badge badge-score-3" style="display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:100px;font-size:12px;font-weight:700;background:var(--yellow-bg);color:var(--yellow);border:1px solid var(--yellow-bd)">3</span></td><td>Moderate — some operations hit hazardous levels but not all workers/all shifts</td><td>Printing, woodworking shops, concrete plants</td></tr>
+              <tr><td><span class="badge badge-score-2" style="display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:100px;font-size:12px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)">2</span></td><td>Lower — noise is a secondary concern, occasional exposure</td><td>General construction, light fabrication</td></tr>
+              <tr><td><span class="badge badge-score-1" style="display:inline-flex;align-items:center;justify-content:center;padding:2px 10px;border-radius:100px;font-size:12px;font-weight:700;background:var(--green-bg);color:var(--green);border:1px solid var(--green-bd)">1</span></td><td>Flagged by keyword but noise is situational or incidental</td><td>Equipment rental offices, some aggregate admin</td></tr>
+            </tbody>
+          </table>
+          <p>Scores come from two places:</p>
+          <ul>
+            <li><strong>NAICS code</strong> — when a lead is imported, its score is copied from the NAICS reference table (set by the admin in the NAICS Admin screen)</li>
+            <li><strong>Manual override</strong> — you can override the score for any individual company in the edit panel on the Dashboard</li>
+          </ul>
+          <div class="tip"><strong>Tip:</strong> The Dashboard default sort is score descending, so your 5s and 4s are always at the top of the list. Use the <strong>Score min</strong> filter set to 4 to focus a calling session on the highest-priority leads only.</div>
+        </div>
+
+        <!-- NAICS Admin -->
+        <div class="help-section" id="naics-admin">
+          <h2><span>⚙️</span> NAICS Admin</h2>
+          <p>NAICS (North American Industry Classification System) codes are the industry categories used to classify businesses. Lead Finder uses them to predict noise hazard levels.</p>
+          <p>The NAICS Admin screen is where you review all 928 industry codes and set which ones are noise hazards and what score they should carry. This affects every future lead imported from that industry.</p>
+
+          <h3>How to use it</h3>
+          <ul>
+            <li>Use the <strong>Noise hazard only</strong> toggle to filter to the ~139 pre-flagged codes</li>
+            <li>Use the search box to find specific codes by name (e.g. type "sawmill")</li>
+            <li>Check or uncheck the <strong>Noise hazard?</strong> checkbox for each code</li>
+            <li>Set the <strong>Score</strong> (1–5) for each noise-hazard code</li>
+            <li>Click <strong>Save all changes</strong> when done — all your edits save in one batch</li>
+          </ul>
+
+          <div class="tip"><strong>Tip:</strong> The seed script set all flagged codes to a starting score of 3. Work through the list and bump up sawmills, foundries, and metal shops to 4–5 based on your WorkSafeBC experience. This only needs to be done once — scores carry forward to all future imports.</div>
+        </div>
+
+        <!-- Typical Workflow -->
+        <div class="help-section" id="workflow">
+          <h2><span>🗺️</span> Typical Workflow</h2>
+
+          <h3>First-time setup (once)</h3>
+          <div class="step"><div class="step-num">1</div><div class="step-body">Go to <strong>NAICS Admin</strong> and review the noise-hazard codes. Adjust scores to reflect real-world hazard levels based on your experience.</div></div>
+
+          <h3>Building a lead list for a new territory</h3>
+          <div class="step"><div class="step-num">1</div><div class="step-body">Go to <strong>Discover</strong>. Search for a noise-hazard industry keyword + city, e.g. <em>"sawmill Prince George BC"</em>.</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body">Review the results. Select the ones that look relevant and click <strong>Import selected</strong>.</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body">Repeat with different keywords for the same area: <em>machine shop</em>, <em>auto body</em>, <em>foundry</em>, <em>concrete plant</em>, etc.</div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-body">Go to the <strong>Dashboard</strong>. Your new leads appear at the top (sorted by score). Add notes, correct any NAICS assignments, and adjust scores if needed.</div></div>
+
+          <h3>Working the list</h3>
+          <div class="step"><div class="step-num">1</div><div class="step-body">On the <strong>Dashboard</strong>, filter by province and sort by score descending. Start at the top.</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-body">When you enter a lead into RBS, click its status button to flip it to <strong>Submitted</strong>.</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-body">Use the <strong>RBS Status = Not submitted</strong> filter to see what still needs to be actioned.</div></div>
+        </div>
+
+        <!-- FAQ -->
+        <div class="help-section" id="faq">
+          <h2><span>💬</span> FAQ</h2>
+
+          <h3>A lead imported with the wrong NAICS code. How do I fix it?</h3>
+          <p>Click the ✏️ edit icon on the lead's row. Change the NAICS code in the dropdown and set the confidence to <strong>Confirmed</strong>. The hazard score will update based on the new NAICS — or you can override it manually.</p>
+
+          <h3>I accidentally archived a lead. Can I get it back?</h3>
+          <p>Archived leads are soft-deleted — they're hidden but not gone. Ask your admin to restore it via the Supabase dashboard (set <code>deleted_at</code> back to null on the companies table).</p>
+
+          <h3>Google Places didn't find a company I know exists. What should I do?</h3>
+          <p>Add it manually using the <strong>+ Add lead</strong> button on the Dashboard. Fill in the details you know — the company won't have a Google Place ID but everything else works the same.</p>
+
+          <h3>The same company showed up in two different searches. Will it import twice?</h3>
+          <p>No. Lead Finder uses the Google Place ID to detect duplicates. If a company is already in your leads, it shows an "Already added" badge in Discover and the checkbox is disabled.</p>
+
+          <h3>What does "inferred" vs "confirmed" NAICS confidence mean?</h3>
+          <p><strong>Inferred</strong> — the NAICS code was guessed automatically based on Google Places data. It may be wrong. <strong>Confirmed</strong> — you've manually verified the NAICS code is correct. <strong>Unknown</strong> — no match was found and no code has been assigned yet.</p>
+
+          <h3>Can I use Lead Finder on my phone?</h3>
+          <p>The app works in a mobile browser but is optimised for desktop use. A mobile-friendly field capture feature is planned for a future phase.</p>
+        </div>
+
+      </div><!-- /help-content -->
+    </div><!-- /main-content -->
+  </div><!-- /main-area -->
+</div><!-- /#app -->
+
+<script type="module" src="./js/help.js"></script>
+</body>
+</html>
