@@ -1,0 +1,29 @@
+{
+  "province_code": "AB",
+  "templates": [
+    {
+      "template_id": 1,
+      "province_code": "AB",
+      "category_code": "N",
+      "category_label": "Normal",
+      "summary_text": "Your hearing test results today are within normal limits. No significant change in your hearing has been detected. Continue to wear your hearing protection consistently in all noisy work areas.",
+      "tech_notes": "Normal result — no action required. Remind worker to continue wearing HPD."
+    },
+    {
+      "template_id": 2,
+      "province_code": "AB",
+      "category_code": "A",
+      "category_label": "Abnormal",
+      "summary_text": "Your hearing test today shows a significant finding at [freq] Hz in your [ear] ear. This result meets the criteria for an Abnormal finding under Alberta OHS Part 16. You are advised to see a physician or audiologist for further evaluation. Please ensure you are wearing appropriate, properly fitted hearing protection at all times in noisy work areas.",
+      "tech_notes": "Abnormal — medical review by physician or audiologist is mandatory under AB OHS Part 16. Written notification to worker required within 30 days. Document HPD type, fit, and compliance.\n\nRule 1/2 triggered: Abnormal Audiogram — threshold exceeded at the specified frequency (no baseline needed).\nRule 3 triggered: Abnormal Audiogram — asymmetry > 30 dB averaged at 3–6 kHz between ears.\nRule 4 triggered: Abnormal Shift — shift >= 15 dB at two consecutive frequencies (1–6 kHz) vs baseline.\n\nEdit the counsel text above to reflect which finding applies."
+    },
+    {
+      "template_id": 3,
+      "province_code": "AB",
+      "category_code": "EW",
+      "category_label": "Standard Threshold Shift",
+      "summary_text": "Your hearing test today shows a Standard Threshold Shift (STS) of [shift] dB averaged at 2000, 3000, and 4000 Hz in your [ear] ear compared to your baseline. Under Alberta OHS Code Part 16, this result must be recorded and the findings must be forwarded to a physician or audiologist for review within 30 days. Please ensure you are wearing your hearing protection correctly and consistently in all noisy work areas.",
+      "tech_notes": "STS detected — average shift of [shift] dB at 2K+3K+4K Hz ([ear] ear) vs baseline. Required actions under AB OHS Code Part 16:\n\n1. Advise worker of results within 30 days.\n2. Forward results, medical history, and baseline audiogram to designated physician or audiologist for assessment.\n3. Physician/audiologist must advise worker of confirmation within 30 days of receiving results.\n\nDiscuss HPD fit, type, and consistent use. Document any tinnitus complaints. Next test follows normal schedule (annual or biennial as applicable)."
+    }
+  ]
+}

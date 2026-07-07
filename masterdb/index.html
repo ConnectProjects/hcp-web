@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="../favicon.ico">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1e3a5f">
+  <meta name="description" content="MasterDB — HCP-Web office administration">
+  <title>MasterDB — HCP-Web</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./print.css">
+
+  <!-- MSAL.js — Local version for reliability -->
+  <script src="vendor/msal-browser.min.js"></script>
+  <!-- Local SheetJS for offline use -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <!-- Your existing SQL.js -->
+  <script src="vendor/sql-wasm.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "@shared/": "../shared/",
+    "../shared/": "../shared/"
+  }
+}
+</script>
+</head>
+<body>
+  <div id="app">
+    <div class="boot-screen">
+      <div class="boot-inner">
+        <div class="boot-title">MasterDB</div>
+        <div class="boot-msg" id="boot-msg">Initializing database…</div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

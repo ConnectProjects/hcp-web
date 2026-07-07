@@ -1,0 +1,29 @@
+{
+  "province_code": "SK",
+  "templates": [
+    {
+      "template_id": 20,
+      "province_code": "SK",
+      "category_code": "N",
+      "category_label": "Normal",
+      "summary_text": "Your hearing test results today are within normal limits. No significant change has been detected. Continue to wear your hearing protection consistently in all noisy work areas.",
+      "tech_notes": "Normal result — no action required. Remind worker to continue wearing HPD. Retest within 24 months per SK OHS Regulations 1996."
+    },
+    {
+      "template_id": 21,
+      "province_code": "SK",
+      "category_code": "A",
+      "category_label": "Abnormal",
+      "summary_text": "Your hearing test today shows a significant finding at [freq] Hz in your [ear] ear. This result meets the criteria for an Abnormal finding under Saskatchewan OHS Regulations 1996. You are advised to see a physician or audiologist for further evaluation. Please ensure you are wearing appropriate, properly fitted hearing protection at all times in noisy work areas.",
+      "tech_notes": "Abnormal — referral to physician or audiologist is required under SK OHS Regulations 1996. Written notification to worker required. Document HPD type, fit, and compliance.\n\nRule 201 triggered: Baseline A — average threshold >= 25 dB HL across 500–6000 Hz in either ear.\nRule 202 triggered: Periodic A — drop >= 15 dB at two adjacent frequencies (500–6000 Hz) vs baseline.\nRule 203 triggered: Periodic A — drop >= 25 dB at a single frequency (500–6000 Hz) vs baseline.\n\nEdit the counsel text above to reflect which finding applies."
+    },
+    {
+      "template_id": 22,
+      "province_code": "SK",
+      "category_code": "EW",
+      "category_label": "Early Warning",
+      "summary_text": "Your hearing test today shows an early warning finding of [shift] dB at [freq] Hz in your [ear] ear compared to your baseline. A follow-up hearing test is required within 24 months per Saskatchewan OHS Regulations 1996. It is important that you wear your hearing protection correctly and consistently in all noisy work areas.",
+      "tech_notes": "Periodic EW — shift of [shift] dB at [freq] Hz ([ear] ear) from baseline. Follow-up test required within 24 months per SK OHS Regulations 1996, s.113. Discuss HPD fit, type, and consistent use. Document any tinnitus complaints."
+    }
+  ]
+}

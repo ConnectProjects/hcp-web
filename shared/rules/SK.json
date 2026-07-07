@@ -1,0 +1,71 @@
+{
+  "province_code": "SK",
+  "province_name": "Saskatchewan",
+  "regulation_ref": "OHS Regulations 1996, s.113 and Appendix 1",
+  "rules": [
+    {
+      "rule_id": 201,
+      "province_code": "SK",
+      "category_code": "A",
+      "category_label": "Abnormal Baseline",
+      "rule_type": "average_threshold",
+      "threshold_db": 25,
+      "freq_range_low": 500,
+      "freq_range_high": 6000,
+      "comparison_basis": "current",
+      "followup_months": null,
+      "requires_referral": true,
+      "priority": 100,
+      "effective_date": "1996-01-01",
+      "notes": "Baseline A: average threshold >= 25 dB HL across 500–6000 Hz in either ear (OHS Regs 1996, Appendix 1)"
+    },
+    {
+      "rule_id": 202,
+      "province_code": "SK",
+      "category_code": "A",
+      "category_label": "Abnormal Shift — Adjacent Frequencies",
+      "rule_type": "adjacent_freq",
+      "threshold_db": 15,
+      "freq_range_low": 500,
+      "freq_range_high": 6000,
+      "comparison_basis": "baseline",
+      "followup_months": null,
+      "requires_referral": true,
+      "priority": 80,
+      "effective_date": "1996-01-01",
+      "notes": "Periodic A: drop >= 15 dB at two adjacent frequencies within 500–6000 Hz vs baseline or prior periodic test"
+    },
+    {
+      "rule_id": 203,
+      "province_code": "SK",
+      "category_code": "A",
+      "category_label": "Abnormal Shift — Single Frequency",
+      "rule_type": "single_freq",
+      "threshold_db": 25,
+      "freq_range_low": 500,
+      "freq_range_high": 6000,
+      "comparison_basis": "baseline",
+      "followup_months": null,
+      "requires_referral": true,
+      "priority": 70,
+      "effective_date": "1996-01-01",
+      "notes": "Periodic A: drop >= 25 dB at any single frequency within 500–6000 Hz vs baseline or prior periodic test"
+    },
+    {
+      "rule_id": 204,
+      "province_code": "SK",
+      "category_code": "EW",
+      "category_label": "Early Warning",
+      "rule_type": "single_freq",
+      "threshold_db": 15,
+      "freq_range_low": 2000,
+      "freq_range_high": 6000,
+      "comparison_basis": "baseline",
+      "followup_months": 24,
+      "requires_referral": false,
+      "priority": 50,
+      "effective_date": "1996-01-01",
+      "notes": "Periodic EW: drop >= 15 dB at any single frequency within 2000–6000 Hz vs baseline or prior periodic test. Retest within 24 months."
+    }
+  ]
+}

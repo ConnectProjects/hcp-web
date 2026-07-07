@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="../favicon.ico">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a365d">
+  <meta name="description" content="TechTool — Field audiometric testing for industrial hearing conservation programs">
+  <title>TechTool — HCP-Web</title>
+  <link rel="manifest" href="./manifest.json?v=3">
+  <link rel="stylesheet" href="./style.css">
+  <!-- MSAL.js — Microsoft Authentication Library for browser -->
+  <script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "@shared/": "../shared/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div class="boot-screen">
+      <p>Loading TechTool…</p>
+    </div>
+  </div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

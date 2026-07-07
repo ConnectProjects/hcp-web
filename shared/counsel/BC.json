@@ -1,0 +1,53 @@
+{
+  "province_code": "BC",
+  "templates": [
+    {
+      "template_id": 10,
+      "province_code": "BC",
+      "category_code": "N",
+      "category_label": "Normal (Baseline)",
+      "summary_text": "Your hearing test results today are within normal limits. These results have been recorded as your baseline for future comparisons. Continue to wear your hearing protection consistently in all noisy work areas.",
+      "tech_notes": "Normal baseline — no follow-up required. Remind worker to wear HPD consistently. Next test as per WorkSafeBC schedule."
+    },
+    {
+      "template_id": 11,
+      "province_code": "BC",
+      "category_code": "EW",
+      "category_label": "Early Warning (Baseline)",
+      "summary_text": "Your baseline hearing test today shows an early warning finding. A notch pattern was detected at [freq] Hz in your [ear] ear, which may be an early sign of noise-related hearing change. A follow-up hearing test is recommended in 12 months. It is important that you wear your hearing protection correctly and consistently in all noisy work areas.",
+      "tech_notes": "Baseline EW — notch pattern at [freq] Hz ([ear] ear). Schedule retest in 12 months per WorkSafeBC guidelines. Discuss HPD fit, type, and consistent use. Document any tinnitus complaints."
+    },
+    {
+      "template_id": 12,
+      "province_code": "BC",
+      "category_code": "A",
+      "category_label": "Abnormal (Baseline)",
+      "summary_text": "Your baseline hearing test today shows an abnormal result. A threshold of [shift] dB HL was detected at [freq] Hz in your [ear] ear. This result meets the criteria for an Abnormal finding under WorkSafeBC guidelines. You are advised to see a physician or audiologist for further evaluation. Please ensure you are wearing appropriate, properly fitted hearing protection at all times in noisy work areas.",
+      "tech_notes": "Baseline A — threshold >= 30 dB at [freq] Hz ([ear] ear). Medical referral required per WorkSafeBC. Provide worker with written notification. Document HPD type, fit, and compliance history."
+    },
+    {
+      "template_id": 13,
+      "province_code": "BC",
+      "category_code": "NC",
+      "category_label": "Normal Change (Periodic)",
+      "summary_text": "Your hearing test today shows no significant change compared to your baseline recorded on [date]. Continue to wear your hearing protection consistently in all noisy work areas.",
+      "tech_notes": "Periodic NC — no change from baseline ([date]). No follow-up required. Retest as per WorkSafeBC schedule."
+    },
+    {
+      "template_id": 14,
+      "province_code": "BC",
+      "category_code": "EWC",
+      "category_label": "Early Warning Change (Periodic)",
+      "summary_text": "Your hearing test today shows an early warning change of [shift] dB at [freq] Hz in your [ear] ear compared to your baseline recorded on [date]. A follow-up hearing test is recommended in 12 months. It is important that you wear your hearing protection correctly and consistently in all noisy work areas.",
+      "tech_notes": "Periodic EWC — shift of [shift] dB at [freq] Hz ([ear] ear) from baseline ([date]). Schedule retest in 12 months per WorkSafeBC guidelines. Discuss HPD fit and consistent use. Document any tinnitus complaints."
+    },
+    {
+      "template_id": 15,
+      "province_code": "BC",
+      "category_code": "AC",
+      "category_label": "Abnormal Change (Periodic)",
+      "summary_text": "Your hearing test today shows a significant change at [freq] Hz in your [ear] ear compared to your baseline recorded on [date]. This result meets the criteria for an Abnormal Change under WorkSafeBC guidelines. You are advised to see a physician or audiologist for further evaluation. Please ensure you are wearing appropriate, properly fitted hearing protection at all times in noisy work areas.",
+      "tech_notes": "Periodic AC — significant shift at [freq] Hz ([ear] ear) from baseline ([date]). Medical referral required per WorkSafeBC. Provide worker with written notification. Document HPD type, fit, and compliance history."
+    }
+  ]
+}

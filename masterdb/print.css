@@ -1,0 +1,46 @@
+/**
+ * Print styles for MasterDB reports.
+ * When window.print() is called, hide app chrome and show only .report-print content.
+ */
+
+@media print {
+  /* Hide app chrome */
+  .sidebar,
+  .tab-bar,
+  .report-controls,
+  #btn-print,
+  .page-header { display: none !important; }
+
+  /* Flatten layout */
+  .app-shell    { display: block !important; }
+  .main-area    { overflow: visible !important; margin-left: 0 !important; }
+  .main-content { padding: 0 !important; overflow: visible !important; height: auto !important; }
+  .page         { padding: 0 !important; max-width: none !important; }
+
+  /* Show report */
+  .report-preview { display: block !important; overflow: visible !important; }
+  .report-print   { margin: 0; }
+
+  /* Page setup */
+  @page { margin: 15mm 18mm; size: letter portrait; }
+
+  /* Avoid orphaned table rows */
+  .report-table           { page-break-inside: auto; width: 100%; }
+  .report-table tr        { page-break-inside: avoid; }
+  .report-table thead     { display: table-header-group; }
+
+  /* Keep STS cards together */
+  .report-sts-card { page-break-inside: avoid; }
+
+  /* Keep employee info + audiogram on one page if possible */
+  .report-emp-info,
+  .report-audiogram-wrap { page-break-inside: avoid; }
+
+  /* Remove decorative shadows */
+  * { box-shadow: none !important; }
+
+  /* Ensure badges print with background */
+  .class-badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .report-stat { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .report-table thead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

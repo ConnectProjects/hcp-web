@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#5a8a0e">
+  <title>Lead Finder — Sign In</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <h1>Lead<span class="logo-dot">.</span>Finder</h1>
+        <span>Connect Hearing Industrial Division</span>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input id="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <div id="login-error" class="login-error"></div>
+        <button type="submit" class="btn btn-primary" id="login-btn">Sign In</button>
+      </form>
+    </div>
+  </div>
+
+  <script type="module" src="./js/login.js"></script>
+</body>
+</html>
