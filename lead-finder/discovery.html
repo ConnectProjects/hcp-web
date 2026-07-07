@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#76B214">
+  <title>Lead Finder — Discover</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-name">Lead Finder</div>
+      <div class="sidebar-brand-sub">Industrial Division</div>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="./dashboard.html"  class="nav-item"><span class="nav-icon">📋</span> Dashboard</a></li>
+      <li><a href="./discovery.html"  class="nav-item active"><span class="nav-icon">🔍</span> Discover</a></li>
+      <li><a href="./admin.html"      class="nav-item"><span class="nav-icon">⚙️</span> NAICS Admin</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="sidebar-user" data-user-email></div>
+      <button class="btn-logout" id="logout-btn"><span>↩</span> Sign out</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-area">
+    <div class="main-header">
+      <h1>Discover Leads</h1>
+      <p>Search Google Places for companies in noise-hazard industries</p>
+    </div>
+    <div class="main-content">
+
+      <!-- Search form -->
+      <div class="table-wrap" style="padding:20px;margin-bottom:0">
+        <form id="search-form">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label for="search-query">Search query *</label>
+              <input type="text" id="search-query" placeholder="e.g. sawmill, machine shop, foundry" required>
+            </div>
+            <div class="form-group" style="flex:2">
+              <label for="search-location">Location *</label>
+              <input type="text" id="search-location" placeholder="e.g. Surrey BC, Prince George BC" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Narrow by noise-hazard NAICS category <span class="text-muted text-small">(optional — appends to query)</span></label>
+            <div id="naics-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              <span class="text-muted text-small">Loading categories…</span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:12px">
+            <button type="submit" class="btn btn-primary" id="search-btn">Search Google Places</button>
+            <span id="search-status" class="text-muted text-small"></span>
+          </div>
+        </form>
+      </div>
+
+      <!-- Results -->
+      <div class="results-wrap hidden" id="results-wrap">
+        <div class="results-header">
+          <h3 id="results-heading">Results</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="text-muted text-small" id="already-count"></span>
+            <button class="btn btn-secondary btn-sm" id="select-all-btn">Select all</button>
+            <button class="btn btn-primary btn-sm" id="import-btn" disabled>Import selected</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table" id="results-table">
+            <thead>
+              <tr>
+                <th style="width:36px"><input type="checkbox" id="select-all-check" title="Select all"></th>
+                <th>Business name</th>
+                <th>Address</th>
+                <th>Phone</th>
+                <th>Website</th>
+                <th>Places type</th>
+                <th>NAICS guess</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="results-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/discovery.js"></script>
+</body>
+</html>

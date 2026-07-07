@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#76B214">
+  <title>Lead Finder — Dashboard</title>
+  <link rel="icon" href="../favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-brand-name">Lead Finder</div>
+      <div class="sidebar-brand-sub">Industrial Division</div>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="./dashboard.html"  class="nav-item active"><span class="nav-icon">📋</span> Dashboard</a></li>
+      <li><a href="./discovery.html"  class="nav-item"><span class="nav-icon">🔍</span> Discover</a></li>
+      <li><a href="./admin.html"      class="nav-item"><span class="nav-icon">⚙️</span> NAICS Admin</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <div class="sidebar-user" data-user-email></div>
+      <button class="btn-logout" id="logout-btn"><span>↩</span> Sign out</button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main-area">
+    <div class="main-header">
+      <h1>Lead Dashboard</h1>
+      <p>Companies with potential noise-hazard exposure</p>
+    </div>
+    <div class="main-content">
+
+      <!-- Stats bar -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+          <div class="stat-card__label">Total leads</div>
+          <div class="stat-card__value" id="stat-total">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card__label">Not submitted</div>
+          <div class="stat-card__value" id="stat-not-submitted">—</div>
+          <div class="stat-card__sub">pending RBS entry</div>
+        </div>
+        <div class="stat-card stat-card--green">
+          <div class="stat-card__label">Submitted</div>
+          <div class="stat-card__value" id="stat-submitted">—</div>
+          <div class="stat-card__sub">in RBS</div>
+        </div>
+        <div class="stat-card stat-card--brand">
+          <div class="stat-card__label">High hazard</div>
+          <div class="stat-card__value" id="stat-high-hazard">—</div>
+          <div class="stat-card__sub">score 4–5</div>
+        </div>
+        <div class="stat-card" id="stat-province-card" style="min-width:180px">
+          <div class="stat-card__label">By province</div>
+          <div class="stat-card__value text-small" id="stat-by-province" style="font-size:13px;font-weight:500;margin-top:6px">—</div>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label for="f-province">Province</label>
+          <select id="f-province" name="province">
+            <option value="">All provinces</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="f-rbs">RBS Status</label>
+          <select id="f-rbs" name="rbs_status">
+            <option value="">All</option>
+            <option value="not_submitted">Not submitted</option>
+            <option value="submitted">Submitted</option>
+          </select>
+        </div>
+        <div class="filter-group" style="max-width:80px">
+          <label for="f-score-min">Score min</label>
+          <select id="f-score-min">
+            <option value="">—</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+        <div class="filter-group" style="max-width:80px">
+          <label for="f-score-max">Score max</label>
+          <select id="f-score-max">
+            <option value="">—</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+        <div class="filter-group" style="min-width:180px">
+          <label for="f-naics">NAICS Category</label>
+          <select id="f-naics" name="naics_code">
+            <option value="">All categories</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="f-source">Source</label>
+          <select id="f-source" name="source">
+            <option value="">All sources</option>
+            <option value="discovered">Discovered</option>
+            <option value="field_capture">Field capture</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="f-search">Search</label>
+          <input type="search" id="f-search" placeholder="Name or city…" style="min-width:140px">
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-secondary btn-sm" id="clear-filters-btn">Clear</button>
+          <select id="sort-select" class="filter-group select" style="border:1px solid var(--grey-300);border-radius:var(--radius);padding:5px 8px;font-size:13px;background:#fff">
+            <option value="hazard_score-desc">Score ↓</option>
+            <option value="hazard_score-asc">Score ↑</option>
+            <option value="created_at-desc">Newest first</option>
+            <option value="created_at-asc">Oldest first</option>
+            <option value="name-asc">Name A→Z</option>
+            <option value="name-desc">Name Z→A</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span class="table-toolbar__count" id="table-count">Loading…</span>
+          <button class="btn btn-primary btn-sm" id="add-btn">+ Add lead</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table" id="companies-table">
+            <thead>
+              <tr>
+                <th data-sort="name">Company</th>
+                <th data-sort="province">Province</th>
+                <th>Phone</th>
+                <th data-sort="hazard_score">Score</th>
+                <th>NAICS</th>
+                <th data-sort="rbs_status">RBS</th>
+                <th data-sort="created_at">Added</th>
+                <th style="width:120px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="companies-tbody">
+              <tr class="loading-row"><td colspan="8">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /main-area -->
+</div><!-- /#app -->
+
+<!-- Edit Company Modal -->
+<div class="modal-backdrop hidden" id="edit-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Edit Lead</h2>
+      <button class="btn btn-ghost btn-sm" id="modal-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Company name *</label>
+          <input type="text" id="edit-name" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Address</label>
+          <input type="text" id="edit-address">
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="edit-city">
+        </div>
+        <div class="form-group" style="max-width:80px">
+          <label>Province</label>
+          <input type="text" id="edit-province" maxlength="3" placeholder="BC">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="edit-phone">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="edit-email">
+        </div>
+        <div class="form-group">
+          <label>Website</label>
+          <input type="url" id="edit-website" placeholder="https://…">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>NAICS Code</label>
+          <select id="edit-naics-code">
+            <option value="">— Unknown —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Confidence</label>
+          <select id="edit-naics-confidence">
+            <option value="unknown">Unknown</option>
+            <option value="inferred">Inferred</option>
+            <option value="confirmed">Confirmed</option>
+          </select>
+        </div>
+        <div class="form-group" style="max-width:80px">
+          <label>Score override</label>
+          <select id="edit-hazard-score">
+            <option value="">—</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="edit-notes" rows="3" placeholder="Internal notes for this lead…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm hidden" id="modal-delete-btn">Archive lead</button>
+      <button class="btn btn-secondary" id="modal-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/dashboard.js"></script>
+</body>
+</html>
