@@ -76,9 +76,30 @@ async function rdaasGet(path) {
 }
 
 /**
+ * RDaaS returns JSON-LD. The actual array of items can live in several places
+ * depending on the endpoint. This helper extracts it regardless of nesting.
+ */
+function extractArray(data) {
+  if (Array.isArray(data))                          return data;
+  if (Array.isArray(data?.['@graph']))              return data['@graph'];
+  if (Array.isArray(data?.results?.['@graph']))     return data.results['@graph'];
+  if (Array.isArray(data?.categories?.['@graph']))  return data.categories['@graph'];
+  if (Array.isArray(data?.results))                 return data.results;
+  if (Array.isArray(data?.items))                   return data.items;
+  if (Array.isArray(data?.categories))              return data.categories;
+  return [];
+}
+
+/** Extract the short opaque ID from an RDaaS @id URL like
+ *  "https://api.statcan.gc.ca/rdaas/classification/S049Pjk4RIUgw6j2" */
+function idFromUrl(url) {
+  return String(url ?? '').split('/').filter(Boolean).pop() ?? '';
+}
+
+/**
  * Locate the ID of the current, released NAICS Canada classification.
  * Searches RDaaS, filters for audience=STANDARDS, status=RELEASED,
- * and picks the highest version number.
+ * abbreviation=NAICS (excludes variants/aggregates), and picks highest version.
  */
 async function findLatestNaicsId() {
   console.log('Searching RDaaS for current NAICS classification…');
@@ -86,34 +107,42 @@ async function findLatestNaicsId() {
     '/search/classifications?q=North%20American%20Industry%20Classification&limit=20'
   );
 
-  // RDaaS may return a bare array or a wrapped object
-  const items = Array.isArray(data)
-    ? data
-    : (data.results ?? data.items ?? data.classifications ?? Object.values(data)?.[0] ?? []);
+  const items = extractArray(data);
 
-  if (!Array.isArray(items) || items.length === 0) {
-    console.error('Unexpected RDaaS search response structure:', JSON.stringify(data, null, 2));
+  if (items.length === 0) {
+    console.error('Could not extract items from RDaaS search response.');
+    console.error('Top-level keys:', Object.keys(data));
     process.exit(1);
   }
 
-  console.log(`  Found ${items.length} classification(s). Filtering for STANDARDS + RELEASED…`);
+  console.log(`  Found ${items.length} result(s). Filtering for STANDARDS + RELEASED + abbreviation=NAICS…`);
 
   const candidates = items.filter(c => {
-    const audience = String(c.audience ?? c.Audience ?? '').trim().toUpperCase();
-    const status   = String(c.status   ?? c.Status   ?? '').trim().toUpperCase();
-    return audience === 'STANDARDS' && status === 'RELEASED';
+    const audience = String(c.audience ?? '').trim().toUpperCase();
+    const status   = String(c.status   ?? '').trim().toUpperCase();
+    const abbrev   = String(c.abbreviation ?? '').trim().toUpperCase();
+    // Only the main NAICS Canada classification carries abbreviation "NAICS"
+    return audience === 'STANDARDS' && status === 'RELEASED' && abbrev === 'NAICS';
   });
 
   if (candidates.length === 0) {
-    console.error('No RELEASED STANDARDS NAICS found. Sample item:', JSON.stringify(items[0], null, 2));
-    process.exit(1);
+    // Fallback: relax abbreviation requirement, just pick STANDARDS + RELEASED
+    console.log('  No abbreviation=NAICS match; falling back to any STANDARDS+RELEASED entry…');
+    const fallback = items.filter(c =>
+      String(c.audience ?? '').trim().toUpperCase() === 'STANDARDS' &&
+      String(c.status   ?? '').trim().toUpperCase() === 'RELEASED'
+    );
+    if (fallback.length === 0) {
+      console.error('No RELEASED STANDARDS NAICS found. Sample item:', JSON.stringify(items[0], null, 2));
+      process.exit(1);
+    }
+    candidates.push(...fallback);
   }
 
-  // Sort by version descending (semantic version aware)
+  // Sort by versionNumber descending (the field name RDaaS actually uses)
   candidates.sort((a, b) => {
-    const va = String(a.version ?? a.Version ?? '0');
-    const vb = String(b.version ?? b.Version ?? '0');
-    // Compare each numeric segment
+    const va = String(a.versionNumber ?? a.version ?? '0');
+    const vb = String(b.versionNumber ?? b.version ?? '0');
     const partsA = va.split('.').map(Number);
     const partsB = vb.split('.').map(Number);
     for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
@@ -123,10 +152,10 @@ async function findLatestNaicsId() {
     return 0;
   });
 
-  const best = candidates[0];
-  const id      = best.id ?? best.ID ?? best.classificationId ?? best.ClassificationId;
-  const version = best.version ?? best.Version ?? 'unknown';
-  const title   = best.title?.en ?? best.titleEn ?? best.title ?? best.Title ?? '';
+  const best    = candidates[0];
+  const id      = idFromUrl(best['@id'] ?? best.id ?? best.ID ?? '');
+  const version = best.versionNumber ?? best.version ?? 'unknown';
+  const title   = best.name ?? best.title ?? '';
 
   if (!id) {
     console.error('Could not extract ID from best candidate:', JSON.stringify(best, null, 2));
@@ -138,27 +167,69 @@ async function findLatestNaicsId() {
 }
 
 /**
- * Paginate through all categories of the given classification.
- * Loops until a page shorter than PAGE_SIZE is returned.
+ * Fetch all categories for the given classification.
+ *
+ * The RDaaS categories/detailed endpoint returns the full set in a single
+ * response regardless of offset (it ignores the offset parameter). We try a
+ * large limit first; if that returns a full page we probe offset=PAGE_SIZE to
+ * detect whether the API actually paginates or just repeats the same data.
+ * Duplicates are detected via the first item's @id / code.
  */
 async function fetchAllCategories(classificationId) {
-  console.log('\nFetching NAICS categories (paginating)…');
-  const all = [];
-  let offset = 0;
+  console.log('\nFetching NAICS categories…');
+
+  // Try to get everything in one request
+  const firstData = await rdaasGet(
+    `/classification/${classificationId}/categories/detailed?offset=0&limit=9999`
+  );
+  const firstPage = extractArray(firstData);
+  console.log(`  Got ${firstPage.length} categories in initial request`);
+
+  if (firstPage.length === 0) {
+    console.error('  No categories returned — check the classification ID');
+    process.exit(1);
+  }
+
+  // If fewer than PAGE_SIZE came back, no pagination needed
+  if (firstPage.length < PAGE_SIZE) {
+    console.log(`  Total categories fetched: ${firstPage.length}`);
+    return firstPage;
+  }
+
+  // Probe offset=PAGE_SIZE to see if the API actually paginates
+  const probeData = await rdaasGet(
+    `/classification/${classificationId}/categories/detailed?offset=${PAGE_SIZE}&limit=${PAGE_SIZE}`
+  );
+  const probePage = extractArray(probeData);
+
+  const firstId = firstPage[0]?.['@id'] ?? firstPage[0]?.code ?? '';
+  const probeId = probePage[0]?.['@id'] ?? probePage[0]?.code ?? '';
+
+  if (probeId === firstId || probePage.length === 0) {
+    // API repeats the same data — we already have everything from the first fetch
+    console.log('  API does not paginate (returns full set in one shot)');
+    console.log(`  Total categories fetched: ${firstPage.length}`);
+    return firstPage;
+  }
+
+  // API does paginate — collect remaining pages
+  console.log('  Paginating…');
+  const all = [...firstPage];
+  let offset = PAGE_SIZE;
 
   while (true) {
     process.stdout.write(`  offset=${offset}… `);
     const data = await rdaasGet(
       `/classification/${classificationId}/categories/detailed?offset=${offset}&limit=${PAGE_SIZE}`
     );
-
-    const page = Array.isArray(data)
-      ? data
-      : (data.items ?? data.results ?? data.categories ?? []);
-
+    const page = extractArray(data);
     process.stdout.write(`got ${page.length}\n`);
-    all.push(...page);
 
+    if (page.length === 0) break;
+    const pid = page[0]?.['@id'] ?? page[0]?.code ?? '';
+    if (pid === firstId) { console.log('  Duplicate page detected — stopping'); break; }
+
+    all.push(...page);
     if (page.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
   }
@@ -175,25 +246,34 @@ function matchesNoise(text) {
 }
 
 // ---- Normalize raw category object --------------------------
-// RDaaS may use different field name casing across API versions.
+// RDaaS uses JSON-LD; field names vary by endpoint and version.
 function normalizeCategory(cat) {
+  // Code: plain "code" field, or extract from @id URL as last resort
   const code = (
-    cat.code ?? cat.Code ?? cat.memberCode ?? cat.MemberCode ?? ''
+    cat.code        ?? cat.Code        ??
+    cat.memberCode  ?? cat.MemberCode  ??
+    idFromUrl(cat['@id'])
   ).toString().trim();
 
+  // Descriptor: prefer explicit descriptor/description fields, then JSON-LD "name"
   const descriptor = (
-    cat.descriptor     ?? cat.Descriptor    ??
-    cat.descriptionEn  ??
+    cat.descriptor      ?? cat.Descriptor     ??
+    cat.descriptionEn   ??
     cat.description?.en ??
-    cat.title?.en      ??
-    cat.Title?.en      ??
-    cat.titleEn        ?? ''
+    cat.title?.en       ??
+    cat.Title?.en       ??
+    cat.titleEn         ??
+    cat.name            ??   // JSON-LD
+    cat.prefLabel?.en   ??   // SKOS
+    cat.prefLabel       ?? ''
   ).toString().trim();
 
   const definition = (
     cat.definition             ?? cat.Definition          ??
     cat.classDefinition?.en    ?? cat.ClassDefinition?.en ??
-    cat.inclusionExclusion?.en ?? ''
+    cat.inclusionExclusion?.en ??
+    cat.scopeNote?.en          ??
+    cat.scopeNote              ?? ''
   ).toString().trim();
 
   const levelDepth = cat.levelDepth ?? cat.LevelDepth ?? cat.depth ?? cat.Depth ?? null;
