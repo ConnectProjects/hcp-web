@@ -1,5 +1,4 @@
-# API keys and secrets — never commit these
-lead-finder/config.js
+# Seed script secrets — never commit
 lead-finder/.env
 lead-finder/node_modules/
 
