@@ -25,6 +25,8 @@ buildProvinceFilter();
 buildNaicsFilter();
 renderStats();
 renderTable();
+stampLastUpdated();
+startAutoRefresh();
 
 // ---- Data loading -------------------------------------------
 async function loadCompanies() {
@@ -356,6 +358,38 @@ document.getElementById('modal-save-btn').addEventListener('click', async () => 
   renderTable();
   renderStats();
   showToast(id === 'new' ? 'Lead added' : 'Lead updated', 'success');
+});
+
+// ---- Auto-refresh -------------------------------------------
+const REFRESH_INTERVAL = 60_000; // 1 minute, matching MasterDB heartbeat
+
+function stampLastUpdated() {
+  const el = document.getElementById('last-updated');
+  if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' });
+}
+
+async function doRefresh() {
+  // Don't refresh while the edit modal is open — would discard unsaved changes
+  if (!document.getElementById('edit-modal').classList.contains('hidden')) return;
+
+  await loadCompanies();
+  buildProvinceFilter();
+  renderStats();
+  renderTable();
+  stampLastUpdated();
+}
+
+function startAutoRefresh() {
+  setInterval(doRefresh, REFRESH_INTERVAL);
+}
+
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('refresh-btn');
+  btn.textContent = '…';
+  btn.disabled = true;
+  await doRefresh();
+  btn.textContent = '↺';
+  btn.disabled = false;
 });
 
 // ---- Utilities ----------------------------------------------
