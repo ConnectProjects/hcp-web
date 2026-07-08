@@ -88,6 +88,7 @@ async function loadExistingPlaceIds() {
 // ---- Search -------------------------------------------------
 let searchResults = [];
 let nextPageToken = null;
+let lastSearchBody = null;
 
 document.getElementById('search-form').addEventListener('submit', async e => {
   e.preventDefault();
@@ -137,7 +138,8 @@ async function runSearch() {
   status.textContent = `Querying: "${textQuery}"`;
 
   try {
-    const data = await fetchPlaces({ textQuery, maxResultCount: 20, languageCode: 'en' });
+    lastSearchBody = { textQuery, maxResultCount: 20, languageCode: 'en' };
+    const data = await fetchPlaces(lastSearchBody);
     searchResults = data.places ?? [];
     nextPageToken = data.nextPageToken ?? null;
 
@@ -160,7 +162,7 @@ document.getElementById('load-more-btn').addEventListener('click', async () => {
   btn.textContent = 'Loading…';
   lmStatus.textContent = '';
   try {
-    const data = await fetchPlaces({ pageToken: nextPageToken });
+    const data = await fetchPlaces({ ...lastSearchBody, pageToken: nextPageToken });
     const newPlaces = data.places ?? [];
     searchResults = [...searchResults, ...newPlaces];
     nextPageToken = data.nextPageToken ?? null;
