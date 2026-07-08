@@ -50,12 +50,16 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label>Narrow by noise-hazard NAICS category <span class="text-muted text-small">(optional — appends to query)</span></label>
-            <div id="naics-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+          <details class="naics-accordion" id="naics-accordion">
+            <summary class="naics-accordion__toggle">
+              <span>Narrow by noise-hazard NAICS category</span>
+              <span class="text-muted text-small" style="font-weight:400">(optional)</span>
+              <span class="naics-selected-badge hidden" id="naics-selected-count"></span>
+            </summary>
+            <div id="naics-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 0 4px">
               <span class="text-muted text-small">Loading categories…</span>
             </div>
-          </div>
+          </details>
 
           <div style="display:flex;align-items:center;gap:12px">
             <button type="submit" class="btn btn-primary" id="search-btn">Search Google Places</button>
@@ -90,6 +94,10 @@
             </thead>
             <tbody id="results-tbody"></tbody>
           </table>
+        </div>
+        <div id="load-more-wrap" class="hidden" style="padding:12px 20px;text-align:center;border-top:1px solid var(--grey-200)">
+          <button class="btn btn-secondary btn-sm" id="load-more-btn">Load more results</button>
+          <span class="text-muted text-small" id="load-more-status" style="margin-left:8px"></span>
         </div>
       </div>
 

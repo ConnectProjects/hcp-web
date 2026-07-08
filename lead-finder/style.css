@@ -493,6 +493,50 @@ html, body {
 .result-row input[type=checkbox] { cursor: pointer; }
 .result-row td { cursor: default; }
 
+/* ---- NAICS accordion ------------------------------------- */
+.naics-accordion {
+  border: 1px solid var(--grey-200);
+  border-radius: var(--radius);
+  background: var(--grey-50);
+  padding: 0 12px;
+  margin-bottom: 14px;
+}
+
+.naics-accordion__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--grey-700);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.naics-accordion__toggle::-webkit-details-marker { display: none; }
+.naics-accordion__toggle::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 16px;
+  color: var(--grey-400);
+  line-height: 1;
+  transition: transform .15s;
+}
+details[open].naics-accordion .naics-accordion__toggle::after {
+  transform: rotate(90deg);
+}
+
+.naics-selected-badge {
+  background: var(--brand);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 100px;
+  line-height: 1.6;
+}
+
 /* ---- NAICS Admin ----------------------------------------- */
 .admin-toggle { display: flex; gap: 0; }
 .admin-toggle input[type=radio] { display: none; }

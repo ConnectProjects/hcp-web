@@ -63,8 +63,20 @@ function renderNaicsChips() {
         label.style.background = '#fff';
         label.style.borderColor = 'var(--grey-300)';
       }
+      updateNaicsBadge();
     });
   });
+}
+
+function updateNaicsBadge() {
+  const badge = document.getElementById('naics-selected-count');
+  const n = selectedNaicsCodes.size;
+  if (n > 0) {
+    badge.textContent = `${n} selected`;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
 }
 
 async function loadExistingPlaceIds() {
@@ -74,11 +86,29 @@ async function loadExistingPlaceIds() {
 
 // ---- Search -------------------------------------------------
 let searchResults = [];
+let nextPageToken = null;
 
 document.getElementById('search-form').addEventListener('submit', async e => {
   e.preventDefault();
   await runSearch();
 });
+
+async function fetchPlaces(body) {
+  const res = await fetch(PLACES_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+      'X-Goog-FieldMask': PLACES_FIELDS,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Places API ${res.status}: ${errText.slice(0, 200)}`);
+  }
+  return res.json();
+}
 
 async function runSearch() {
   const query    = document.getElementById('search-query').value.trim();
@@ -106,31 +136,11 @@ async function runSearch() {
   status.textContent = `Querying: "${textQuery}"`;
 
   try {
-    const body = {
-      textQuery,
-      maxResultCount: 20,
-      languageCode: 'en',
-    };
-
-    const res = await fetch(PLACES_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-        'X-Goog-FieldMask': PLACES_FIELDS,
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Places API ${res.status}: ${errText.slice(0, 200)}`);
-    }
-
-    const data = await res.json();
+    const data = await fetchPlaces({ textQuery, maxResultCount: 20, languageCode: 'en' });
     searchResults = data.places ?? [];
+    nextPageToken = data.nextPageToken ?? null;
 
-    status.textContent = `Found ${searchResults.length} result(s)`;
+    status.textContent = `Found ${searchResults.length} result(s)${nextPageToken ? ' — more available' : ''}`;
     renderResults();
   } catch (err) {
     showToast('Search failed: ' + err.message, 'error');
@@ -141,7 +151,42 @@ async function runSearch() {
   }
 }
 
+document.getElementById('load-more-btn').addEventListener('click', async () => {
+  if (!nextPageToken) return;
+  const btn    = document.getElementById('load-more-btn');
+  const lmStatus = document.getElementById('load-more-status');
+  btn.disabled = true;
+  btn.textContent = 'Loading…';
+  lmStatus.textContent = '';
+  try {
+    const data = await fetchPlaces({ pageToken: nextPageToken });
+    const newPlaces = data.places ?? [];
+    searchResults = [...searchResults, ...newPlaces];
+    nextPageToken = data.nextPageToken ?? null;
+    document.getElementById('search-status').textContent =
+      `Found ${searchResults.length} result(s)${nextPageToken ? ' — more available' : ''}`;
+    renderResults();
+  } catch (err) {
+    showToast('Load more failed: ' + err.message, 'error');
+    lmStatus.textContent = 'Failed — try again';
+    btn.disabled = false;
+    btn.textContent = 'Load more results';
+  }
+});
+
 // ---- Render results -----------------------------------------
+function updateLoadMoreBtn() {
+  const wrap = document.getElementById('load-more-wrap');
+  const btn  = document.getElementById('load-more-btn');
+  if (nextPageToken) {
+    wrap.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Load more results';
+  } else {
+    wrap.classList.add('hidden');
+  }
+}
+
 function renderResults() {
   const wrap = document.getElementById('results-wrap');
   const tbody = document.getElementById('results-tbody');
@@ -158,6 +203,8 @@ function renderResults() {
 
   const alreadyN = searchResults.filter(p => existingPlaceIds.has(p.id)).length;
   alreadyCount.textContent = alreadyN > 0 ? `${alreadyN} already in your leads` : '';
+
+  updateLoadMoreBtn();
 
   tbody.innerHTML = searchResults.map((place, i) => {
     const name    = place.displayName?.text ?? '';
