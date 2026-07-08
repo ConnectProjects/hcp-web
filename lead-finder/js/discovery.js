@@ -14,6 +14,7 @@ const PLACES_FIELDS = [
   'places.types',
   'places.location',
   'places.shortFormattedAddress',
+  'nextPageToken',
 ].join(',');
 
 // ---- Boot ---------------------------------------------------
