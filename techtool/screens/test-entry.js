@@ -194,12 +194,12 @@ export function renderTestEntry(container, state, navigate) {
 
   container.querySelector('#btn-complete-test').onclick = async () => {
     // SCRAPE BEFORE SAVING
-    const testResult = { 
-        test_date: TimeService.getTimestamp(), 
-        tech_id: state.user.tech_id, 
-        history: {}, 
-        thresholds: {}, 
-        notes: container.querySelector('#tech-notes').value 
+    const testResult = {
+        test_date: localDate(),
+        tech_id: state.user.tech_id,
+        history: {},
+        thresholds: {},
+        tech_notes: container.querySelector('#tech-notes').value
     };
     container.querySelectorAll('.q-input').forEach(s => testResult.history[s.dataset.id] = s.value);
     container.querySelectorAll('.audio-input').forEach(s => testResult.thresholds[s.dataset.id] = parseInt(s.value));

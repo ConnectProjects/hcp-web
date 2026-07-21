@@ -274,13 +274,13 @@ function buildCompanyReport(companyId, locationIds, from, to) {
 
     const rows = query(`
       SELECT e.employee_id, e.first_name, e.last_name, e.hire_date, e.job_title,
-             t.test_id, t.test_date, t.test_type, t.classification, t.sts_flag, t.tech_id
+             t.test_id, DATE(t.test_date) AS test_date, t.test_type, t.classification, t.sts_flag, t.tech_id
       FROM employees e
       LEFT JOIN tests t ON t.test_id = (
         SELECT test_id FROM tests
         WHERE employee_id = e.employee_id
           AND location_id = ?
-          AND test_date BETWEEN ? AND ?
+          AND DATE(test_date) BETWEEN ? AND ?
         ORDER BY test_date DESC LIMIT 1
       )
       WHERE e.location_id = ? AND e.status = 'active'
@@ -402,7 +402,8 @@ function buildEmployeeReport(employeeId) {
   )
 
   const tests = query(`
-    SELECT t.*, h.hpd_make_model, h.rated_nrr, h.derated_nrr, h.lex8hr, h.protected_exposure, h.adequacy
+    SELECT t.*, DATE(t.test_date) AS test_date,
+           h.hpd_make_model, h.rated_nrr, h.derated_nrr, h.lex8hr, h.protected_exposure, h.adequacy
     FROM tests t
     LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
     WHERE t.employee_id = ?
@@ -501,7 +502,7 @@ function buildStsReport(companyId, locationIds, from, to) {
     if (!loc) return ''
 
     const rows = query(`
-      SELECT t.test_id, t.test_date, t.test_type, t.classification,
+      SELECT t.test_id, DATE(t.test_date) AS test_date, t.test_type, t.classification,
              t.triggering_ear, t.triggering_freq_hz, t.shift_db,
              t.counsel_text, t.tech_id,
              e.first_name, e.last_name, e.job_title,
@@ -510,7 +511,7 @@ function buildStsReport(companyId, locationIds, from, to) {
       JOIN employees e ON e.employee_id = t.employee_id
       LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
       WHERE t.location_id = ?
-        AND t.test_date BETWEEN ? AND ?
+        AND DATE(t.test_date) BETWEEN ? AND ?
         AND t.sts_flag = 1
       ORDER BY t.test_date DESC, e.last_name, e.first_name
     `, [locId, from, to])
@@ -717,7 +718,7 @@ function exportCompanyXlsx(companyId, locationIds, from, to) {
       FROM employees e
       LEFT JOIN tests t ON t.test_id = (
         SELECT test_id FROM tests
-        WHERE employee_id = e.employee_id AND location_id = ? AND test_date BETWEEN ? AND ?
+        WHERE employee_id = e.employee_id AND location_id = ? AND DATE(test_date) BETWEEN ? AND ?
         ORDER BY test_date DESC LIMIT 1
       )
       WHERE e.location_id = ? AND e.status = 'active'
@@ -736,7 +737,7 @@ function exportCompanyXlsx(companyId, locationIds, from, to) {
 
     const detailRows = query(`
       SELECT e.last_name, e.first_name, e.dob, e.hire_date, e.job_title,
-             t.test_date, t.test_type, t.province, t.classification, t.sts_flag,
+             DATE(t.test_date) AS test_date, t.test_type, t.province, t.classification, t.sts_flag,
              t.left_500,  t.left_1k,  t.left_2k,  t.left_3k,  t.left_4k,  t.left_6k,  t.left_8k,
              t.right_500, t.right_1k, t.right_2k, t.right_3k, t.right_4k, t.right_6k, t.right_8k,
              t.triggering_ear, t.triggering_freq_hz, t.shift_db,
@@ -745,7 +746,7 @@ function exportCompanyXlsx(companyId, locationIds, from, to) {
       FROM tests t
       JOIN employees e ON e.employee_id = t.employee_id
       LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
-      WHERE t.location_id = ? AND t.test_date BETWEEN ? AND ?
+      WHERE t.location_id = ? AND DATE(t.test_date) BETWEEN ? AND ?
       ORDER BY e.last_name, e.first_name, t.test_date DESC
     `, [locId, from, to])
 
