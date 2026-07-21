@@ -115,9 +115,9 @@ export async function scanAndImportInbox(folder) {
       )?.company_id ?? coName
 
       run(`INSERT OR REPLACE INTO packets
-        (packet_id, company_id, tech_id, visit_date, filename, status, updated_at)
-        VALUES (?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-        [packetId, companyId, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+        (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+        [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
       )
 
       const { imported } = importPacket(packet, packetId)

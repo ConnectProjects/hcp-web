@@ -349,9 +349,9 @@ async function checkSyncFolder(container, state, navigate) {
           [`pending_packet_${packet.packet_id}`, JSON.stringify(packet)]
         )
         run(`INSERT OR REPLACE INTO packets
-          (packet_id, company_id, tech_id, visit_date, filename, status, updated_at)
-          VALUES (?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-          [packet.packet_id, companyId, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+          (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+          [packet.packet_id, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
         )
         await moveJsonFile(folder, 'inbox', 'archive', name)
         saved++
