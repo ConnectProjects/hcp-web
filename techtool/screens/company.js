@@ -111,18 +111,41 @@ export function renderCompany(container, state, navigate) {
   if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
       const val = durationInput?.value?.trim()
-      
+
       if (!val) {
         alert('Please enter the total testing duration (e.g. 4.5) to submit this packet.')
         durationInput?.focus()
         return
       }
 
-      // Update packet with duration
-      packet.testing_duration = val
-      await import('../db/idb.js').then(m => m.savePacket(packet))
-      
-      navigate('sync')
+      if (!state.syncFolder) {
+        alert('No OneDrive folder connected. Go to Sync to connect first.')
+        return
+      }
+
+      submitBtn.disabled = true
+      submitBtn.textContent = 'Submitting…'
+
+      try {
+        packet.testing_duration = val
+        packet.status = 'submitted'
+
+        const { writeJsonFile, deleteJsonFile } = await import('@shared/fs/sync-folder.js')
+        const { savePacket } = await import('../db/idb.js')
+
+        await writeJsonFile(state.syncFolder, 'inbox', `FINAL_${packet.filename}`, packet)
+        if (state.user?.folder_name) {
+          await deleteJsonFile(state.syncFolder, `techs/${state.user.folder_name}`, packet.filename)
+        }
+        await savePacket(packet)
+        alert('Visit submitted successfully!')
+        navigate('dashboard')
+      } catch (err) {
+        packet.status = 'active'
+        submitBtn.disabled = false
+        submitBtn.textContent = 'Submit Packet →'
+        alert('Error submitting: ' + err.message)
+      }
     })
   }
 }

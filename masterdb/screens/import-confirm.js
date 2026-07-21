@@ -318,12 +318,11 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
           )
         : null
 
-      if (!defaultLocation) {
+      // Fall back to name match (handles id mismatch between devices)
+      if (!defaultLocation && packet.location?.name) {
         defaultLocation = queryOne(
-          `SELECT * FROM locations
-           WHERE company_id = ?
-           LIMIT 1`,
-          [resolvedCompany.company_id]
+          `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`,
+          [resolvedCompany.company_id, packet.location.name]
         )
       }
 

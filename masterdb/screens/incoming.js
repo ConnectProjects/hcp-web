@@ -174,9 +174,9 @@ async function checkInbox(container, state, navigate) {
         )?.company_id ?? coName
 
         run(`INSERT OR REPLACE INTO packets
-          (packet_id, company_id, tech_id, visit_date, filename, status, updated_at)
-          VALUES (?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-          [packetId, companyId, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+          (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+          [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
         )
 
         const { imported, error } = importPacket(packet, packetId)
@@ -243,14 +243,27 @@ run(`INSERT INTO companies
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
-      let defaultLocation = queryOne(
-        `SELECT * FROM locations WHERE company_id = ? LIMIT 1`,
-        [resolvedCompany.company_id]
-      )
+      // Try exact match by location_id from the packet
+      let defaultLocation = packet.location?.location_id
+        ? queryOne(
+            `SELECT * FROM locations WHERE location_id = ? AND company_id = ?`,
+            [packet.location.location_id, resolvedCompany.company_id]
+          )
+        : null
 
+      // Fall back to name match (handles id mismatch between devices)
+      if (!defaultLocation && packet.location?.name) {
+        defaultLocation = queryOne(
+          `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`,
+          [resolvedCompany.company_id, packet.location.name]
+        )
+      }
+
+      // Create location if this company has none yet
       if (!defaultLocation) {
+        const locName = packet.location?.name ?? `${resolvedCompany.name} Main Location`
         run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)`,
-          [resolvedCompany.company_id, `${resolvedCompany.name} Main Location`, resolvedCompany.province ?? province]
+          [resolvedCompany.company_id, locName, resolvedCompany.province ?? province]
         )
         defaultLocation = queryOne(
           `SELECT * FROM locations WHERE company_id = ? ORDER BY location_id DESC LIMIT 1`,
