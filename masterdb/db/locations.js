@@ -167,13 +167,28 @@ export function getAllBaselinesForEmployee(employeeId) {
 
 export function buildPacketEmployees(locationId) {
   const employees = query(`
-    SELECT * FROM employees 
+    SELECT * FROM employees
     WHERE location_id = ? AND status = 'active'
     ORDER BY last_name, first_name
   `, [locationId]);
 
+  // The last 2 dates when ANY testing was done at this location — these are the "last 2 visits".
+  // We limit per-employee tests to these dates so employees who missed recent visits
+  // don't bring in older tests from a third or fourth visit.
+  const visitDates = query(
+    `SELECT DISTINCT test_date FROM tests WHERE location_id = ? ORDER BY test_date DESC LIMIT 2`,
+    [locationId]
+  ).map(r => r.test_date)
+
   return employees.map(emp => {
-    const priorTests = query(`SELECT * FROM tests WHERE employee_id = ? AND location_id = ? ORDER BY test_date DESC LIMIT 2`, [emp.employee_id, locationId]);
+    let priorTests = []
+    if (visitDates.length > 0) {
+      const ph = visitDates.map(() => '?').join(',')
+      priorTests = query(
+        `SELECT * FROM tests WHERE employee_id = ? AND location_id = ? AND test_date IN (${ph}) ORDER BY test_date DESC`,
+        [emp.employee_id, locationId, ...visitDates]
+      )
+    }
 
     let baseline = queryOne(`
       SELECT 

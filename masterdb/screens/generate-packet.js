@@ -119,6 +119,12 @@ function doPreview(container, location, state) {
   const loc       = getLocation(locationId)
   const employees = buildPacketEmployees(locationId)
 
+  const withPrior    = employees.filter(e => e.prior_tests?.length > 0)
+  const withBaseline = employees.filter(e => e.baseline)
+
+  // Collect the distinct visit dates actually included across all employees
+  const includedDates = [...new Set(employees.flatMap(e => (e.prior_tests ?? []).map(t => t.test_date)))].sort().reverse()
+
   container.querySelector('#preview-content').innerHTML = `
     <div class="preview-card">
       <div class="preview-row"><span>Location</span><strong>${esc(loc.name)}</strong></div>
@@ -126,14 +132,19 @@ function doPreview(container, location, state) {
       <div class="preview-row"><span>Province</span><strong>${esc(loc.province)}</strong></div>
       <div class="preview-row"><span>Visit Date</span><strong>${visitDate}</strong></div>
       <div class="preview-row"><span>Employees in packet</span><strong>${employees.length}</strong></div>
-      <div class="preview-row"><span>Employees with baseline</span><strong>${employees.filter(e => e.baseline).length}</strong></div>
+      <div class="preview-row"><span>Employees with baseline</span><strong>${withBaseline.length}</strong></div>
+      <div class="preview-row"><span>Employees with prior tests</span><strong>${withPrior.length}</strong></div>
+      <div class="preview-row"><span>Prior test visit dates</span><strong>${includedDates.length > 0 ? includedDates.join(', ') : '— none —'}</strong></div>
       <div class="preview-row"><span>Tech</span><strong>${techId ? esc(techId) : '— not selected —'}</strong></div>
     </div>
     <div class="preview-emp-list">
       ${employees.slice(0, 10).map(e =>
         `<div class="preview-emp-row">
           <span>${esc(e.last_name)}, ${esc(e.first_name)}</span>
-          <span class="td-muted">${e.baseline ? 'Baseline on file' : 'No baseline'}</span>
+          <span class="td-muted">
+            ${e.baseline ? 'Baseline on file' : 'No baseline'}
+            ${e.prior_tests?.length ? ` · ${e.prior_tests.length} prior test${e.prior_tests.length > 1 ? 's' : ''}` : ''}
+          </span>
         </div>`
       ).join('')}
       ${employees.length > 10 ? `<div class="preview-emp-more">+ ${employees.length - 10} more</div>` : ''}
