@@ -557,8 +557,10 @@ textarea { resize: vertical; }
 .packet-status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
 .packet-status--pending  { background: var(--navy-light);  color: var(--navy-mid); }
 .packet-status--submitted { background: var(--green-bg);  color: var(--green);   border: 1px solid var(--green-bd); }
-.packet-status--imported  { background: var(--grey-100);  color: var(--grey-500); }
-.packet-status--archived  { background: var(--grey-100);  color: var(--grey-400); }
+.packet-status--imported        { background: var(--grey-100);  color: var(--grey-500); }
+.packet-status--archived        { background: var(--grey-100);  color: var(--grey-400); }
+.packet-status--removed_by_tech { background: #fff3cd;           color: #856404;          border: 1px solid #ffc107; }
+.packets-count--warn            { background: #fff3cd;           color: #856404; }
 
 /* ---- Province rules screen ------------------------------- */
 .rules-intro { background: #fff; border: 1px solid var(--grey-200); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 20px; font-size: 14px; }

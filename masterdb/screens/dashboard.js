@@ -16,8 +16,9 @@ async function refreshPacketStatuses(packets, syncFolder) {
     try {
       const sf = await readJsonFile(syncFolder, 'status', `${p.packet_id}.json`)
       const remote = sf?.status
-      if (remote === 'active'    && p.status === 'pending')                        { updatePacketStatus(p.packet_id, 'active');    updated++ }
-      if (remote === 'cancelled' && !['cancelled', 'imported'].includes(p.status)) { updatePacketStatus(p.packet_id, 'cancelled'); updated++ }
+      if (remote === 'active'           && p.status === 'pending')                                    { updatePacketStatus(p.packet_id, 'active');           updated++ }
+      if (remote === 'cancelled'        && !['cancelled', 'imported'].includes(p.status))             { updatePacketStatus(p.packet_id, 'cancelled');        updated++ }
+      if (remote === 'removed_by_tech'  && !['removed_by_tech', 'imported'].includes(p.status))      { updatePacketStatus(p.packet_id, 'removed_by_tech');  updated++ }
     } catch { /* no status file yet */ }
   }
   return updated

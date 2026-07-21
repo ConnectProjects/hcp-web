@@ -23,10 +23,11 @@ export function renderPackets(container, state, navigate) {
     // Status filter
     if (f.status !== 'all') {
       const map = {
-        pending:   p => p.status === 'pending',
-        submitted: p => p.status === 'submitted',
-        imported:  p => p.status === 'imported' || p.status === 'archived',
-        rejected:  p => p.status === 'rejected',
+        pending:         p => p.status === 'pending' || p.status === 'active',
+        submitted:       p => p.status === 'submitted',
+        imported:        p => p.status === 'imported' || p.status === 'archived',
+        rejected:        p => p.status === 'rejected',
+        removed_by_tech: p => p.status === 'removed_by_tech',
       };
       if (map[f.status]) all = all.filter(map[f.status]);
     }
@@ -37,10 +38,11 @@ export function renderPackets(container, state, navigate) {
       return f.sort === 'asc' ? da.localeCompare(db) : db.localeCompare(da);
     });
 
-    const pending   = all.filter(p => p.status === 'pending');
-    const submitted = all.filter(p => p.status === 'submitted');
-    const rejected  = all.filter(p => p.status === 'rejected');
-    const recent    = all.filter(p => p.status === 'imported' || p.status === 'archived');
+    const pending        = all.filter(p => p.status === 'pending' || p.status === 'active');
+    const submitted      = all.filter(p => p.status === 'submitted');
+    const rejected       = all.filter(p => p.status === 'rejected');
+    const removedByTech  = all.filter(p => p.status === 'removed_by_tech');
+    const recent         = all.filter(p => p.status === 'imported' || p.status === 'archived');
 
     container.innerHTML = `
       <div class="page">
@@ -57,11 +59,12 @@ export function renderPackets(container, state, navigate) {
         <div class="toolbar" style="display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:10px; margin-bottom:20px;">
           <input id="pkt-search" type="search" class="search-input" placeholder="Search company, location, tech…" value="${esc(f.search)}" />
           <select id="pkt-status" class="search-input">
-            <option value="all"      ${f.status==='all'      ?'selected':''}>All Statuses</option>
-            <option value="pending"  ${f.status==='pending'  ?'selected':''}>In the Field</option>
-            <option value="submitted"${f.status==='submitted'?'selected':''}>Ready to Import</option>
-            <option value="imported" ${f.status==='imported' ?'selected':''}>Completed</option>
-            <option value="rejected" ${f.status==='rejected' ?'selected':''}>Rejected</option>
+            <option value="all"             ${f.status==='all'             ?'selected':''}>All Statuses</option>
+            <option value="pending"         ${f.status==='pending'         ?'selected':''}>In the Field</option>
+            <option value="submitted"       ${f.status==='submitted'       ?'selected':''}>Ready to Import</option>
+            <option value="imported"        ${f.status==='imported'        ?'selected':''}>Completed</option>
+            <option value="rejected"        ${f.status==='rejected'        ?'selected':''}>Rejected</option>
+            <option value="removed_by_tech" ${f.status==='removed_by_tech' ?'selected':''}>Removed by Technician</option>
           </select>
           <select id="pkt-sort" class="search-input">
             <option value="desc" ${f.sort==='desc'?'selected':''}>Newest First</option>
@@ -105,6 +108,15 @@ export function renderPackets(container, state, navigate) {
             ${rejected.length === 0 ? '<p class="empty-note">No rejected packets.</p>' : packetTable(rejected, false, navigate)}
           </div>
         ` : ''}
+
+        ${f.status === 'all' || f.status === 'removed_by_tech' ? removedByTech.length > 0 ? `
+          <div class="packets-group">
+            <div class="packets-group-head">
+              <h2>Removed by Technician <span class="packets-count packets-count--warn">${removedByTech.length}</span></h2>
+            </div>
+            ${packetTable(removedByTech, false, navigate)}
+          </div>
+        ` : (f.status === 'removed_by_tech' ? '<p class="empty-note">No packets removed by technician.</p>' : '') : ''}
 
         ${all.length === 0 ? '<p class="empty-note" style="padding:40px;text-align:center;color:#999">No packets match your filters.</p>' : ''}
       </div>
@@ -235,7 +247,15 @@ function packetTable(packets, showReview, navigate) {
 }
 
 function statusLabel(s) {
-  return { pending: 'In Field', submitted: 'Ready to Import', imported: 'Imported', archived: 'Archived', rejected: 'Rejected' }[s] ?? s;
+  return {
+    pending:         'In Field',
+    active:          'In Field',
+    submitted:       'Ready to Import',
+    imported:        'Imported',
+    archived:        'Archived',
+    rejected:        'Rejected',
+    removed_by_tech: 'Removed by Technician',
+  }[s] ?? s;
 }
 
 function esc(s) {

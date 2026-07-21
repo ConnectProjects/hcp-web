@@ -106,6 +106,7 @@ function packetCard(packet, today) {
 
   const canCancel = doneCount === 0 &&
     (packet.status === PACKET_STATUS.SYNCED || packet.status === PACKET_STATUS.PENDING)
+  const canRemove = doneCount > 0 && packet.status !== PACKET_STATUS.SUBMITTED
 
   return `
     <div class="packet-card ${isToday ? 'packet-card--today' : ''}" data-packet-id="${packet.packet_id}">
@@ -125,6 +126,12 @@ function packetCard(packet, today) {
             Cancel this visit
           </button>
         ` : ''}
+        ${canRemove ? `
+          <button class="btn-remove-visit" data-remove-id="${packet.packet_id}"
+            style="margin-top:6px; font-size:11px; color:#9b2335; background:none; border:none; padding:0; cursor:pointer; text-decoration:underline;">
+            Remove from device
+          </button>
+        ` : ''}
       </div>
       <div class="packet-card__arrow">›</div>
     </div>
@@ -134,7 +141,7 @@ function packetCard(packet, today) {
 function attachCardHandlers(container, state, navigate) {
   container.querySelectorAll('.packet-card').forEach(card => {
     card.addEventListener('click', e => {
-      if (e.target.closest('.btn-cancel-visit')) return
+      if (e.target.closest('.btn-cancel-visit') || e.target.closest('.btn-remove-visit')) return
       const id = card.dataset.packetId
       const packet = state.packets.find(p => p.packet_id === id)
       if (packet) navigate('company', { currentPacket: packet })
@@ -145,6 +152,13 @@ function attachCardHandlers(container, state, navigate) {
     btn.addEventListener('click', async e => {
       e.stopPropagation()
       await doCancelVisit(btn.dataset.cancelId, container, state, navigate)
+    })
+  })
+
+  container.querySelectorAll('.btn-remove-visit').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation()
+      await doRemoveVisit(btn.dataset.removeId, container, state, navigate)
     })
   })
 }
@@ -285,6 +299,50 @@ async function doCancelVisit(packetId, container, state, navigate) {
     showBanner(banner, 'info', 'Visit cancelled. Please notify the office.')
   } catch (e) {
     if (e.name !== 'AbortError') alert('Could not cancel visit: ' + e.message)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tech-side remove (in-progress packet returned to office)
+// ---------------------------------------------------------------------------
+
+async function doRemoveVisit(packetId, container, state, navigate) {
+  if (!confirm('Remove this packet from your device?\n\nThe office will see it marked as "Removed by Technician". Please notify the office of any partial results.')) return
+
+  try {
+    let folder = state.syncFolder
+    if (!folder) {
+      folder = await getSyncFolder()
+      if (!folder) folder = await pickSyncFolder()
+      state.syncFolder = folder
+    }
+
+    if (folder) {
+      await writeJsonFile(folder, 'status', `${packetId}.json`, {
+        packet_id:  packetId,
+        status:     'removed_by_tech',
+        removed_at: new Date().toISOString(),
+        removed_by: state.user?.user_id ?? 'tech'
+      })
+    }
+
+    await deletePacket(packetId)
+    state.packets = await getAllPackets()
+
+    const main   = container.querySelector('.screen-body')
+    const today  = localDate()
+    const sorted = [...state.packets].sort((a, b) =>
+      (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? '')
+    )
+    main.innerHTML = sorted.length === 0
+      ? '<div class="empty-state"><p>No packets on this device.</p></div>'
+      : sorted.map(p => packetCard(p, today)).join('')
+    attachCardHandlers(container, state, navigate)
+
+    const banner = container.querySelector('#sync-banner')
+    showBanner(banner, 'info', 'Packet removed from device. Please notify the office.')
+  } catch (e) {
+    if (e.name !== 'AbortError') alert('Could not remove packet: ' + e.message)
   }
 }
 
