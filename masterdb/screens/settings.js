@@ -108,6 +108,26 @@ export function renderSettings(container, state, navigate) {
           ${isDemoLoaded() ? `<button class="btn btn-outline btn-sm" id="btn-clear-demo" style="color:var(--red); margin-left:10px">Clear Demo Data</button>` : ''}
         </section>
 
+        <!-- 7. SQL Console -->
+        <section class="settings-section">
+          <h2>SQL Console</h2>
+          <p class="section-desc">Run queries for diagnostics and data recovery. SELECT returns a table; UPDATE/DELETE/INSERT executes silently.</p>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-outline btn-sm" id="btn-diag-mismatch">⚠ Location Mismatches</button>
+            <button class="btn btn-outline btn-sm" id="btn-diag-dupes">Duplicate Employees</button>
+          </div>
+          <textarea id="sql-input" spellcheck="false"
+            style="width:100%;height:110px;font-family:monospace;font-size:12px;padding:8px;
+                   box-sizing:border-box;border:1px solid #ccc;border-radius:4px;resize:vertical"
+            placeholder="SELECT ..."></textarea>
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+            <button class="btn btn-primary btn-sm" id="btn-run-sql">Run</button>
+            <button class="btn btn-ghost btn-sm" id="btn-clear-sql">Clear</button>
+            <span id="sql-row-count" style="font-size:12px;color:#666"></span>
+          </div>
+          <div id="sql-results" style="margin-top:10px;overflow-x:auto;font-size:12px;max-height:400px;overflow-y:auto"></div>
+        </section>
+
       </div>
     </div>
   `
@@ -170,6 +190,78 @@ export function renderSettings(container, state, navigate) {
   };
 
   container.querySelector('#btn-export-db').onclick = () => exportDB();
+
+  // --- SQL Console ---
+
+  const MISMATCH_SQL =
+`SELECT c.name AS company, lp.name AS expected_location,
+  lt.name AS stored_location,
+  e.first_name, e.last_name, t.test_date, t.test_id, e.employee_id
+FROM tests t
+JOIN packets p  ON p.packet_id   = t.packet_id
+JOIN employees e ON e.employee_id = t.employee_id
+JOIN locations lt ON lt.location_id = t.location_id
+JOIN locations lp ON lp.location_id = p.location_id
+JOIN companies c  ON c.company_id   = lp.company_id
+WHERE t.location_id != p.location_id
+  AND p.location_id IS NOT NULL
+ORDER BY t.test_date DESC`
+
+  const DUPES_SQL =
+`SELECT c.name AS company, l.name AS location,
+  e.first_name, e.last_name, COUNT(*) AS occurrences,
+  GROUP_CONCAT(e.employee_id) AS employee_ids
+FROM employees e
+JOIN locations l ON l.location_id = e.location_id
+JOIN companies c ON c.company_id  = l.company_id
+GROUP BY l.company_id, e.first_name, e.last_name
+HAVING occurrences > 1
+ORDER BY company, last_name, first_name`
+
+  const sqlInput   = container.querySelector('#sql-input')
+  const sqlResults = container.querySelector('#sql-results')
+  const sqlCount   = container.querySelector('#sql-row-count')
+
+  container.querySelector('#btn-diag-mismatch').onclick = () => { sqlInput.value = MISMATCH_SQL }
+  container.querySelector('#btn-diag-dupes').onclick    = () => { sqlInput.value = DUPES_SQL }
+
+  container.querySelector('#btn-clear-sql').onclick = () => {
+    sqlInput.value = ''
+    sqlResults.innerHTML = ''
+    sqlCount.textContent = ''
+  }
+
+  container.querySelector('#btn-run-sql').onclick = () => {
+    const sql = sqlInput.value.trim()
+    if (!sql) return
+    sqlResults.innerHTML = ''
+    sqlCount.textContent = ''
+    try {
+      if (/^\s*SELECT/i.test(sql)) {
+        const rows = query(sql)
+        if (!rows.length) {
+          sqlResults.innerHTML = '<em style="color:#666">No results.</em>'
+          return
+        }
+        const cols = Object.keys(rows[0])
+        sqlResults.innerHTML = `
+          <table class="data-table" style="width:100%">
+            <thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${rows.map(r =>
+                `<tr>${cols.map(c => `<td>${esc(String(r[c] ?? ''))}</td>`).join('')}</tr>`
+              ).join('')}
+            </tbody>
+          </table>`
+        sqlCount.textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''}`
+      } else {
+        run(sql)
+        sqlResults.innerHTML = '<span style="color:green">✓ Executed.</span>'
+      }
+    } catch (e) {
+      sqlResults.innerHTML = `<span style="color:var(--red)">Error: ${esc(e.message)}</span>`
+    }
+  }
 }
 
 // --- UTILS ---
