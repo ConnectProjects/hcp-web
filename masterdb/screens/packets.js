@@ -215,7 +215,7 @@ function packetTable(packets, showReview, navigate) {
             </td>
             <td><span class="province-badge">${esc(p.province)}</span></td>
             <td>${p.visit_date ?? '—'}</td>
-            <td>${esc(p.tech_id ?? '—')}</td>
+            <td>${esc(p.tech_name || p.tech_id || '—')}</td>
             <td><span class="packet-status packet-status--${p.status}">${statusLabel(p.status)}</span></td>
             <td style="text-align:right">
               <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">

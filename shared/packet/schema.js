@@ -107,6 +107,7 @@ export function createPacket({ company, location, employees, rules, counselTempl
     employees: employees.map(emp => ({
       employee_id:    emp.employee_id,
       first_name:     emp.first_name,
+      middle_name:    emp.middle_name    ?? null,
       last_name:      emp.last_name,
       dob:            emp.dob            ?? null,
       hire_date:      emp.hire_date      ?? null,
@@ -120,8 +121,8 @@ export function createPacket({ company, location, employees, rules, counselTempl
         thresholds:   extractThresholds(emp.baseline)
       } : null,
 
-      // Last 3 periodic tests, newest first
-      prior_tests: (emp.prior_tests ?? []).slice(0, 3).map(t => ({
+      // Last 2 tests from this location, newest first
+      prior_tests: (emp.prior_tests ?? []).slice(0, 2).map(t => ({
         test_id:        t.test_id,
         test_date:      t.test_date,
         classification: t.classification ?? null,
@@ -209,11 +210,12 @@ export function markEmployeeSkipped(packet, employeeId, reason) {
  * @param {string} [opts.tenure]
  * @returns {object} Updated packet (mutates in place)
  */
-export function addNewEmployee(packet, { first_name, last_name, job_title = null, dob = null, sin_last_4 = null, phone = null, email = null, tenure = null }) {
+export function addNewEmployee(packet, { first_name, middle_name = null, last_name, job_title = null, dob = null, sin_last_4 = null, phone = null, email = null, tenure = null }) {
   const tempId = 'new_' + Date.now()
   packet.employees.push({
     employee_id:     tempId,
     first_name,
+    middle_name,
     last_name,
     dob,
     sin_last_4,

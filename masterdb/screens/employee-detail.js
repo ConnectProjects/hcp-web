@@ -77,8 +77,8 @@ function redraw(container, state, navigate, empId) {
             <span class="ckpi-n">${tests.length}</span>
             <span>Tests</span>
           </div>
-          <div class="ckpi ${baseline ? '' : 'ckpi--warn'}">
-            <span class="ckpi-n">${baseline ? '✓' : '✗'}</span>
+          <div class="ckpi ${baseline && hasThresholdData(baseline) ? '' : 'ckpi--warn'}">
+            <span class="ckpi-n">${baseline && hasThresholdData(baseline) ? '✓' : '✗'}</span>
             <span>Baseline</span>
           </div>
           <div class="ckpi ${tests.some(t => t.sts_flag) ? 'ckpi--warn' : ''}">
@@ -89,7 +89,7 @@ function redraw(container, state, navigate, empId) {
       </div>
 
       <!-- Baseline audiogram -->
-      ${baseline ? `
+      ${baseline && hasThresholdData(baseline) ? `
         <div class="form-card" style="margin-bottom:16px">
           <div class="form-card-header">
             <h2>Baseline Audiogram <span class="td-muted" style="font-size:12px;font-weight:400">· ${esc(baseline.test_date)}</span></h2>
@@ -130,7 +130,7 @@ function redraw(container, state, navigate, empId) {
           <div class="form-grid">
             <div class="form-group">
               <label>Test Date *</label>
-              <input type="date" id="mt-date" value="${new Date().toISOString().slice(0,10)}" />
+              <input type="date" id="mt-date" value="${new Date().toLocaleDateString('en-CA')}" />
             </div>
             <div class="form-group">
               <label>Test Type *</label>
@@ -242,7 +242,7 @@ function redraw(container, state, navigate, empId) {
 
   container.querySelector('#btn-manual-test').addEventListener('click', () => {
     container.querySelector('#mt-test-id').value = ''
-    container.querySelector('#mt-date').value    = new Date().toISOString().slice(0,10)
+    container.querySelector('#mt-date').value    = new Date().toLocaleDateString('en-CA')
     container.querySelector('#mt-type').value    = 'Periodic'
     container.querySelectorAll('.thresh-input').forEach(i => i.value = '')
     testModal.classList.remove('hidden')
@@ -431,6 +431,12 @@ function parseClassification(val) {
 function parseJson(val) {
   if (!val) return null
   try { return typeof val === 'string' ? JSON.parse(val) : val } catch { return null }
+}
+
+function hasThresholdData(record) {
+  const keys = ['left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
+                 'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k']
+  return keys.some(k => record[k] != null)
 }
 
 function adequacyClass(a) {

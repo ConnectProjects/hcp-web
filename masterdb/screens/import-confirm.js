@@ -282,6 +282,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
   try {
     const province = packet.company?.province ?? 'BC'
     let   imported = 0
+    let   skippedEmpty = 0
     let   resolvedCompany = company
 
     transaction(() => {
@@ -385,6 +386,15 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
         }
 
         for (const test of emp.completed_tests) {
+          // Skip tests with no threshold data
+          const thresholds = test.thresholds ?? {}
+          const hasData = Object.values(thresholds).some(v => v != null && v !== '')
+          if (!hasData) {
+            console.warn(`Skipping test for ${emp.last_name} on ${test.test_date}: no threshold data`)
+            skippedEmpty++
+            continue
+          }
+
           // Prevention: Check if this specific test already exists
           const existingTest = queryOne(
             `SELECT test_id FROM tests
@@ -445,7 +455,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
     run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
     state._importCoId = null
 
-    sucEl.textContent = `✓ Imported ${imported} test(s).`
+    sucEl.textContent = `✓ Imported ${imported} test(s)${skippedEmpty > 0 ? ` · ${skippedEmpty} skipped (no threshold data)` : ''}.`
     sucEl.classList.remove('hidden')
     btn.textContent = '✓ Imported'
 

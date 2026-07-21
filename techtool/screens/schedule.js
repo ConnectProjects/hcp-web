@@ -40,7 +40,7 @@ export async function pullPacketsFromFolder(folder, user) {
 export function renderSchedule(container, state, navigate) {
   const user    = state.user
   const packets = state.packets ?? []
-  const today   = new Date().toISOString().slice(0, 10)
+  const today   = localDate()
 
   const sorted = [...packets].sort((a, b) =>
     (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? '')
@@ -94,9 +94,7 @@ function packetCard(packet, today) {
   const isToday   = visitDate === today
   const empCount  = packet.employees?.length ?? 0
   const doneCount = packet.employees?.filter(e => e.completed_tests?.length > 0).length ?? 0
-  const dateLabel = visitDate
-    ? new Date(visitDate + 'T12:00:00').toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' })
-    : 'No date'
+  const dateLabel = visitDate || 'No date'
 
   let statusBadge
   if (doneCount > 0 && doneCount === empCount)
@@ -229,7 +227,7 @@ async function doSync(container, state, navigate) {
 
     // Refresh list in place
     const main   = container.querySelector('.screen-body')
-    const today  = new Date().toISOString().slice(0, 10)
+    const today  = localDate()
     const sorted = [...state.packets].sort((a, b) =>
       (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? '')
     )
@@ -274,7 +272,7 @@ async function doCancelVisit(packetId, container, state, navigate) {
     state.packets = await getAllPackets()
 
     const main   = container.querySelector('.screen-body')
-    const today  = new Date().toISOString().slice(0, 10)
+    const today  = localDate()
     const sorted = [...state.packets].sort((a, b) =>
       (a.visit?.visit_date ?? '').localeCompare(b.visit?.visit_date ?? '')
     )
@@ -299,4 +297,9 @@ function showBanner(el, type, msg) {
 function userName(user) {
   if (!user) return 'Tech'
   return user.name ?? user.initials ?? 'Tech'
+}
+
+function localDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }

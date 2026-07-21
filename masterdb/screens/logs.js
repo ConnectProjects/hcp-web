@@ -24,7 +24,7 @@ export function renderLogs(container, state, navigate) {
     // Get distinct action types for filter dropdown
     const actions = query("SELECT DISTINCT action FROM system_log ORDER BY action").map(r => r.action);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA');
 
     container.innerHTML = `
       <div class="page">

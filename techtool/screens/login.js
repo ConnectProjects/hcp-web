@@ -160,7 +160,7 @@ function esc(s) {
 
 async function runDemoMode(state, navigate) {
     // Keep your existing Demo logic here...
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('en-CA');
     state.user = { name: 'Demo Tech', initials: 'DT', tech_id: 'DT', folder_name: null };
     state.packets = []; // Add demo packets if desired
     navigate('dashboard');

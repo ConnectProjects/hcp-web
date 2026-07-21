@@ -94,7 +94,7 @@ export function renderDashboard(container, state, navigate) {
           <span class="kpi-strip-lbl">In Field</span>
         </div>
         <div class="kpi-strip-date">
-          <span>${new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+          <span>${new Date().toLocaleDateString('en-CA')}</span>
           <button class="btn-hard-refresh" onclick="location.reload(true)" title="Hard refresh (Ctrl+Shift+R)">↺</button>
         </div>
       </div>

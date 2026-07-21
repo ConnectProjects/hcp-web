@@ -13,7 +13,7 @@ export function renderGeneratePacket(container, state, navigate) {
     : null
 
   const techs = getTechs()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('en-CA')
 
   container.innerHTML = `
     <div class="page">

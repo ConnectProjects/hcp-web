@@ -7,7 +7,7 @@ export function renderReports(container, state, navigate) {
   const companies = getAllCompanies()
   const tab       = state.reportTab ?? 'company'
   const yr        = new Date().getFullYear()
-  const today     = new Date().toISOString().slice(0, 10)
+  const today     = new Date().toLocaleDateString('en-CA')
   const yrStart   = `${yr}-01-01`
 
   const coOptions = companies.map(c =>
@@ -36,8 +36,12 @@ export function renderReports(container, state, navigate) {
               <select id="rc-company"><option value="">— select —</option>${coOptions}</select>
             </div>
             <div class="form-group">
-              <label>Year</label>
-              <input id="rc-year" type="number" value="${yr}" min="2010" max="${yr + 1}" style="width:90px" />
+              <label>From</label>
+              <input id="rc-from" type="date" value="${yrStart}" />
+            </div>
+            <div class="form-group">
+              <label>To</label>
+              <input id="rc-to" type="date" value="${today}" />
             </div>
             <div class="form-group" style="flex:1;min-width:200px">
               <label>Locations <span class="label-hint">(select company first)</span></label>
@@ -134,12 +138,24 @@ export function renderReports(container, state, navigate) {
       wrap.innerHTML = '<span style="color:var(--grey-400);font-size:13px">No locations found.</span>'
       return
     }
-    wrap.innerHTML = locs.map(l => `
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" class="loc-checkbox" value="${l.location_id}" checked />
-        ${esc(l.name)} <span class="province-badge" style="font-size:11px">${esc(l.province)}</span>
-      </label>
-    `).join('')
+    wrap.innerHTML = `
+      <div style="display:flex;gap:12px;margin-bottom:4px">
+        <button type="button" class="btn btn-link btn-sm loc-select-all" style="padding:0;font-size:12px">Select All</button>
+        <button type="button" class="btn btn-link btn-sm loc-deselect-all" style="padding:0;font-size:12px">Deselect All</button>
+      </div>
+      ${locs.map(l => `
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" class="loc-checkbox" value="${l.location_id}" />
+          ${esc(l.name)} <span class="province-badge" style="font-size:11px">${esc(l.province)}</span>
+        </label>
+      `).join('')}
+    `
+    wrap.querySelector('.loc-select-all').addEventListener('click', () => {
+      wrap.querySelectorAll('.loc-checkbox').forEach(cb => { cb.checked = true })
+    })
+    wrap.querySelector('.loc-deselect-all').addEventListener('click', () => {
+      wrap.querySelectorAll('.loc-checkbox').forEach(cb => { cb.checked = false })
+    })
   }
 
   function getCheckedLocationIds(containerId) {
@@ -154,21 +170,23 @@ export function renderReports(container, state, navigate) {
     })
 
     container.querySelector('#btn-gen').addEventListener('click', () => {
-      const companyId  = Number(container.querySelector('#rc-company').value)
-      const year       = container.querySelector('#rc-year').value
+      const companyId   = Number(container.querySelector('#rc-company').value)
+      const from        = container.querySelector('#rc-from').value
+      const to          = container.querySelector('#rc-to').value
       const locationIds = getCheckedLocationIds('rc-locations')
-      if (!companyId || !year)         { alert('Select a company and year.'); return }
+      if (!companyId || !from || !to)  { alert('Select a company and date range.'); return }
       if (locationIds.length === 0)    { alert('Select at least one location.'); return }
-      showReport(buildCompanyReport(companyId, locationIds, year))
+      showReport(buildCompanyReport(companyId, locationIds, from, to))
     })
 
     container.querySelector('#btn-export-xlsx').addEventListener('click', () => {
       const companyId   = Number(container.querySelector('#rc-company').value)
-      const year        = container.querySelector('#rc-year').value
+      const from        = container.querySelector('#rc-from').value
+      const to          = container.querySelector('#rc-to').value
       const locationIds = getCheckedLocationIds('rc-locations')
-      if (!companyId || !year)      { alert('Select a company and year.'); return }
-      if (locationIds.length === 0) { alert('Select at least one location.'); return }
-      exportCompanyXlsx(companyId, locationIds, year)
+      if (!companyId || !from || !to)  { alert('Select a company and date range.'); return }
+      if (locationIds.length === 0)    { alert('Select at least one location.'); return }
+      exportCompanyXlsx(companyId, locationIds, from, to)
     })
   }
 
@@ -240,11 +258,11 @@ export function renderReports(container, state, navigate) {
 // Company Annual Report — sections per location
 // ---------------------------------------------------------------------------
 
-function buildCompanyReport(companyId, locationIds, year) {
+function buildCompanyReport(companyId, locationIds, from, to) {
   const co = queryOne('SELECT * FROM companies WHERE company_id = ?', [companyId])
   if (!co) return '<p class="alert alert-error">Company not found.</p>'
 
-  const genDate = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genDate = new Date().toLocaleDateString('en-CA')
 
   // Grand totals across all selected locations
   let grandTotal = 0, grandTested = 0
@@ -262,12 +280,12 @@ function buildCompanyReport(companyId, locationIds, year) {
         SELECT test_id FROM tests
         WHERE employee_id = e.employee_id
           AND location_id = ?
-          AND test_date LIKE ?
+          AND test_date BETWEEN ? AND ?
         ORDER BY test_date DESC LIMIT 1
       )
       WHERE e.location_id = ? AND e.status = 'active'
       ORDER BY e.last_name, e.first_name
-    `, [locId, `${year}-%`, locId])
+    `, [locId, from, to, locId])
 
     const tested = rows.filter(r => r.test_id != null)
     const counts = { N: 0, NC: 0, EW: 0, EWC: 0, A: 0, AC: 0 }
@@ -303,7 +321,7 @@ function buildCompanyReport(companyId, locationIds, year) {
 
         <div class="report-stats-row" style="margin-bottom:12px">
           <div class="report-stat"><span class="stat-n">${rows.length}</span><span class="stat-lbl">Active Employees</span></div>
-          <div class="report-stat"><span class="stat-n">${tested.length}</span><span class="stat-lbl">Tested ${year}</span></div>
+          <div class="report-stat"><span class="stat-n">${tested.length}</span><span class="stat-lbl">Tested in Period</span></div>
           <div class="report-stat"><span class="stat-n">${counts.N + counts.NC}</span><span class="stat-lbl">Normal / No Change</span></div>
           <div class="report-stat report-stat--ew"><span class="stat-n">${counts.EW + counts.EWC}</span><span class="stat-lbl">Early Warning</span></div>
           <div class="report-stat report-stat--abn"><span class="stat-n">${counts.A + counts.AC}</span><span class="stat-lbl">Abnormal</span></div>
@@ -330,7 +348,7 @@ function buildCompanyReport(companyId, locationIds, year) {
       <div class="report-header">
         <div>
           <div class="report-brand">HCP-Web · MasterDB</div>
-          <h1 class="report-title">Annual Hearing Test Report — ${year}</h1>
+          <h1 class="report-title">Hearing Test Report — ${from} to ${to}</h1>
           <div class="report-meta">${esc(co.name)} · ${locationIds.length} location${locationIds.length !== 1 ? 's' : ''} · Generated ${genDate}</div>
         </div>
       </div>
@@ -342,7 +360,7 @@ function buildCompanyReport(companyId, locationIds, year) {
         </div>
         <div class="report-stats-row">
           <div class="report-stat"><span class="stat-n">${grandTotal}</span><span class="stat-lbl">Active Employees</span></div>
-          <div class="report-stat"><span class="stat-n">${grandTested}</span><span class="stat-lbl">Tested ${year}</span></div>
+          <div class="report-stat"><span class="stat-n">${grandTested}</span><span class="stat-lbl">Tested in Period</span></div>
           <div class="report-stat"><span class="stat-n">${grandCounts.N + grandCounts.NC}</span><span class="stat-lbl">Normal / No Change</span></div>
           <div class="report-stat report-stat--ew"><span class="stat-n">${grandCounts.EW + grandCounts.EWC}</span><span class="stat-lbl">Early Warning</span></div>
           <div class="report-stat report-stat--abn"><span class="stat-n">${grandCounts.A + grandCounts.AC}</span><span class="stat-lbl">Abnormal</span></div>
@@ -352,7 +370,7 @@ function buildCompanyReport(companyId, locationIds, year) {
       ${locationSections}
 
       <div class="report-footer">
-        ${esc(co.name)} — Hearing Conservation Program · ${year} Annual Report
+        ${esc(co.name)} — Hearing Conservation Program · ${from} to ${to}
       </div>
     </div>
   `
@@ -474,7 +492,7 @@ function buildStsReport(companyId, locationIds, from, to) {
   const co = queryOne('SELECT * FROM companies WHERE company_id = ?', [companyId])
   if (!co) return '<p class="alert alert-error">Company not found.</p>'
 
-  const genDate = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genDate = new Date().toLocaleDateString('en-CA')
 
   let grandTotal = 0
 
@@ -630,7 +648,7 @@ function buildAudTechReport(from, to) {
     `
   }).join('')
 
-  const genDate       = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genDate       = new Date().toLocaleDateString('en-CA')
   const totalAllTests = rows.reduce((acc, r) => acc + r.test_count, 0)
   const totalAllHours = rows.reduce((acc, r) => acc + (parseFloat(r.testing_duration) || 0), 0)
 
@@ -664,7 +682,7 @@ function buildAudTechReport(from, to) {
 // Excel Export — Company Annual (multi-location, one sheet per location)
 // ---------------------------------------------------------------------------
 
-function exportCompanyXlsx(companyId, locationIds, year) {
+function exportCompanyXlsx(companyId, locationIds, from, to) {
   const XLSX = window.XLSX
   if (!XLSX) { alert('Excel library not loaded. Please refresh and try again.'); return }
 
@@ -699,11 +717,11 @@ function exportCompanyXlsx(companyId, locationIds, year) {
       FROM employees e
       LEFT JOIN tests t ON t.test_id = (
         SELECT test_id FROM tests
-        WHERE employee_id = e.employee_id AND location_id = ? AND test_date LIKE ?
+        WHERE employee_id = e.employee_id AND location_id = ? AND test_date BETWEEN ? AND ?
         ORDER BY test_date DESC LIMIT 1
       )
       WHERE e.location_id = ? AND e.status = 'active'
-    `, [locId, `${year}-%`, locId])
+    `, [locId, from, to, locId])
 
     const tested = summaryRows.filter(r => r.test_id != null)
     const counts = { N: 0, NC: 0, EW: 0, EWC: 0, A: 0, AC: 0 }
@@ -727,9 +745,9 @@ function exportCompanyXlsx(companyId, locationIds, year) {
       FROM tests t
       JOIN employees e ON e.employee_id = t.employee_id
       LEFT JOIN hpd_assessments h ON h.test_id = t.test_id
-      WHERE t.location_id = ? AND t.test_date LIKE ?
+      WHERE t.location_id = ? AND t.test_date BETWEEN ? AND ?
       ORDER BY e.last_name, e.first_name, t.test_date DESC
-    `, [locId, `${year}-%`])
+    `, [locId, from, to])
 
     for (const r of detailRows) {
       allDetailRows.push([
@@ -751,15 +769,16 @@ function exportCompanyXlsx(companyId, locationIds, year) {
 
   // Summary sheet
   const summarySheet = [
-    [`${co.name} — Annual Hearing Test Report ${year}`],
+    [`${co.name} — Hearing Test Report ${from} to ${to}`],
     [],
     ['Company',   co.name],
     ['Locations', locationIds.length],
-    ['Year',      year],
+    ['From',      from],
+    ['To',        to],
     ['Generated', new Date().toLocaleDateString('en-CA')],
     [],
     ['COMBINED SUMMARY'],
-    ['Active Employees', `Tested in ${year}`, 'Not Tested', 'Normal / No Change', 'Early Warning', 'Abnormal'],
+    ['Active Employees', 'Tested in Period', 'Not Tested', 'Normal / No Change', 'Early Warning', 'Abnormal'],
     [grandRows, grandTested, grandRows - grandTested,
      grandCounts.N + grandCounts.NC, grandCounts.EW + grandCounts.EWC, grandCounts.A + grandCounts.AC]
   ]
@@ -779,7 +798,7 @@ function exportCompanyXlsx(companyId, locationIds, year) {
   XLSX.utils.book_append_sheet(wb, ws2, 'Test Detail')
 
   const safeName = co.name.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_')
-  const filename  = `${safeName}_${year}_HearingTestReport.xlsx`
+  const filename  = `${safeName}_${from}_to_${to}_HearingTestReport.xlsx`
 
   const wbout = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
   const blob  = new Blob([wbout], { type: 'application/octet-stream' })

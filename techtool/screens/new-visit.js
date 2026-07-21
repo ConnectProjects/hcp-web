@@ -32,7 +32,7 @@ export async function renderNewVisit(container, state, navigate) {
     coName:       d.coName       ?? '',
     locationName: d.locationName ?? '',
     province:     d.province     ?? 'BC',
-    visitDate:    d.visitDate    ?? new Date().toISOString().slice(0, 10),
+    visitDate:    d.visitDate    ?? new Date().toLocaleDateString('en-CA'),
     coNotes:      d.coNotes      ?? ''
   }
 

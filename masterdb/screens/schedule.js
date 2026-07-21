@@ -3,7 +3,8 @@ import { getAllCompanies }           from '../db/companies.js'
 import { getTechs }                 from '../db/packets.js'
 
 export function renderSchedule(container, state, navigate) {
-  const today   = new Date().toISOString().slice(0, 10)
+  const d = new Date()
+  const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
   const upcoming = query(`
     SELECT s.*, c.name AS company_name, c.province
     FROM schedules s
@@ -133,8 +134,7 @@ export function renderSchedule(container, state, navigate) {
 }
 
 function scheduleRow(s, past) {
-  const dateLabel = new Date(s.visit_date + 'T12:00:00').toLocaleDateString('en-CA',
-    { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  const dateLabel = s.visit_date
   return `
     <div class="schedule-row ${past ? 'schedule-row--past' : ''}">
       <div class="sched-date">${dateLabel}</div>

@@ -11,6 +11,7 @@ export function getAllPackets() {
       COALESCE(c.name, '')  AS company_name,
       COALESCE(l.name, '')  AS location_name,
       COALESCE(l.province, '') AS province,
+      COALESCE(u.name, '')        AS tech_name,
       COALESCE(u.folder_name, t.folder_name) AS tech_folder_name
     FROM packets p
     LEFT JOIN companies c ON c.company_id = p.company_id

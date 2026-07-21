@@ -173,7 +173,7 @@ export function buildPacketEmployees(locationId) {
   `, [locationId]);
 
   return employees.map(emp => {
-    const priorTests = query(`SELECT * FROM tests WHERE employee_id = ? ORDER BY test_date DESC LIMIT 3`, [emp.employee_id]);
+    const priorTests = query(`SELECT * FROM tests WHERE employee_id = ? AND location_id = ? ORDER BY test_date DESC LIMIT 2`, [emp.employee_id, locationId]);
 
     let baseline = queryOne(`
       SELECT 

@@ -14,9 +14,9 @@ export function renderTestEntry(container, state, navigate) {
       
       <!-- 1. Green Header Box -->
       <div class="test-header-box">
-          <div class="header-item"><strong>Worker</strong><span>${esc(emp.last_name)}, ${esc(emp.first_name)}</span></div>
+          <div class="header-item"><strong>Worker</strong><span>${esc(emp.last_name)}, ${esc(emp.first_name)}${emp.middle_name ? ' ' + esc(emp.middle_name) : ''}</span></div>
           <div class="header-item"><strong>Employer</strong><span>${esc(packet?.company?.name || 'Manual')}</span></div>
-          <div class="header-item"><strong>Date</strong><span>${new Date().toISOString().split('T')[0]}</span></div>
+          <div class="header-item"><strong>Date</strong><span>${localDate()}</span></div>
       </div>
 
       <button class="btn btn-ghost" id="btn-back">❮ Back to List</button>
@@ -235,4 +235,9 @@ function renderAudioInput(ear, freq, curVal = "") {
 
 function renderAudiogramSVG(ear) { return `<svg viewBox="0 0 300 240" style="width:100%; height:100%;"><rect x="40" y="40" width="240" height="70" fill="#76B214" opacity="0.1" /><g stroke="#eee" stroke-width="1">${[500, 1000, 2000, 3000, 4000, 6000, 8000].map((f, i) => `<line x1="${40+(i*40)}" y1="20" x2="${40+(i*40)}" y2="220" />`).join('')}${ [0, 20, 40, 60, 80, 100].map((db) => `<line x1="40" y1="${40+((db+10)*2)}" x2="280" y2="${40+((db+10)*2)}" />`).join('')}</g><line x1="40" y1="110" x2="280" y2="110" stroke="#76B214" stroke-width="2" stroke-dasharray="5,3" /><polyline id="base-path-${ear}" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.4" /><g id="base-markers-${ear}" opacity="0.5"></g><polyline id="path-${ear}" fill="none" stroke="${ear === 'L' ? '#0056b3' : '#d9534f'}" stroke-width="2.5" /><g id="markers-${ear}"></g></svg>`; }
 function updateAudiogramPlot(container, ear, baseline) { const freqs = [500, 1000, 2000, 3000, 4000, 6000, 8000]; const baseMarkers = container.querySelector(`#base-markers-${ear}`); const basePath = container.querySelector(`#base-path-${ear}`); if (baseline && baseMarkers.innerHTML === '') { const basePoints = []; const source = baseline.thresholds || baseline; freqs.forEach((f, i) => { const key = (ear === 'L' ? 'left_' : 'right_') + (f >= 1000 ? (f/1000)+'k' : f); const foundKey = Object.keys(source).find(k => k.toLowerCase() === key.toLowerCase()); const val = foundKey ? source[foundKey] : null; if (val !== undefined && val !== null) { const x = 40 + (i * 40), y = 40 + ((parseInt(val) + 10) * 2); basePoints.push(`${x},${y}`); baseMarkers.innerHTML += `<circle cx="${x}" cy="${y}" r="3" fill="#999" />`; } }); basePath.setAttribute('points', basePoints.join(' ')); } const points = []; const markers = container.querySelector(`#markers-${ear}`); const path = container.querySelector(`#path-${ear}`); markers.innerHTML = ''; freqs.forEach((f, i) => { const val = container.querySelector(`.audio-input[data-ear="${ear}"][data-freq="${f}"]`).value; if (val !== "") { const x = 40 + (i * 40), y = 40 + ((parseInt(val) + 10) * 2); points.push(`${x},${y}`); if (ear === 'L') markers.innerHTML += `<g stroke="#0056b3" stroke-width="2"><line x1="${x-5}" y1="${y-5}" x2="${x+5}" y2="${y+5}" /><line x1="${x+5}" y1="${y-5}" x2="${x-5}" y2="${y+5}" /></g>`; else markers.innerHTML += `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="#d9534f" stroke-width="2.5" />`; } }); path.setAttribute('points', points.join(' ')); }
+function localDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
