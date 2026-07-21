@@ -214,17 +214,15 @@ function packetTable(packets, showReview, navigate) {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Company / Location</th><th>Province</th><th>Visit Date</th>
+          <th>Company</th><th>Location</th><th>Province</th><th>Visit Date</th>
           <th>Tech</th><th>Status</th><th></th>
         </tr>
       </thead>
       <tbody>
         ${packets.map(p => `
           <tr>
-            <td>
-              <div class="td-primary">${esc(p.company_name)}</div>
-              <div class="td-muted" style="font-size:11px">${esc(p.location_name)}</div>
-            </td>
+            <td>${esc(p.company_name)}</td>
+            <td>${esc(p.location_name) || '—'}</td>
             <td><span class="province-badge">${esc(p.province)}</span></td>
             <td>${p.visit_date ?? '—'}</td>
             <td>${esc(p.tech_name || p.tech_id || '—')}</td>
