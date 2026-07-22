@@ -265,18 +265,19 @@ function buildCompanyReport(companyId, locationIds, from, to) {
   const genDate = new Date().toLocaleDateString('en-CA')
 
   // Grand totals across all selected locations
-  let grandTotal = 0, grandTested = 0
+  let grandTested = 0
   const grandCounts = { N: 0, NC: 0, EW: 0, EWC: 0, A: 0, AC: 0 }
 
   const locationSections = locationIds.map(locId => {
     const loc = queryOne('SELECT * FROM locations WHERE location_id = ?', [locId])
     if (!loc) return ''
 
+    // Only employees who were actually tested in the date range
     const rows = query(`
-      SELECT e.employee_id, e.first_name, e.last_name, e.hire_date, e.job_title,
-             t.test_id, DATE(t.test_date) AS test_date, t.test_type, t.classification, t.sts_flag, t.tech_id
+      SELECT e.first_name, e.last_name, e.job_title,
+             DATE(t.test_date) AS test_date, t.test_type, t.classification, t.sts_flag, t.tech_id
       FROM employees e
-      LEFT JOIN tests t ON t.test_id = (
+      JOIN tests t ON t.test_id = (
         SELECT test_id FROM tests
         WHERE employee_id = e.employee_id
           AND location_id = ?
@@ -287,16 +288,13 @@ function buildCompanyReport(companyId, locationIds, from, to) {
       ORDER BY e.last_name, e.first_name
     `, [locId, from, to, locId])
 
-    const tested = rows.filter(r => r.test_id != null)
     const counts = { N: 0, NC: 0, EW: 0, EWC: 0, A: 0, AC: 0 }
-    for (const r of tested) {
+    for (const r of rows) {
       const cat = parseCat(r.classification)
       if (cat in counts) counts[cat]++
     }
 
-    // Accumulate grand totals
-    grandTotal  += rows.length
-    grandTested += tested.length
+    grandTested += rows.length
     for (const k of Object.keys(grandCounts)) grandCounts[k] += counts[k]
 
     const tableRows = rows.map(r => {
@@ -304,37 +302,31 @@ function buildCompanyReport(companyId, locationIds, from, to) {
       return `<tr>
         <td>${esc(r.last_name)}, ${esc(r.first_name)}</td>
         <td>${r.job_title ? esc(r.job_title) : '—'}</td>
-        <td>${r.hire_date ?? '—'}</td>
-        <td>${r.test_date ?? '<span style="color:#aaa">—</span>'}</td>
-        <td>${r.test_type ?? '—'}</td>
-        <td>${r.test_id ? catBadge(cat) : '—'}</td>
+        <td>${r.test_date}</td>
+        <td>${esc(r.test_type)}</td>
+        <td>${catBadge(cat)}</td>
       </tr>`
     }).join('')
 
     return `
-      <div class="report-location-section" style="margin-bottom:32px;page-break-inside:avoid">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;
-                    border-bottom:2px solid var(--navy-mid);padding-bottom:6px;margin-bottom:12px">
-          <h2 style="margin:0;font-size:16px;color:var(--navy)">${esc(loc.name)}</h2>
+      <div class="report-location-section" style="margin-bottom:24px;page-break-inside:avoid">
+        <div class="report-loc-header">
+          <h2>${esc(loc.name)}</h2>
           <span class="province-badge">${esc(loc.province)}</span>
         </div>
 
-        <div class="report-stats-row" style="margin-bottom:12px">
-          <div class="report-stat"><span class="stat-n">${rows.length}</span><span class="stat-lbl">Active Employees</span></div>
-          <div class="report-stat"><span class="stat-n">${tested.length}</span><span class="stat-lbl">Tested in Period</span></div>
-          <div class="report-stat"><span class="stat-n">${counts.N + counts.NC}</span><span class="stat-lbl">Normal / No Change</span></div>
-          <div class="report-stat report-stat--ew"><span class="stat-n">${counts.EW + counts.EWC}</span><span class="stat-lbl">Early Warning</span></div>
-          <div class="report-stat report-stat--abn"><span class="stat-n">${counts.A + counts.AC}</span><span class="stat-lbl">Abnormal</span></div>
+        <div class="report-summary-line">
+          <span>Tested: <strong>${rows.length}</strong></span>
+          <span>Normal / No Change: <strong>${counts.N + counts.NC}</strong></span>
+          ${counts.EW + counts.EWC > 0 ? `<span class="s-ew">Early Warning: <strong>${counts.EW + counts.EWC}</strong></span>` : ''}
+          ${counts.A  + counts.AC  > 0 ? `<span class="s-abn">Abnormal: <strong>${counts.A + counts.AC}</strong></span>`   : ''}
         </div>
 
         ${rows.length === 0
-          ? '<p style="color:#999;font-size:13px">No active employees at this location.</p>'
+          ? '<p style="color:#999;font-size:13px">No employees tested at this location in this period.</p>'
           : `<table class="report-table">
               <thead>
-                <tr>
-                  <th>Employee</th><th>Job Title</th><th>Hire Date</th>
-                  <th>Test Date</th><th>Type</th><th>Result</th>
-                </tr>
+                <tr><th>Employee</th><th>Job Title</th><th>Test Date</th><th>Type</th><th>Result</th></tr>
               </thead>
               <tbody>${tableRows}</tbody>
             </table>`
@@ -353,19 +345,14 @@ function buildCompanyReport(companyId, locationIds, from, to) {
         </div>
       </div>
 
-      <!-- Grand summary -->
-      <div style="margin-bottom:24px">
-        <div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--grey-500);margin-bottom:8px">
-          Combined Summary — All Selected Locations
-        </div>
-        <div class="report-stats-row">
-          <div class="report-stat"><span class="stat-n">${grandTotal}</span><span class="stat-lbl">Active Employees</span></div>
-          <div class="report-stat"><span class="stat-n">${grandTested}</span><span class="stat-lbl">Tested in Period</span></div>
-          <div class="report-stat"><span class="stat-n">${grandCounts.N + grandCounts.NC}</span><span class="stat-lbl">Normal / No Change</span></div>
-          <div class="report-stat report-stat--ew"><span class="stat-n">${grandCounts.EW + grandCounts.EWC}</span><span class="stat-lbl">Early Warning</span></div>
-          <div class="report-stat report-stat--abn"><span class="stat-n">${grandCounts.A + grandCounts.AC}</span><span class="stat-lbl">Abnormal</span></div>
-        </div>
-      </div>
+      ${locationIds.length > 1 ? `
+      <div class="report-summary-line" style="margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--grey-200)">
+        <strong style="color:var(--navy)">All locations —</strong>
+        <span>Tested: <strong>${grandTested}</strong></span>
+        <span>Normal / No Change: <strong>${grandCounts.N + grandCounts.NC}</strong></span>
+        ${grandCounts.EW + grandCounts.EWC > 0 ? `<span class="s-ew">Early Warning: <strong>${grandCounts.EW + grandCounts.EWC}</strong></span>` : ''}
+        ${grandCounts.A  + grandCounts.AC  > 0 ? `<span class="s-abn">Abnormal: <strong>${grandCounts.A + grandCounts.AC}</strong></span>`   : ''}
+      </div>` : ''}
 
       ${locationSections}
 
@@ -663,11 +650,11 @@ function buildAudTechReport(from, to) {
         </div>
       </div>
 
-      <div class="report-stats-row">
-        <div class="report-stat"><span class="stat-n">${Object.keys(techs).length}</span><span class="stat-lbl">Active Techs</span></div>
-        <div class="report-stat"><span class="stat-n">${rows.length}</span><span class="stat-lbl">Total Visits</span></div>
-        <div class="report-stat"><span class="stat-n">${totalAllTests}</span><span class="stat-lbl">Total Tests</span></div>
-        <div class="report-stat"><span class="stat-n">${totalAllHours.toFixed(1)}</span><span class="stat-lbl">Total Hours</span></div>
+      <div class="report-summary-line" style="margin-bottom:18px">
+        <span>Techs: <strong>${Object.keys(techs).length}</strong></span>
+        <span>Visits: <strong>${rows.length}</strong></span>
+        <span>Tests: <strong>${totalAllTests}</strong></span>
+        <span>Hours: <strong>${totalAllHours.toFixed(1)}</strong></span>
       </div>
 
       ${rows.length === 0

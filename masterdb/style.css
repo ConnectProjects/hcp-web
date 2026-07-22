@@ -501,31 +501,33 @@ textarea { resize: vertical; }
 .report-preview  { margin-top: 8px; }
 
 /* Report document */
-.report-print { max-width: 860px; }
-.report-header { display: flex; align-items: flex-start; border-bottom: 3px solid var(--navy); padding-bottom: 14px; margin-bottom: 20px; }
-.report-brand  { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--grey-500); text-transform: uppercase; margin-bottom: 4px; }
-.report-title  { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
-.report-meta   { font-size: 13px; color: var(--grey-500); line-height: 1.5; }
-.report-footer { margin-top: 32px; padding-top: 10px; border-top: 1px solid var(--grey-200); font-size: 11px; color: var(--grey-400); }
+.report-print  { max-width: 820px; }
+.report-header { display: flex; align-items: flex-start; border-bottom: 2px solid var(--navy); padding-bottom: 10px; margin-bottom: 14px; }
+.report-brand  { font-size: 10px; font-weight: 600; letter-spacing: .06em; color: var(--grey-500); text-transform: uppercase; margin-bottom: 3px; }
+.report-title  { font-size: 18px; font-weight: 700; color: var(--navy); margin-bottom: 3px; }
+.report-meta   { font-size: 12px; color: var(--grey-500); line-height: 1.4; }
+.report-footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid var(--grey-200); font-size: 11px; color: var(--grey-400); }
 
-/* Stats row */
-.report-stats-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-.report-stat      { background: var(--grey-50); border: 1px solid var(--grey-200); border-radius: var(--radius); padding: 12px 16px; display: flex; flex-direction: column; align-items: center; min-width: 110px; }
-.report-stat--ew  { background: #fffbeb; border-color: #f59e0b; }
-.report-stat--abn { background: #fef2f2; border-color: var(--red); }
-.stat-n   { font-size: 26px; font-weight: 700; color: var(--navy); line-height: 1; }
-.stat-lbl { font-size: 11px; color: var(--grey-500); margin-top: 4px; text-align: center; }
+/* Compact summary line — replaces the big stat boxes */
+.report-summary-line       { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; font-size: 13px; color: var(--grey-600); margin-bottom: 10px; }
+.report-summary-line strong { color: var(--navy); font-weight: 600; }
+.report-summary-line .s-ew  { color: #b45309; }
+.report-summary-line .s-abn { color: var(--red); }
+
+/* Location section header in company report */
+.report-loc-header    { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--grey-300); padding-bottom: 4px; margin-bottom: 8px; }
+.report-loc-header h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--navy); }
 
 /* Report table */
-.report-table             { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
-.report-table thead th    { background: var(--navy); color: #fff; padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.report-table             { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
+.report-table thead th    { background: var(--navy); color: #fff; padding: 5px 8px; text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .report-table tbody tr:nth-child(even) { background: var(--grey-50); }
-.report-table tbody td    { padding: 7px 10px; border-bottom: 1px solid var(--grey-100); vertical-align: top; }
+.report-table tbody td    { padding: 5px 8px; border-bottom: 1px solid var(--grey-100); vertical-align: top; }
 
 /* Employee report */
-.report-emp-info    { background: var(--grey-50); border: 1px solid var(--grey-200); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
-.report-emp-name    { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
-.report-emp-details { font-size: 13px; color: var(--grey-600); margin-bottom: 4px; }
+.report-emp-info    { background: var(--grey-50); border: 1px solid var(--grey-200); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 14px; }
+.report-emp-name    { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.report-emp-details { font-size: 12px; color: var(--grey-600); margin-bottom: 3px; }
 .report-audiogram-wrap  { margin-bottom: 20px; }
 .report-section-label   { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--grey-500); margin-bottom: 8px; margin-top: 20px; }
 .report-counsel-box     { background: var(--grey-50); border-left: 3px solid var(--navy-mid); padding: 14px 16px; margin-top: 16px; border-radius: 0 var(--radius) var(--radius) 0; }
