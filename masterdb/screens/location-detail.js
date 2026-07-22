@@ -7,7 +7,6 @@ import { logAction } from '../db/sqlite.js'
 export function renderLocationDetail(container, state, navigate) {
   const locationId = state.currentLocation?.location_id
   if (!locationId) { navigate('companies'); return }
-
   redraw(container, state, navigate, locationId)
 }
 
@@ -16,11 +15,15 @@ function redraw(container, state, navigate, locationId) {
   if (!location)  { navigate('companies'); return }
 
   const employees   = getEmployeesByLocation(locationId)
-  const recentTests = getRecentTests(locationId, 10)
+  const recentTests = getRecentTests(locationId, 500)
   const stsFlags    = getSTSFlags(locationId)
   const hpdInv      = getHPDInventory(locationId)
 
   let activeTab = state.params?.tab ?? 'employees'
+
+  // Filter state — persists across tab re-renders without a full redraw
+  const empF  = { search: '', sort: 'name_asc' }
+  const testF = { search: '', sort: 'date_desc' }
 
   container.innerHTML = `
     <div class="page">
@@ -51,17 +54,10 @@ function redraw(container, state, navigate, locationId) {
           ${location.address ? `<div class="company-address">${esc(location.address)}${location.postal_code ? ', ' + esc(location.postal_code) : ''}</div>` : ''}
         </div>
         <div class="company-kpis">
-          <div class="ckpi">
-            <span class="ckpi-n">${employees.length}</span>
-            <span>Employees</span>
-          </div>
-          <div class="ckpi">
-            <span class="ckpi-n">${recentTests.length}</span>
-            <span>Recent Tests</span>
-          </div>
+          <div class="ckpi"><span class="ckpi-n">${employees.length}</span><span>Employees</span></div>
+          <div class="ckpi"><span class="ckpi-n">${recentTests.length}</span><span>Recent Tests</span></div>
           <div class="ckpi ${stsFlags.length > 0 ? 'ckpi--warn' : ''}">
-            <span class="ckpi-n">${stsFlags.length}</span>
-            <span>STS Flags</span>
+            <span class="ckpi-n">${stsFlags.length}</span><span>STS Flags</span>
           </div>
         </div>
       </div>
@@ -86,9 +82,7 @@ function redraw(container, state, navigate, locationId) {
         </button>
       </div>
 
-      <div id="tab-content">
-        ${renderTab(activeTab, employees, recentTests, stsFlags, hpdInv)}
-      </div>
+      <div id="tab-content"></div>
     </div>
 
     <!-- Add/Edit Employee modal -->
@@ -99,9 +93,7 @@ function redraw(container, state, navigate, locationId) {
           <h2 id="emp-modal-title">Add Employee</h2>
           <button class="modal-close" id="modal-close-emp">✕</button>
         </div>
-        <div class="modal-body" id="emp-modal-body">
-          ${employeeForm()}
-        </div>
+        <div class="modal-body" id="emp-modal-body">${employeeForm()}</div>
         <div class="modal-footer">
           <button class="btn btn-sm btn-ghost hidden" id="btn-delete-emp" style="color:var(--red);margin-right:auto">Delete Employee</button>
           <button class="btn btn-ghost"   id="btn-cancel-emp">Cancel</button>
@@ -110,6 +102,13 @@ function redraw(container, state, navigate, locationId) {
       </div>
     </div>
   `
+
+  // Re-renders only #tab-content, preserving filter state
+  const rerenderTab = () => {
+    container.querySelector('#tab-content').innerHTML =
+      renderTab(activeTab, employees, recentTests, stsFlags, hpdInv, empF, testF)
+    wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate, empF, testF, rerenderTab)
+  }
 
   // Navigation
   container.querySelector('#btn-back-companies').addEventListener('click', () => navigate('companies'))
@@ -135,13 +134,9 @@ function redraw(container, state, navigate, locationId) {
       activeTab = btn.dataset.tab
       container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-btn--active'))
       btn.classList.add('tab-btn--active')
-      container.querySelector('#tab-content').innerHTML =
-        renderTab(activeTab, employees, recentTests, stsFlags, hpdInv)
-      wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate)
+      rerenderTab()
     })
   })
-
-  wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate)
 
   // Employee modal
   const empModal = container.querySelector('#modal-emp')
@@ -158,8 +153,8 @@ function redraw(container, state, navigate, locationId) {
       location_id: locationId,
       first_name:  fn,
       last_name:   ln,
-      dob:         container.querySelector('#ef-dob').value   || null,
-      hire_date:   container.querySelector('#ef-hire').value  || null,
+      dob:         container.querySelector('#ef-dob').value        || null,
+      hire_date:   container.querySelector('#ef-hire').value       || null,
       job_title:   container.querySelector('#ef-title').value.trim() || null,
       status:      container.querySelector('#ef-status').value
     }
@@ -173,33 +168,64 @@ function redraw(container, state, navigate, locationId) {
     empModal.classList.add('hidden')
     redraw(container, state, navigate, locationId)
   })
+
+  rerenderTab()
 }
 
 // ---------------------------------------------------------------------------
 // Tab rendering
 // ---------------------------------------------------------------------------
 
-function renderTab(tab, employees, recentTests, stsFlags, hpdInv) {
-  if (tab === 'employees') return renderEmployeesTab(employees, stsFlags)
-  if (tab === 'tests')     return renderTestsTab(recentTests)
+function renderTab(tab, employees, recentTests, stsFlags, hpdInv, empF = {}, testF = {}) {
+  if (tab === 'employees') return renderEmployeesTab(employees, stsFlags, empF)
+  if (tab === 'tests')     return renderTestsTab(recentTests, testF)
   if (tab === 'hpd')       return renderHPDTab(hpdInv)
   return ''
 }
 
-function renderEmployeesTab(employees, stsFlags) {
-  const stsFlagIds = new Set(stsFlags.map(f => f.employee_id))
+function renderEmployeesTab(employees, stsFlags, f = {}) {
+  const stsFlagIds = new Set(stsFlags.map(fl => fl.employee_id))
+
+  let rows = employees
+  if (f.search) {
+    const q = f.search.toLowerCase()
+    rows = rows.filter(e =>
+      (e.last_name + ' ' + e.first_name).toLowerCase().includes(q) ||
+      (e.first_name + ' ' + e.last_name).toLowerCase().includes(q) ||
+      (e.job_title ?? '').toLowerCase().includes(q)
+    )
+  }
+  rows = [...rows].sort((a, b) => {
+    if (f.sort === 'name_desc') return (b.last_name ?? '').localeCompare(a.last_name ?? '')
+    if (f.sort === 'date_desc') return (b.last_test_date ?? '').localeCompare(a.last_test_date ?? '')
+    if (f.sort === 'date_asc')  return (a.last_test_date ?? '').localeCompare(b.last_test_date ?? '')
+    return (a.last_name ?? '').localeCompare(b.last_name ?? '')  // name_asc default
+  })
+
+  const countLabel = f.search ? `${rows.length} of ${employees.length}` : `${employees.length}`
+
   return `
-    <div class="tab-toolbar">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
       <button class="btn btn-primary btn-sm" id="btn-add-emp">+ Add Employee</button>
+      <input type="search" class="search-input" id="emp-search"
+        placeholder="Search name or job title…" value="${esc(f.search ?? '')}"
+        style="flex:1; min-width:150px" />
+      <select class="search-input" id="emp-sort" style="width:auto">
+        <option value="name_asc"  ${(f.sort ?? 'name_asc') === 'name_asc'  ? 'selected' : ''}>Name A→Z</option>
+        <option value="name_desc" ${f.sort === 'name_desc' ? 'selected' : ''}>Name Z→A</option>
+        <option value="date_desc" ${f.sort === 'date_desc' ? 'selected' : ''}>Last Test ↓</option>
+        <option value="date_asc"  ${f.sort === 'date_asc'  ? 'selected' : ''}>Last Test ↑</option>
+      </select>
+      <span style="font-size:12px; color:#666; white-space:nowrap">${countLabel} employee${rows.length !== 1 ? 's' : ''}</span>
     </div>
-    ${employees.length === 0
-      ? '<p class="empty-note">No employees on file.</p>'
+    ${rows.length === 0
+      ? `<p class="empty-note">${f.search ? 'No employees match your search.' : 'No employees on file.'}</p>`
       : `<table class="data-table">
           <thead><tr>
             <th>Name</th><th>Job Title</th><th>Last Test</th><th>Classification</th><th></th>
           </tr></thead>
           <tbody>
-            ${employees.map(e => `
+            ${rows.map(e => `
               <tr class="table-row table-row--clickable" data-emp-id="${e.employee_id}">
                 <td class="td-primary">
                   ${esc(e.last_name)}, ${esc(e.first_name)}
@@ -217,31 +243,60 @@ function renderEmployeesTab(employees, stsFlags) {
   `
 }
 
-function renderTestsTab(tests) {
-  return tests.length === 0
-    ? '<p class="empty-note">No test history.</p>'
-    : `<table class="data-table">
-        <thead><tr>
-          <th>Date</th><th>Employee</th><th>Type</th><th>Classification</th><th>HPD</th><th></th>
-        </tr></thead>
-        <tbody>
-          ${tests.map(t => {
-            const cls = parseClassification(t.classification)
-            return `<tr>
-              <td>${t.test_date}</td>
-              <td>${esc(t.last_name)}, ${esc(t.first_name)}</td>
-              <td>${esc(t.test_type)}</td>
-              <td>${cls ? classificationBadge(cls.category) : '—'}</td>
-              <td>${t.adequacy ? adequacyBadge(t.adequacy) : '—'}</td>
-              <td>
-                <button class="btn btn-link btn-sm btn-view-emp" data-emp-id="${t.employee_id}">
-                  View →
-                </button>
-              </td>
-            </tr>`
-          }).join('')}
-        </tbody>
-      </table>`
+function renderTestsTab(tests, f = {}) {
+  let rows = tests
+  if (f.search) {
+    const q = f.search.toLowerCase()
+    rows = rows.filter(t =>
+      (t.last_name + ' ' + t.first_name).toLowerCase().includes(q) ||
+      (t.first_name + ' ' + t.last_name).toLowerCase().includes(q) ||
+      (t.test_type ?? '').toLowerCase().includes(q)
+    )
+  }
+  rows = [...rows].sort((a, b) => {
+    if (f.sort === 'date_asc')  return (a.test_date ?? '').localeCompare(b.test_date ?? '')
+    if (f.sort === 'name_asc')  return (a.last_name ?? '').localeCompare(b.last_name ?? '')
+    if (f.sort === 'name_desc') return (b.last_name ?? '').localeCompare(a.last_name ?? '')
+    return (b.test_date ?? '').localeCompare(a.test_date ?? '')  // date_desc default
+  })
+
+  const countLabel = f.search ? `${rows.length} of ${tests.length}` : `${tests.length}`
+
+  return `
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
+      <input type="search" class="search-input" id="test-search"
+        placeholder="Search by name or type…" value="${esc(f.search ?? '')}"
+        style="flex:1; min-width:150px" />
+      <select class="search-input" id="test-sort" style="width:auto">
+        <option value="date_desc" ${(f.sort ?? 'date_desc') === 'date_desc' ? 'selected' : ''}>Date ↓ (newest)</option>
+        <option value="date_asc"  ${f.sort === 'date_asc'  ? 'selected' : ''}>Date ↑ (oldest)</option>
+        <option value="name_asc"  ${f.sort === 'name_asc'  ? 'selected' : ''}>Name A→Z</option>
+        <option value="name_desc" ${f.sort === 'name_desc' ? 'selected' : ''}>Name Z→A</option>
+      </select>
+      <span style="font-size:12px; color:#666; white-space:nowrap">${countLabel} test${rows.length !== 1 ? 's' : ''}</span>
+    </div>
+    ${rows.length === 0
+      ? `<p class="empty-note">${f.search ? 'No tests match your search.' : 'No test history.'}</p>`
+      : `<table class="data-table">
+          <thead><tr>
+            <th>Date</th><th>Employee</th><th>Type</th><th>Classification</th><th>HPD</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(t => {
+              const cls = parseClassification(t.classification)
+              return `<tr>
+                <td>${t.test_date}</td>
+                <td>${esc(t.last_name)}, ${esc(t.first_name)}</td>
+                <td>${esc(t.test_type)}</td>
+                <td>${cls ? classificationBadge(cls.category) : '—'}</td>
+                <td>${t.adequacy ? adequacyBadge(t.adequacy) : '—'}</td>
+                <td><button class="btn btn-link btn-sm btn-view-emp" data-emp-id="${t.employee_id}">View →</button></td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>`
+    }
+  `
 }
 
 function renderHPDTab(inventory) {
@@ -282,7 +337,7 @@ function renderHPDTab(inventory) {
 // Tab event wiring
 // ---------------------------------------------------------------------------
 
-function wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate) {
+function wireTabHandlers(container, state, locationId, location, employees, hpdInv, navigate, empF, testF, rerenderTab) {
   // Add employee
   container.querySelector('#btn-add-emp')?.addEventListener('click', () => {
     container.querySelector('#emp-modal-title').textContent = 'Add Employee'
@@ -321,20 +376,37 @@ function wireTabHandlers(container, state, locationId, location, employees, hpdI
   container.querySelectorAll('.table-row--clickable[data-emp-id]').forEach(row => {
     row.addEventListener('click', e => {
       if (e.target.closest('button')) return
-      const empId = Number(row.dataset.empId)
-      const emp   = employees.find(em => em.employee_id === empId)
-      if (!emp) return
-      navigate('employee-detail', { currentEmployee: emp })
+      const emp = employees.find(em => em.employee_id === Number(row.dataset.empId))
+      if (emp) navigate('employee-detail', { currentEmployee: emp })
     })
   })
 
   // Test history view buttons
   container.querySelectorAll('.btn-view-emp').forEach(btn => {
     btn.addEventListener('click', () => {
-      const empId = Number(btn.dataset.empId)
-      const emp   = employees.find(em => em.employee_id === empId)
+      const emp = employees.find(em => em.employee_id === Number(btn.dataset.empId))
       if (emp) navigate('employee-detail', { currentEmployee: emp })
     })
+  })
+
+  // Employee search / sort
+  container.querySelector('#emp-search')?.addEventListener('input', e => {
+    empF.search = e.target.value
+    rerenderTab()
+  })
+  container.querySelector('#emp-sort')?.addEventListener('change', e => {
+    empF.sort = e.target.value
+    rerenderTab()
+  })
+
+  // Test search / sort
+  container.querySelector('#test-search')?.addEventListener('input', e => {
+    testF.search = e.target.value
+    rerenderTab()
+  })
+  container.querySelector('#test-sort')?.addEventListener('change', e => {
+    testF.sort = e.target.value
+    rerenderTab()
   })
 
   // HPD inventory
@@ -447,8 +519,8 @@ function openEditLocation(container, state, location, locationId, navigate) {
   container.appendChild(div)
 
   const close = () => div.remove()
-  div.querySelector('#loc-close').addEventListener('click',   close)
-  div.querySelector('#loc-cancel').addEventListener('click',  close)
+  div.querySelector('#loc-close').addEventListener('click',      close)
+  div.querySelector('#loc-cancel').addEventListener('click',     close)
   div.querySelector('.modal-backdrop').addEventListener('click', close)
 
   div.querySelector('#loc-deactivate').addEventListener('click', () => {

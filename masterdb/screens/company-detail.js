@@ -74,38 +74,21 @@ function redraw(container, state, navigate, companyId) {
       <!-- Locations -->
       <div class="section-header" style="margin-top:20px">
         <h2>Locations</h2>
-        <button class="btn btn-primary btn-sm" id="btn-add-location">+ Add Location</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="search" class="search-input" id="loc-search"
+            placeholder="Search locations…" style="min-width:160px" />
+          <select class="search-input" id="loc-sort" style="width:auto">
+            <option value="name_asc">Name A→Z</option>
+            <option value="name_desc">Name Z→A</option>
+            <option value="emp_desc">Most Employees</option>
+            <option value="date_desc">Last Visit ↓</option>
+            <option value="date_asc">Last Visit ↑</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="btn-add-location">+ Add Location</button>
+        </div>
       </div>
 
-      ${locations.length === 0
-        ? '<p class="empty-note">No locations on file. Add one to get started.</p>'
-        : `<div class="data-table-wrap">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Location</th>
-                  <th>Province</th>
-                  <th>Employees</th>
-                  <th>Last Visit</th>
-                  <th>Contact</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${locations.map(l => `
-                  <tr class="table-row table-row--clickable" data-location-id="${l.location_id}">
-                    <td class="td-primary">${esc(l.name)}</td>
-                    <td><span class="province-badge">${esc(l.province)}</span></td>
-                    <td>${l.employee_count ?? 0}</td>
-                    <td>${l.last_test_date ?? '—'}</td>
-                    <td class="td-muted">${esc(l.contact_name ?? '—')}</td>
-                    <td><button class="btn btn-sm btn-outline" data-location-id="${l.location_id}">Open →</button></td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>`
-      }
+      <div id="loc-table-wrap"></div>
     </div>
 
     <!-- Add Location modal -->
@@ -127,6 +110,77 @@ function redraw(container, state, navigate, companyId) {
     </div>
   `
 
+  // Location filter state + renderer
+  const locF = { search: '', sort: 'name_asc' }
+
+  const rerenderLocations = () => {
+    const wrap = container.querySelector('#loc-table-wrap')
+    if (!wrap) return
+    let rows = locations
+    if (locF.search) {
+      const q = locF.search.toLowerCase()
+      rows = rows.filter(l =>
+        l.name.toLowerCase().includes(q) ||
+        (l.province ?? '').toLowerCase().includes(q) ||
+        (l.city ?? '').toLowerCase().includes(q)
+      )
+    }
+    rows = [...rows].sort((a, b) => {
+      if (locF.sort === 'name_desc') return (b.name ?? '').localeCompare(a.name ?? '')
+      if (locF.sort === 'emp_desc')  return (b.employee_count ?? 0) - (a.employee_count ?? 0)
+      if (locF.sort === 'date_desc') return (b.last_test_date ?? '').localeCompare(a.last_test_date ?? '')
+      if (locF.sort === 'date_asc')  return (a.last_test_date ?? '').localeCompare(b.last_test_date ?? '')
+      return (a.name ?? '').localeCompare(b.name ?? '')  // name_asc default
+    })
+
+    if (rows.length === 0) {
+      wrap.innerHTML = `<p class="empty-note">${locF.search ? 'No locations match your search.' : 'No locations on file. Add one to get started.'}</p>`
+    } else {
+      wrap.innerHTML = `
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Location</th><th>Province</th><th>Employees</th>
+                <th>Last Visit</th><th>Contact</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(l => `
+                <tr class="table-row table-row--clickable" data-location-id="${l.location_id}">
+                  <td class="td-primary">${esc(l.name)}</td>
+                  <td><span class="province-badge">${esc(l.province)}</span></td>
+                  <td>${l.employee_count ?? 0}</td>
+                  <td>${l.last_test_date ?? '—'}</td>
+                  <td class="td-muted">${esc(l.contact_name ?? '—')}</td>
+                  <td><button class="btn btn-sm btn-outline" data-location-id="${l.location_id}">Open →</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`
+      // Re-wire row clicks after re-render
+      wrap.querySelectorAll('.table-row--clickable[data-location-id], .btn[data-location-id]').forEach(el => {
+        el.addEventListener('click', e => {
+          e.stopPropagation()
+          const locId = Number(el.dataset.locationId)
+          if (locId) navigate('location-detail', { currentLocation: { location_id: locId } })
+        })
+      })
+    }
+  }
+
+  rerenderLocations()
+
+  container.querySelector('#loc-search').addEventListener('input', e => {
+    locF.search = e.target.value
+    rerenderLocations()
+  })
+  container.querySelector('#loc-sort').addEventListener('change', e => {
+    locF.sort = e.target.value
+    rerenderLocations()
+  })
+
   // Navigation
   container.querySelector('#btn-back').addEventListener('click', () => navigate('companies'))
 
@@ -139,15 +193,6 @@ function redraw(container, state, navigate, companyId) {
   container.querySelector('#btn-add-sticky')?.addEventListener('click', () =>
     openEditCompany(container, state, company, companyId, navigate)
   )
-
-  // Location row / button clicks
-  container.querySelectorAll('.table-row--clickable[data-location-id], .btn[data-location-id]').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation()
-      const locId = Number(el.dataset.locationId)
-      if (locId) navigate('location-detail', { currentLocation: { location_id: locId } })
-    })
-  })
 
   // Add location modal
   const locModal = container.querySelector('#modal-loc')

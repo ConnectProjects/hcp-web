@@ -12,40 +12,16 @@ export function renderUsers(container, state, navigate) {
         <button class="btn btn-primary" id="btn-add-user">+ Add Team Member</button>
       </div>
 
-      <div class="data-table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Role</th>
-              <th>Folder</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${users.map(u => `
-              <tr>
-                <td><strong>${esc(u.name)}</strong>${u.initials ? ` <span style="color:var(--grey-500)">(${esc(u.initials)})</span>` : ''}</td>
-                <td><span class="role-badge role-${esc(u.role)}">${roleName(u.role)}</span></td>
-                <td><code>${u.folder_name ? `techs/${esc(u.folder_name)}` : '—'}</code></td>
-                <td>${u.active ? '✅ Active' : '<span style="color:var(--red)">Inactive</span>'}</td>
-                <td style="text-align:right; white-space:nowrap; display:flex; gap:6px; justify-content:flex-end;">
-                  <button class="btn btn-sm btn-outline btn-edit-user"
-                    data-id="${esc(u.user_id)}"
-                    data-name="${esc(u.name)}"
-                    data-initials="${esc(u.initials ?? '')}"
-                    data-role="${esc(u.role)}"
-                    data-folder="${esc(u.folder_name ?? '')}">Edit</button>
-                  <button class="btn btn-sm btn-ghost btn-reset" data-id="${esc(u.user_id)}">Reset PIN</button>
-                  ${u.active ? `<button class="btn btn-sm btn-ghost btn-deactivate" data-id="${esc(u.user_id)}"
-                    style="color:var(--red)">Deactivate</button>` : ''}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <input type="search" class="search-input" id="user-search"
+          placeholder="Search by name or role…" style="flex:1;min-width:160px" />
+        <select class="search-input" id="user-sort" style="width:auto">
+          <option value="name_asc">Name A→Z</option>
+          <option value="name_desc">Name Z→A</option>
+          <option value="role_asc">Role A→Z</option>
+        </select>
       </div>
+      <div id="user-table-wrap"></div>
     </div>
 
     <!-- Add User Modal -->
@@ -126,6 +102,109 @@ export function renderUsers(container, state, navigate) {
     </div>
   `
 
+  // User filter state + renderer
+  const userF = { search: '', sort: 'name_asc' }
+
+  const rerenderTable = () => {
+    const wrap = container.querySelector('#user-table-wrap')
+    if (!wrap) return
+    let rows = users
+    if (userF.search) {
+      const q = userF.search.toLowerCase()
+      rows = rows.filter(u =>
+        u.name.toLowerCase().includes(q) ||
+        roleName(u.role).toLowerCase().includes(q) ||
+        (u.folder_name ?? '').toLowerCase().includes(q)
+      )
+    }
+    rows = [...rows].sort((a, b) => {
+      if (userF.sort === 'name_desc') return (b.name ?? '').localeCompare(a.name ?? '')
+      if (userF.sort === 'role_asc')  return (a.role ?? '').localeCompare(b.role ?? '')
+      return (a.name ?? '').localeCompare(b.name ?? '')  // name_asc default
+    })
+
+    if (rows.length === 0) {
+      wrap.innerHTML = `<p class="empty-note">No users match your search.</p>`
+      return
+    }
+    wrap.innerHTML = `
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Role</th><th>Folder</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(u => `
+              <tr>
+                <td><strong>${esc(u.name)}</strong>${u.initials ? ` <span style="color:var(--grey-500)">(${esc(u.initials)})</span>` : ''}</td>
+                <td><span class="role-badge role-${esc(u.role)}">${roleName(u.role)}</span></td>
+                <td><code>${u.folder_name ? `techs/${esc(u.folder_name)}` : '—'}</code></td>
+                <td>${u.active ? '✅ Active' : '<span style="color:var(--red)">Inactive</span>'}</td>
+                <td style="text-align:right; white-space:nowrap; display:flex; gap:6px; justify-content:flex-end;">
+                  <button class="btn btn-sm btn-outline btn-edit-user"
+                    data-id="${esc(u.user_id)}"
+                    data-name="${esc(u.name)}"
+                    data-initials="${esc(u.initials ?? '')}"
+                    data-role="${esc(u.role)}"
+                    data-folder="${esc(u.folder_name ?? '')}">Edit</button>
+                  <button class="btn btn-sm btn-ghost btn-reset" data-id="${esc(u.user_id)}">Reset PIN</button>
+                  ${u.active ? `<button class="btn btn-sm btn-ghost btn-deactivate" data-id="${esc(u.user_id)}"
+                    style="color:var(--red)">Deactivate</button>` : ''}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`
+
+    // Re-wire action buttons after re-render
+    wrap.querySelectorAll('.btn-edit-user').forEach(btn => {
+      btn.onclick = () => {
+        container.querySelector('#e-id').value      = btn.dataset.id
+        container.querySelector('#e-name').value    = btn.dataset.name
+        container.querySelector('#e-init').value    = btn.dataset.initials
+        container.querySelector('#e-folder').value  = btn.dataset.folder
+        container.querySelector('#e-role').value    = btn.dataset.role
+        const display = container.querySelector('#e-role-display')
+        if (display) display.textContent = roleName(btn.dataset.role)
+        editModal.classList.remove('hidden')
+      }
+    })
+    wrap.querySelectorAll('.btn-reset').forEach(btn => {
+      btn.onclick = async () => {
+        const newPin = prompt('Enter new 4-digit PIN for this user:')
+        if (!newPin) return
+        if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+          alert('PIN must be exactly 4 digits.')
+          return
+        }
+        await resetUserPin(btn.dataset.id, newPin, state.syncFolder)
+        alert('PIN updated and synced.')
+      }
+    })
+    wrap.querySelectorAll('.btn-deactivate').forEach(btn => {
+      btn.onclick = async () => {
+        if (confirm('Deactivate this user? They will no longer be able to log in.')) {
+          await deactivateUser(btn.dataset.id, state.syncFolder)
+          renderUsers(container, state, navigate)
+        }
+      }
+    })
+  }
+
+  rerenderTable()
+
+  container.querySelector('#user-search').addEventListener('input', e => {
+    userF.search = e.target.value
+    rerenderTable()
+  })
+  container.querySelector('#user-sort').addEventListener('change', e => {
+    userF.sort = e.target.value
+    rerenderTable()
+  })
+
   // --- Add modal ---
   const addModal  = container.querySelector('#modal-add-user')
   const editModal = container.querySelector('#modal-edit-user')
@@ -162,19 +241,6 @@ export function renderUsers(container, state, navigate) {
   container.querySelector('#btn-close-edit').onclick  = () => editModal.classList.add('hidden')
   container.querySelector('#btn-edit-cancel').onclick = () => editModal.classList.add('hidden')
 
-  container.querySelectorAll('.btn-edit-user').forEach(btn => {
-    btn.onclick = () => {
-      container.querySelector('#e-id').value      = btn.dataset.id
-      container.querySelector('#e-name').value    = btn.dataset.name
-      container.querySelector('#e-init').value    = btn.dataset.initials
-      container.querySelector('#e-folder').value  = btn.dataset.folder
-      container.querySelector('#e-role').value    = btn.dataset.role
-      const display = container.querySelector('#e-role-display')
-      if (display) display.textContent = roleName(btn.dataset.role)
-      editModal.classList.remove('hidden')
-    }
-  })
-
   container.querySelector('#btn-edit-save').onclick = async () => {
     const userId = container.querySelector('#e-id').value
     const data = {
@@ -196,29 +262,6 @@ export function renderUsers(container, state, navigate) {
     }
   }
 
-  // --- Reset PIN ---
-  container.querySelectorAll('.btn-reset').forEach(btn => {
-    btn.onclick = async () => {
-      const newPin = prompt('Enter new 4-digit PIN for this user:')
-      if (!newPin) return
-      if (newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
-        alert('PIN must be exactly 4 digits.')
-        return
-      }
-      await resetUserPin(btn.dataset.id, newPin, state.syncFolder)
-      alert('PIN updated and synced.')
-    }
-  })
-
-  // --- Deactivate ---
-  container.querySelectorAll('.btn-deactivate').forEach(btn => {
-    btn.onclick = async () => {
-      if (confirm('Deactivate this user? They will no longer be able to log in.')) {
-        await deactivateUser(btn.dataset.id, state.syncFolder)
-        renderUsers(container, state, navigate)
-      }
-    }
-  })
 }
 
 // ---------------------------------------------------------------------------
