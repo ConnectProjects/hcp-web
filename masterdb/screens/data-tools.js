@@ -106,7 +106,7 @@ export function renderDataTools(container, state, navigate) {
 
         <div class="form-card" style="margin-top:20px">
           <h3>Duplicate Location Cleanup</h3>
-          <p class="help-text">Finds locations where one name is another plus a province suffix (e.g. "#719 Saskatoon" vs "#719 Saskatoon, SK"). The province-suffixed location is merged into the canonical one — employees matched by full name + DOB are merged, unmatched employees are moved.</p>
+          <p class="help-text">Finds locations where one name is a variant of another: a province suffix (e.g. "#719 Saskatoon" vs "#719 Saskatoon, SK") or an extra " - " separator (e.g. "#091 - Red Deer" vs "#091 Red Deer"). The variant is merged into the canonical one — employees matched by full name + DOB are merged, unmatched employees are moved.</p>
           <button class="btn btn-outline" id="btn-scan-loc-dupes">🔍 Scan for Duplicate Locations</button>
           <div id="loc-dupe-results" style="margin-top:20px"></div>
         </div>
@@ -335,11 +335,13 @@ export function renderDataTools(container, state, navigate) {
         (SELECT COUNT(*) FROM tests     WHERE location_id = l_good.location_id) AS good_test_count
       FROM locations l_bad
       JOIN locations l_good
-        ON  l_bad.company_id = l_good.company_id
+        ON  l_bad.company_id  = l_good.company_id
+        AND l_bad.location_id != l_good.location_id
         AND (
               l_bad.name = l_good.name || ', SK' OR
               l_bad.name = l_good.name || ', AB' OR
-              l_bad.name = l_good.name || ', BC'
+              l_bad.name = l_good.name || ', BC' OR
+              (l_bad.name LIKE '% - %' AND REPLACE(l_bad.name, ' - ', ' ') = l_good.name)
             )
       JOIN companies c ON c.company_id = l_bad.company_id
       WHERE l_bad.active = 1 AND l_good.active = 1
