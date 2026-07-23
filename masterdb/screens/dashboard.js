@@ -4,6 +4,7 @@ import { isDemoLoaded, loadDemoData }         from '../db/demo.js'
 import { query, run, queryOne }               from '../db/sqlite.js'
 import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFile,
          fileExists, deleteJsonFile, writeJsonFile } from '@shared/fs/sync-folder.js'
+import { importPacket } from './incoming.js'
 
 // ---------------------------------------------------------------------------
 // Unified dashboard — same for all roles
@@ -237,6 +238,17 @@ export function renderDashboard(container, state, navigate) {
         </div>
 
       </div>
+
+      <!-- Archive Check -->
+      <div class="dash-panel" id="panel-archive-check" style="margin-top:16px">
+        <div class="panel-head">
+          <h2>Archive Check</h2>
+          <button class="btn btn-sm btn-outline" id="btn-scan-archive">Scan Archive</button>
+        </div>
+        <p class="empty-note" id="archive-check-hint">Scan the shared archive folder to verify all received packets were successfully imported.</p>
+        <div id="archive-check-results"></div>
+      </div>
+
     </div>
   `
 
@@ -248,6 +260,7 @@ export function renderDashboard(container, state, navigate) {
   })
   container.querySelector('#btn-view-all-incoming')?.addEventListener('click', () => navigate('incoming'))
   container.querySelector('#btn-go-packets')?.addEventListener('click',  () => navigate('packets'))
+  container.querySelector('#btn-scan-archive')?.addEventListener('click', () => scanArchive(container, state))
 
   container.querySelectorAll('.btn-review-packet').forEach(btn => {
     btn.addEventListener('click', () =>
@@ -293,6 +306,122 @@ export function renderDashboard(container, state, navigate) {
     refreshPacketStatuses(inField, state.syncFolder).then(n => {
       if (n > 0) renderDashboard(container, state, navigate)
     })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Archive scan — find packets in archive/ that were never imported
+// ---------------------------------------------------------------------------
+
+async function scanArchive(container, state) {
+  const btn     = container.querySelector('#btn-scan-archive')
+  const hint    = container.querySelector('#archive-check-hint')
+  const results = container.querySelector('#archive-check-results')
+
+  btn.disabled     = true
+  btn.textContent  = 'Scanning…'
+  hint.style.color = ''
+  hint.textContent = 'Accessing archive folder…'
+  results.innerHTML = ''
+
+  try {
+    let folder = state.syncFolder
+    if (!folder) {
+      folder = await getSyncFolder()
+      if (!folder) folder = await pickSyncFolder()
+      state.syncFolder = folder
+    }
+
+    hint.textContent = 'Reading archive files…'
+    const files = await listJsonFiles(folder, 'archive')
+
+    if (files.length === 0) {
+      hint.textContent = 'Archive folder is empty — no packets to check.'
+      return
+    }
+
+    const unimported = []
+    for (const { name } of files) {
+      try {
+        const packet   = await readJsonFile(folder, 'archive', name)
+        const packetId = packet.packet_id
+        if (!packetId) continue
+        const record = queryOne('SELECT status FROM packets WHERE packet_id = ?', [packetId])
+        if (!record || (record.status !== 'imported' && record.status !== 'rejected')) {
+          unimported.push({ filename: name, packet, dbStatus: record?.status ?? null })
+        }
+      } catch { /* skip unreadable files */ }
+    }
+
+    if (unimported.length === 0) {
+      hint.textContent  = `✓ All ${files.length} archive packet${files.length === 1 ? '' : 's'} successfully imported.`
+      hint.style.color  = 'var(--green)'
+    } else {
+      hint.textContent = `${unimported.length} of ${files.length} packet${files.length === 1 ? '' : 's'} not imported:`
+      results.innerHTML = `
+        <div class="panel-scroll">
+          ${unimported.map(u => `
+            <div class="incoming-row" data-filename="${esc(u.filename)}">
+              <div class="incoming-info">
+                <div class="incoming-company">${esc(u.packet.company?.name ?? '(unknown)')}</div>
+                <div class="incoming-meta">
+                  ${esc(u.packet.visit?.visit_date ?? '')}
+                  · ${esc(u.packet.packet_id ?? u.filename)}
+                  · <em>${u.dbStatus ? esc(u.dbStatus) : 'not in DB'}</em>
+                </div>
+              </div>
+              <button class="btn btn-sm btn-primary btn-import-archive"
+                      data-filename="${esc(u.filename)}">Import →</button>
+            </div>
+          `).join('')}
+        </div>
+      `
+
+      results.querySelectorAll('.btn-import-archive').forEach(importBtn => {
+        importBtn.addEventListener('click', async () => {
+          const filename = importBtn.dataset.filename
+          importBtn.disabled    = true
+          importBtn.textContent = 'Importing…'
+          try {
+            const packet   = await readJsonFile(folder, 'archive', filename)
+            const packetId = packet.packet_id
+            const existing = queryOne('SELECT packet_id FROM packets WHERE packet_id = ?', [packetId])
+            if (!existing) {
+              const coName    = packet.company?.name ?? ''
+              const companyId = queryOne(
+                'SELECT company_id FROM companies WHERE name = ? LIMIT 1', [coName]
+              )?.company_id ?? coName
+              run(`INSERT OR REPLACE INTO packets
+                (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+                [packetId, companyId, packet.location?.location_id ?? null,
+                 packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', filename])
+            }
+            const { imported, error } = importPacket(packet, packetId)
+            if (error) throw new Error(error)
+            importBtn.textContent = `✓ ${imported} test${imported === 1 ? '' : 's'} imported`
+            importBtn.closest('.incoming-row').style.opacity = '0.5'
+          } catch (e) {
+            importBtn.disabled    = false
+            importBtn.textContent = 'Retry'
+            const row = importBtn.closest('.incoming-row')
+            let errEl = row.querySelector('.import-err')
+            if (!errEl) {
+              errEl = document.createElement('div')
+              errEl.className = 'import-err'
+              errEl.style.cssText = 'color:var(--red);font-size:12px;margin-top:4px'
+              row.appendChild(errEl)
+            }
+            errEl.textContent = `Error: ${e.message}`
+          }
+        })
+      })
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') hint.textContent = `Scan failed: ${e.message}`
+  } finally {
+    btn.disabled    = false
+    btn.textContent = 'Scan Archive'
   }
 }
 

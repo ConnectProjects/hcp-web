@@ -211,7 +211,7 @@ async function checkInbox(container, state, navigate) {
   }
 }
 
-function importPacket(packet, packetId) {
+export function importPacket(packet, packetId) {
   try {
     const province = packet.company?.province ?? 'BC'
     let imported = 0
