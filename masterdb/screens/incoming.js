@@ -221,7 +221,7 @@ export function importPacket(packet, packetId) {
         (packet.company?.company_id
           ? queryOne('SELECT * FROM companies WHERE company_id = ?', [packet.company.company_id])
           : null) ??
-        queryOne('SELECT * FROM companies WHERE name = ?', [packet.company?.name ?? ''])
+        queryOne('SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1', [packet.company?.name ?? ''])
 
       if (!resolvedCompany) {
 run(`INSERT INTO companies
@@ -254,7 +254,7 @@ run(`INSERT INTO companies
       // Fall back to name match (handles id mismatch between devices)
       if (!defaultLocation && packet.location?.name) {
         defaultLocation = queryOne(
-          `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`,
+          `SELECT * FROM locations WHERE company_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
           [resolvedCompany.company_id, packet.location.name]
         )
       }
@@ -300,9 +300,10 @@ run(`INSERT INTO companies
         let empImportCount = 0
 
         for (const test of emp.completed_tests) {
+          const techId = test.tech_id ?? packet.tech?.tech_id ?? null
           const existingTest = queryOne(
-            `SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
-            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id ?? null]
+            `SELECT test_id FROM tests WHERE employee_id = ? AND test_date = ? AND tech_id IS ?`,
+            [dbEmp.employee_id, test.test_date, techId]
           )
           if (existingTest) {
             console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
@@ -316,7 +317,7 @@ run(`INSERT INTO companies
             employee_id:    dbEmp.employee_id,
             location_id:    defaultLocation.location_id,
             test_date:      test.test_date,
-            tech_id:        test.tech_id ?? packet.tech?.tech_id,
+            tech_id:        techId,
             test_type:      effectiveType,
             province,
             ...(test.thresholds ?? {}),

@@ -399,7 +399,14 @@ async function scanArchive(container, state) {
             }
             const { imported, error } = importPacket(packet, packetId)
             if (error) throw new Error(error)
-            importBtn.textContent = `✓ ${imported} test${imported === 1 ? '' : 's'} imported`
+            if (imported > 0) {
+              importBtn.textContent = `✓ ${imported} test${imported === 1 ? '' : 's'} imported`
+            } else {
+              const onFile = queryOne('SELECT COUNT(*) AS n FROM tests WHERE packet_id = ?', [packetId])?.n ?? 0
+              importBtn.textContent = onFile > 0
+                ? `Already imported (${onFile} tests on file)`
+                : '⚠ 0 tests — no test data in packet'
+            }
             importBtn.closest('.incoming-row').style.opacity = '0.5'
           } catch (e) {
             importBtn.disabled    = false
