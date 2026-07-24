@@ -57,12 +57,13 @@ export async function createDraft({ outreach, company, session }) {
   const responseUrl    = `${respondBase}?t=${outreach.token}`;
   const unsubscribeUrl = `${respondBase}?t=${outreach.token}&action=unsubscribe`;
 
-  const account = isSignedIn() ? getAccount() : null;
+  const msalAvailable = tryInitMsal();
+  const account = msalAvailable && isSignedIn() ? getAccount() : null;
   const lcName  = account?.name ?? session?.user?.email ?? 'Your Connect Hearing Representative';
   const lcEmail = session?.user?.email ?? '';
 
-  const templateHtml = await loadTemplate();
-  const html = merge(templateHtml, {
+  const templateHtml = await loadTemplate().catch(() => null);
+  const html = templateHtml ? merge(templateHtml, {
     CONTACT_NAME:    outreach.contact_name || 'there',
     COMPANY_NAME:    company.name,
     LC_NAME:         lcName,
@@ -70,12 +71,12 @@ export async function createDraft({ outreach, company, session }) {
     RESPONSE_URL:    responseUrl,
     UNSUBSCRIBE_URL: unsubscribeUrl,
     CURRENT_YEAR:    new Date().getFullYear().toString(),
-  });
+  }) : null;
 
   const subject = `Workplace Hearing Conservation — ${company.name}`;
 
   // ---- Graph path --------------------------------------------------
-  if (tryInitMsal()) {
+  if (msalAvailable) {
     try {
       if (!isSignedIn()) await signIn();
 
