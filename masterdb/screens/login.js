@@ -11,28 +11,38 @@ export async function renderLogin(container, state, navigate) {
         <div class="form-card" style="width:100%; max-width:400px; padding:40px; text-align:center;">
           <h1 style="color:#76B214; margin-bottom:10px;">MasterDB</h1>
           <p style="color:#666; margin-bottom:30px;">OneDrive Connection Required</p>
-          
-          <div class="alert alert-info" style="margin-bottom: 20px; font-size: 13px;">
-            To see the list of authorized users, please connect to the shared <strong>ConnectHearing</strong> folder.
+
+          <div class="alert alert-info" style="margin-bottom: 20px; font-size: 13px; text-align:left;">
+            This browser hasn't been set up yet. Click below to connect the shared
+            <strong>ConnectHearing</strong> OneDrive folder — this only needs to be done
+            once per browser. After connecting, all data will sync automatically.
           </div>
 
           <button class="btn btn-primary btn-block" id="btn-connect-login" style="padding: 15px;">
-            📂 Connect OneDrive Folder
+            📂 Connect &amp; Sync
           </button>
+          <div id="sync-status" style="margin-top:16px; font-size:13px; color:#666; min-height:20px;"></div>
         </div>
       </div>
     `;
 
     container.querySelector('#btn-connect-login').onclick = async () => {
+      const btn = container.querySelector('#btn-connect-login');
+      const status = container.querySelector('#sync-status');
       try {
         const handle = await pickSyncFolder();
-        if (handle) {
-            state.syncFolder = handle;
-            // Refresh this screen now that we have the handle
-            renderLogin(container, state, navigate);
-        }
+        if (!handle) return;
+        btn.disabled = true;
+        btn.textContent = '⟳ Syncing database…';
+        status.textContent = 'Downloading latest data from OneDrive…';
+        await state._onSyncConnected(handle);
+        status.textContent = '✓ Sync complete. Loading login…';
+        renderLogin(container, state, navigate);
       } catch (e) {
-        alert("Connection failed: " + e.message);
+        btn.disabled = false;
+        btn.textContent = '📂 Connect & Sync';
+        status.style.color = '#c0392b';
+        status.textContent = 'Connection failed: ' + e.message;
       }
     };
     return;

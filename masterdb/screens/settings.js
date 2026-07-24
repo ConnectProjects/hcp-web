@@ -1,5 +1,4 @@
-import { query, run, queryOne } from '../db/sqlite.js'
-import { exportDB }             from '../db/sqlite.js'
+import { query, run, queryOne, exportDB, importDB } from '../db/sqlite.js'
 import { pickSyncFolder, getSyncFolder } from '@shared/fs/sync-folder.js'
 import { isDemoLoaded, clearDemoData }   from '../db/demo.js'
 import { applyTheme, saveThemeColor, loadThemeColor, DEFAULT_COLOR } from '../theme.js'
@@ -105,6 +104,10 @@ export function renderSettings(container, state, navigate) {
         <section class="settings-section">
           <h2>Maintenance</h2>
           <button class="btn btn-outline btn-sm" id="btn-export-db">Export Backup (.sqlite)</button>
+          <label class="btn btn-outline btn-sm" style="margin-left:10px; cursor:pointer">
+            Import Backup (.sqlite)
+            <input type="file" id="import-db-input" accept=".sqlite" style="display:none" />
+          </label>
           ${isDemoLoaded() ? `<button class="btn btn-outline btn-sm" id="btn-clear-demo" style="color:var(--red); margin-left:10px">Clear Demo Data</button>` : ''}
         </section>
 
@@ -189,7 +192,20 @@ export function renderSettings(container, state, navigate) {
     state.syncFolder = await pickSyncFolder(); navigate('settings');
   };
 
-  container.querySelector('#btn-export-db').onclick = () => exportDB();
+  container.querySelector('#btn-export-db').onclick = () => exportDB()
+
+  container.querySelector('#import-db-input').onchange = async e => {
+    const file = e.target.files[0]
+    if (!file) return
+    if (!confirm(`Replace the entire database with "${file.name}"?\n\nThis will overwrite all current data in this browser. Make sure you exported a backup first.`)) return
+    try {
+      await importDB(file)
+      alert('Database imported successfully. The app will now reload.')
+      location.reload()
+    } catch (err) {
+      alert('Import failed: ' + err.message)
+    }
+  };
 
   // --- SQL Console ---
 

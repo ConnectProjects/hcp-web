@@ -144,10 +144,10 @@ function paint() {
         </div>
       </nav>
       <div class="main-area">
-        ${!connected && pending > 0 ? `
+        ${!connected ? `
           <div class="pending-sync-banner">
-            <span>📤 ${pending} unsynced record${pending === 1 ? '' : 's'} — connect your sync folder to push.</span>
-            <button id="btn-connect-sync">Connect →</button>
+            <span>📂 Sync folder not connected — this browser won't receive updates from other browsers.${pending > 0 ? ` (${pending} local change${pending === 1 ? '' : 's'} also waiting to push.)` : ''} One-time setup per browser.</span>
+            <button id="btn-connect-sync">Connect Sync Folder →</button>
           </div>
         ` : ''}
         <div id="main-content" class="main-content"></div>
@@ -259,6 +259,16 @@ async function boot() {
   await TimeService.sync();
   await initDB();
   await initSchema();
+
+  // Called by the login screen after the user picks the sync folder for the first time.
+  state._onSyncConnected = async (handle) => {
+    state.syncFolder = handle;
+    state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
+    await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+    try { await scanAndImportInbox(state.syncFolder); } catch {}
+    recordSyncTime();
+    startHeartbeat();
+  };
 
   state.syncFolder = await querySyncFolder();
   state.logoUrl    = queryOne('SELECT value FROM settings WHERE key = ?', ['company_logo'])?.value ?? null;

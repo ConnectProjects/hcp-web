@@ -243,10 +243,10 @@ run(`INSERT INTO companies
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
-      // Try exact match by location_id from the packet
+      // Try exact match by location_id from the packet (active only — ignore deactivated duplicates)
       let defaultLocation = packet.location?.location_id
         ? queryOne(
-            `SELECT * FROM locations WHERE location_id = ? AND company_id = ?`,
+            `SELECT * FROM locations WHERE location_id = ? AND company_id = ? AND active = 1`,
             [packet.location.location_id, resolvedCompany.company_id]
           )
         : null

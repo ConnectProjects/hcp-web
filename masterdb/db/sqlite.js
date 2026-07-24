@@ -18,7 +18,7 @@ const OPFS_FILENAME = 'masterdb.sqlite'
 
 let _db   = null
 let _SQL  = null
-let _saving = false
+let _saveTimer = null
 
 // ---------------------------------------------------------------------------
 // Init
@@ -104,17 +104,11 @@ export function lastInsertId() {
 // ---------------------------------------------------------------------------
 
 function scheduleSave() {
-  if (_saving) return
-  _saving = true
-  // Debounce — save at most once per animation frame batch
-  setTimeout(async () => {
-    try {
-      await saveToOPFS()
-    } catch (e) {
-      console.error('OPFS save failed:', e)
-    } finally {
-      _saving = false
-    }
+  clearTimeout(_saveTimer)
+  _saveTimer = setTimeout(async () => {
+    _saveTimer = null
+    try { await saveToOPFS() }
+    catch (e) { console.error('OPFS save failed:', e) }
   }, 100)
 }
 
@@ -136,6 +130,20 @@ async function loadFromOPFS() {
   } catch {
     return null   // file doesn't exist yet — fresh database
   }
+}
+
+/**
+ * Replace the current database with a .sqlite file chosen by the user.
+ * Returns true on success; throws on failure.
+ * Caller should reload the page after this returns so app state is consistent.
+ */
+export async function importDB(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  // Validate it looks like a SQLite file
+  const magic = String.fromCharCode(...bytes.slice(0, 6))
+  if (magic !== 'SQLite') throw new Error('File does not appear to be a valid SQLite database.')
+  _db = new _SQL.Database(bytes)
+  await saveToOPFS()
 }
 
 /**
