@@ -29,6 +29,13 @@ const callPanel = {
   token:      null,
 };
 
+const OUTREACH_LABELS = {
+  not_contacted: 'Not contacted',
+  contacted:     'Contacted',
+  opened:        'Opened',
+  responded:     'Responded',
+};
+
 // ---- Boot load ----------------------------------------------
 await Promise.all([loadNaics(), loadCompanies()]);
 buildProvinceFilter();
@@ -153,13 +160,6 @@ function renderStats() {
   document.getElementById('stat-by-province').innerHTML =
     sorted.map(([p, n]) => `<span style="display:inline-block;margin-right:10px"><b>${p}</b> ${n}</span>`).join('') || '—';
 }
-
-const OUTREACH_LABELS = {
-  not_contacted: 'Not contacted',
-  contacted:     'Contacted',
-  opened:        'Opened',
-  responded:     'Responded',
-};
 
 function renderTable() {
   const rows  = applyFilters();
