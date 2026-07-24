@@ -117,6 +117,34 @@ export function renderDataTools(container, state, navigate) {
           <button class="btn btn-outline" id="btn-scan-baselines">🔍 Scan for Baseline Issues</button>
           <div id="baseline-results" style="margin-top:20px"></div>
         </div>
+
+        <div class="form-card" style="margin-top:20px">
+          <h3>Manual Location Merge</h3>
+          <p class="help-text">For pairs the automatic scanner can't detect — word-order variants, different city names, or any other mismatch. Select the location to keep and the one to remove. All employees, tests, and history transfer to the kept location.</p>
+          <div class="form-group" style="margin-top:10px">
+            <label>Company</label>
+            <select id="mm-company" class="search-input">
+              <option value="">-- Select --</option>
+              ${companies.map(c => `<option value="${c.company_id}">${esc(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px">
+            <div class="form-group">
+              <label>Keep (canonical)</label>
+              <select id="mm-keep" class="search-input" disabled>
+                <option value="">-- Select company first --</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Remove (merge into Keep)</label>
+              <select id="mm-remove" class="search-input" disabled>
+                <option value="">-- Select company first --</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-manual-merge" disabled style="margin-top:12px; background:#d9534f">Merge →</button>
+          <div id="mm-result" style="margin-top:12px"></div>
+        </div>
       </div>
 
       <!-- TAB 4: LEGACY IMPORT -->
@@ -320,6 +348,90 @@ export function renderDataTools(container, state, navigate) {
     });
   };
 
+  // --- SHARED LOCATION MERGE LOGIC ---
+  const doMerge = (canonicalId, badId, label) => {
+    const badEmps = query('SELECT * FROM employees WHERE location_id = ?', [badId]);
+
+    const toMerge = [], toMove = [];
+    for (const e of badEmps) {
+      const match = queryOne(
+        `SELECT employee_id FROM employees
+          WHERE location_id = ?
+            AND LOWER(first_name) = LOWER(?)
+            AND LOWER(last_name)  = LOWER(?)
+            AND (dob = ? OR (dob IS NULL AND ? IS NULL))`,
+        [canonicalId, e.first_name, e.last_name, e.dob, e.dob]
+      );
+      if (match) toMerge.push({ badEmpId: e.employee_id, canonicalEmpId: match.employee_id });
+      else        toMove.push(e.employee_id);
+    }
+
+    transaction(({ run }) => {
+      for (const { badEmpId, canonicalEmpId } of toMerge) {
+        run('UPDATE tests       SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+        run('UPDATE baselines   SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+        run('UPDATE employment  SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
+        run('DELETE FROM employees WHERE employee_id = ?', [badEmpId]);
+      }
+      for (const id of toMove) {
+        run("UPDATE employees SET location_id = ?, updated_at = datetime('now') WHERE employee_id = ?", [canonicalId, id]);
+      }
+      run('UPDATE tests      SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+      run('UPDATE baselines  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+      run('UPDATE packets    SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+      run('UPDATE schedules  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+      run('UPDATE employment SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
+      run("UPDATE locations SET active = 0, updated_at = datetime('now') WHERE location_id = ?", [badId]);
+    });
+
+    logAction(state, 'MERGE_LOCATIONS',
+      `Merged location id=${badId} into "${label}" (id=${canonicalId}): ${toMerge.length} emp(s) merged by DOB match, ${toMove.length} emp(s) moved`);
+    return { merged: toMerge.length, moved: toMove.length };
+  };
+
+  // --- MANUAL LOCATION MERGE ---
+  const mmCompany = container.querySelector('#mm-company');
+  const mmKeep    = container.querySelector('#mm-keep');
+  const mmRemove  = container.querySelector('#mm-remove');
+  const btnManualMerge = container.querySelector('#btn-manual-merge');
+
+  const loadMMLocs = (coId) => {
+    const locs = coId
+      ? query("SELECT location_id, name FROM locations WHERE company_id = ? AND active = 1 ORDER BY name", [coId])
+      : [];
+    const opts = '<option value="">-- Select --</option>' +
+      locs.map(l => `<option value="${l.location_id}">${esc(l.name)}</option>`).join('');
+    mmKeep.innerHTML = opts;
+    mmRemove.innerHTML = opts;
+    mmKeep.disabled   = !coId;
+    mmRemove.disabled = !coId;
+    btnManualMerge.disabled = true;
+  };
+
+  mmCompany.onchange = () => loadMMLocs(mmCompany.value);
+  const checkMMReady = () => {
+    btnManualMerge.disabled = !(mmKeep.value && mmRemove.value && mmKeep.value !== mmRemove.value);
+  };
+  mmKeep.onchange   = checkMMReady;
+  mmRemove.onchange = checkMMReady;
+
+  btnManualMerge.onclick = async () => {
+    const keepId     = parseInt(mmKeep.value);
+    const removeId   = parseInt(mmRemove.value);
+    const keepName   = mmKeep.options[mmKeep.selectedIndex].text;
+    const removeName = mmRemove.options[mmRemove.selectedIndex].text;
+    if (!confirm(`Merge "${removeName}" into "${keepName}"?\n\nAll employees and tests from "${removeName}" will be transferred to "${keepName}". This cannot be undone.`)) return;
+    const resultEl = container.querySelector('#mm-result');
+    try {
+      const { merged, moved } = doMerge(keepId, removeId, keepName);
+      await JsonDatabase.pushMaster(state.syncFolder, query);
+      resultEl.innerHTML = `<p style="color:green">✓ Done: ${merged} employee(s) merged by name+DOB, ${moved} moved. Synced to OneDrive.</p>`;
+      loadMMLocs(mmCompany.value);
+    } catch (err) {
+      resultEl.innerHTML = `<span style="color:var(--red)">Merge failed: ${esc(err.message)}</span>`;
+    }
+  };
+
   // --- LOCATION DUPLICATE CLEANUP ---
   container.querySelector('#btn-scan-loc-dupes').onclick = () => {
     const pairs = query(`
@@ -392,47 +504,6 @@ export function renderDataTools(container, state, navigate) {
     }
 
     res.innerHTML = html;
-
-    // Executes one canonical←bad location merge; returns counts for logging.
-    const doMerge = (canonicalId, badId, label) => {
-      const badEmps = query('SELECT * FROM employees WHERE location_id = ?', [badId]);
-
-      const toMerge = [], toMove = [];
-      for (const e of badEmps) {
-        const match = queryOne(
-          `SELECT employee_id FROM employees
-            WHERE location_id = ?
-              AND LOWER(first_name) = LOWER(?)
-              AND LOWER(last_name)  = LOWER(?)
-              AND (dob = ? OR (dob IS NULL AND ? IS NULL))`,
-          [canonicalId, e.first_name, e.last_name, e.dob, e.dob]
-        );
-        if (match) toMerge.push({ badEmpId: e.employee_id, canonicalEmpId: match.employee_id });
-        else        toMove.push(e.employee_id);
-      }
-
-      transaction(({ run }) => {
-        for (const { badEmpId, canonicalEmpId } of toMerge) {
-          run('UPDATE tests       SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
-          run('UPDATE baselines   SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
-          run('UPDATE employment  SET employee_id = ? WHERE employee_id = ?', [canonicalEmpId, badEmpId]);
-          run('DELETE FROM employees WHERE employee_id = ?', [badEmpId]);
-        }
-        for (const id of toMove) {
-          run("UPDATE employees SET location_id = ?, updated_at = datetime('now') WHERE employee_id = ?", [canonicalId, id]);
-        }
-        run('UPDATE tests      SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
-        run('UPDATE baselines  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
-        run('UPDATE packets    SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
-        run('UPDATE schedules  SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
-        run('UPDATE employment SET location_id = ? WHERE location_id = ?', [canonicalId, badId]);
-        run("UPDATE locations SET active = 0, updated_at = datetime('now') WHERE location_id = ?", [badId]);
-      });
-
-      logAction(state, 'MERGE_LOCATIONS',
-        `Merged location id=${badId} into "${label}" (id=${canonicalId}): ${toMerge.length} emp(s) merged by DOB match, ${toMove.length} emp(s) moved`);
-      return { merged: toMerge.length, moved: toMove.length };
-    };
 
     res.querySelectorAll('.btn-merge-loc-pair').forEach(btn => {
       btn.onclick = async () => {
