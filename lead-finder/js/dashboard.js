@@ -49,12 +49,7 @@ startAutoRefresh();
 async function loadCompanies() {
   const { data, error } = await db
     .from('companies')
-    .select([
-      '*',
-      'naics_reference(code, descriptor, hazard_score)',
-      'outreach(id, token, channel, contact_name, contact_email, contact_phone,',
-      '         consent_obtained_at, drafted_at, sent_at, first_opened_at, responded_at, created_at)',
-    ].join(' '))
+    .select('*, naics_reference(code, descriptor, hazard_score), outreach(id, token, channel, contact_name, contact_email, contact_phone, consent_obtained_at, drafted_at, sent_at, first_opened_at, responded_at, created_at)')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
