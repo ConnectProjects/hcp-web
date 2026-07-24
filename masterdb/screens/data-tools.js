@@ -182,7 +182,7 @@ export function renderDataTools(container, state, navigate) {
   const updateLocs = (coId, selectId) => {
     const select = container.querySelector(`#${selectId}`);
     if (!coId) { select.disabled = true; return; }
-    const locs = query("SELECT location_id, name FROM locations WHERE company_id = ?", [coId]);
+    const locs = query("SELECT location_id, name FROM locations WHERE company_id = ? AND active = 1 ORDER BY name", [coId]);
     select.innerHTML = '<option value="">-- Select --</option>' + locs.map(l => `<option value="${l.location_id}">${esc(l.name)}</option>`).join('');
     select.disabled = false;
   };

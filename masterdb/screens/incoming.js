@@ -8,6 +8,12 @@ import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFil
 export function renderIncoming(container, state, navigate) {
   const packets = getPacketsByStatus('submitted')
 
+  const mismatchRows = query("SELECT key, value FROM settings WHERE key LIKE 'packet_loc_mismatch_%'")
+  const mismatches = {}
+  for (const r of mismatchRows) mismatches[r.key.replace('packet_loc_mismatch_', '')] = r.value
+  const reviewCount = packets.filter(p => mismatches[p.packet_id]).length
+  const readyCount  = packets.length - reviewCount
+
   container.innerHTML = `
     <div class="page">
       <div class="page-header">
@@ -22,9 +28,10 @@ export function renderIncoming(container, state, navigate) {
              <p>No packets awaiting import.</p>
              <p>Click <strong>Check Sync Folder</strong> to scan for completed packets from techs.</p>
            </div>`
-        : `<p class="section-note">${packets.length} packet(s) ready to import.</p>
+        : `${reviewCount > 0 ? `<p class="section-note" style="color:#c0392b">⚠ ${reviewCount} packet(s) need location review before importing.</p>` : ''}
+           ${readyCount  > 0 ? `<p class="section-note">${readyCount} packet(s) ready to import.</p>` : ''}
            <div class="incoming-cards">
-             ${packets.map(p => incomingCard(p)).join('')}
+             ${packets.map(p => incomingCard(p, mismatches[p.packet_id])).join('')}
            </div>`
       }
     </div>
@@ -64,12 +71,84 @@ export function renderIncoming(container, state, navigate) {
       if (!confirm('Reject this packet? It will be removed from the import list.')) return
       run('UPDATE packets SET status = "rejected", updated_at = datetime("now") WHERE packet_id = ?', [packetId])
       run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
+      run('DELETE FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])
       navigate('incoming')
+    })
+  })
+
+  // Location-override import for mismatched packets
+  container.querySelectorAll('.loc-override-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const btn = container.querySelector(`.btn-import-override[data-packet-id="${sel.dataset.packetId}"]`)
+      if (btn) btn.disabled = !sel.value
+    })
+  })
+
+  container.querySelectorAll('.btn-import-override').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const packetId   = btn.dataset.packetId
+      const sel        = container.querySelector(`.loc-override-select[data-packet-id="${packetId}"]`)
+      const locationId = parseInt(sel?.value)
+      if (!locationId) return
+      const row = queryOne('SELECT value FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
+      if (!row) { navigate('incoming'); return }
+      let packet
+      try { packet = JSON.parse(row.value) } catch { navigate('incoming'); return }
+      btn.disabled    = true
+      btn.textContent = 'Importing…'
+      const { imported, error } = importPacket(packet, packetId, locationId)
+      if (error) {
+        btn.disabled    = false
+        btn.textContent = 'Import →'
+        alert('Import failed: ' + error)
+      } else {
+        run('DELETE FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])
+        btn.textContent = `✓ ${imported} imported`
+        setTimeout(() => navigate('incoming'), 1000)
+      }
     })
   })
 }
 
-function incomingCard(p) {
+function incomingCard(p, mismatchLocName) {
+  if (mismatchLocName) {
+    const locations = query(
+      'SELECT location_id, name FROM locations WHERE company_id = ? AND active = 1 ORDER BY name',
+      [p.company_id]
+    )
+    const suggested = suggestLocation(locations, mismatchLocName)
+    return `
+      <div class="incoming-card" style="border-left:4px solid #f0ad4e">
+        <div class="incoming-card__info">
+          <div class="incoming-company">${esc(p.company_name)}</div>
+          <div class="incoming-meta">
+            <span class="province-badge">${esc(p.province)}</span>
+            · Visit ${p.visit_date}
+            · Packet: ${esc(p.packet_id)}
+          </div>
+          <div style="margin-top:8px; background:#fff8e1; border-radius:4px; padding:8px; font-size:12px">
+            ⚠ Location not found: <strong>${esc(mismatchLocName)}</strong>
+            <div style="margin-top:6px">
+              <label style="display:block; margin-bottom:4px; font-weight:600; font-size:11px; text-transform:uppercase; color:#666">Import into:</label>
+              <select class="search-input loc-override-select" data-packet-id="${esc(p.packet_id)}" style="width:100%; font-size:12px">
+                <option value="">-- Select location --</option>
+                ${locations.map(l => `<option value="${l.location_id}" ${l.location_id === suggested ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="incoming-card__actions">
+          <button class="btn btn-primary btn-sm btn-import-override" data-packet-id="${esc(p.packet_id)}" ${suggested ? '' : 'disabled'}>
+            Import →
+          </button>
+          <button class="btn btn-ghost btn-sm btn-reject" data-packet-id="${esc(p.packet_id)}" style="color:var(--red);margin-top:8px">
+            Reject
+          </button>
+        </div>
+      </div>
+    `
+  }
+
   return `
     <div class="incoming-card">
       <div class="incoming-card__info">
@@ -109,16 +188,30 @@ export async function scanAndImportInbox(folder) {
 
       await moveJsonFile(folder, 'inbox', 'archive', name)
 
-      const coName    = packet.company?.name ?? ''
-      const companyId = queryOne(
-        `SELECT company_id FROM companies WHERE name = ? LIMIT 1`, [coName]
-      )?.company_id ?? coName
+      const coName     = packet.company?.name ?? ''
+      const resolvedCo = queryOne(
+        `SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`, [coName]
+      )
+      const companyId  = resolvedCo?.company_id ?? coName
 
       run(`INSERT OR REPLACE INTO packets
         (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
         [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
       )
+
+      // If company exists and has locations but this packet's location doesn't match any,
+      // park it for staff review instead of auto-creating a misnamed location.
+      if (resolvedCo) {
+        const hasLocs = queryOne('SELECT 1 FROM locations WHERE company_id = ? AND active = 1 LIMIT 1', [resolvedCo.company_id])
+        if (hasLocs && !resolveLocation(resolvedCo.company_id, packet)) {
+          run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+            [`pending_packet_${packetId}`, JSON.stringify(packet)])
+          run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+            [`packet_loc_mismatch_${packetId}`, packet.location?.name ?? '(unknown)'])
+          continue
+        }
+      }
 
       const { imported } = importPacket(packet, packetId)
       totalImported += imported
@@ -160,6 +253,7 @@ async function checkInbox(container, state, navigate) {
     status.textContent = `Found ${files.length} packet(s) — importing…`
     let totalImported = 0
     let errors = []
+    let parked = 0
 
     for (const { name } of files) {
       try {
@@ -168,16 +262,29 @@ async function checkInbox(container, state, navigate) {
 
         await moveJsonFile(folder, 'inbox', 'archive', name)
 
-        const coName    = packet.company?.name ?? ''
-        const companyId = queryOne(
-          `SELECT company_id FROM companies WHERE name = ? LIMIT 1`, [coName]
-        )?.company_id ?? coName
+        const coName     = packet.company?.name ?? ''
+        const resolvedCo = queryOne(
+          `SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`, [coName]
+        )
+        const companyId  = resolvedCo?.company_id ?? coName
 
         run(`INSERT OR REPLACE INTO packets
           (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
           [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
         )
+
+        if (resolvedCo) {
+          const hasLocs = queryOne('SELECT 1 FROM locations WHERE company_id = ? AND active = 1 LIMIT 1', [resolvedCo.company_id])
+          if (hasLocs && !resolveLocation(resolvedCo.company_id, packet)) {
+            run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+              [`pending_packet_${packetId}`, JSON.stringify(packet)])
+            run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+              [`packet_loc_mismatch_${packetId}`, packet.location?.name ?? '(unknown)'])
+            parked++
+            continue
+          }
+        }
 
         const { imported, error } = importPacket(packet, packetId)
         if (error) {
@@ -191,12 +298,13 @@ async function checkInbox(container, state, navigate) {
       }
     }
 
+    const parkedMsg = parked > 0 ? ` · ${parked} packet(s) need location review — check Incoming.` : ''
     if (errors.length > 0) {
-      status.textContent = `Imported ${totalImported} test(s). Errors: ${errors.join('; ')}`
+      status.textContent = `Imported ${totalImported} test(s). Errors: ${errors.join('; ')}${parkedMsg}`
       status.className = 'alert alert-warn'
     } else {
-      status.textContent = `✓ ${totalImported} test(s) imported from ${files.length} packet(s).`
-      status.className = 'alert alert-success'
+      status.textContent = `✓ ${totalImported} test(s) imported from ${files.length} packet(s).${parkedMsg}`
+      status.className = parked > 0 ? 'alert alert-warn' : 'alert alert-success'
     }
 
     setTimeout(() => navigate('incoming'), 1500)
@@ -211,7 +319,7 @@ async function checkInbox(container, state, navigate) {
   }
 }
 
-export function importPacket(packet, packetId) {
+export function importPacket(packet, packetId, locationIdOverride = null) {
   try {
     const province = packet.company?.province ?? 'BC'
     let imported = 0
@@ -243,32 +351,40 @@ run(`INSERT INTO companies
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
-      // Try exact match by location_id from the packet (active only — ignore deactivated duplicates)
-      let defaultLocation = packet.location?.location_id
-        ? queryOne(
+      let defaultLocation = null
+
+      if (locationIdOverride) {
+        // Staff selected a location to override the packet's mismatched location
+        defaultLocation = queryOne('SELECT * FROM locations WHERE location_id = ?', [locationIdOverride])
+        if (!defaultLocation) throw new Error(`Override location ${locationIdOverride} not found.`)
+      } else {
+        // Try exact match by location_id from the packet (active only — ignore deactivated duplicates)
+        if (packet.location?.location_id) {
+          defaultLocation = queryOne(
             `SELECT * FROM locations WHERE location_id = ? AND company_id = ? AND active = 1`,
             [packet.location.location_id, resolvedCompany.company_id]
           )
-        : null
+        }
 
-      // Fall back to name match (handles id mismatch between devices)
-      if (!defaultLocation && packet.location?.name) {
-        defaultLocation = queryOne(
-          `SELECT * FROM locations WHERE company_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
-          [resolvedCompany.company_id, packet.location.name]
-        )
-      }
+        // Fall back to name match (handles id mismatch between devices)
+        if (!defaultLocation && packet.location?.name) {
+          defaultLocation = queryOne(
+            `SELECT * FROM locations WHERE company_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`,
+            [resolvedCompany.company_id, packet.location.name]
+          )
+        }
 
-      // Create location if this company has none yet
-      if (!defaultLocation) {
-        const locName = packet.location?.name ?? `${resolvedCompany.name} Main Location`
-        run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)`,
-          [resolvedCompany.company_id, locName, resolvedCompany.province ?? province]
-        )
-        defaultLocation = queryOne(
-          `SELECT * FROM locations WHERE company_id = ? ORDER BY location_id DESC LIMIT 1`,
-          [resolvedCompany.company_id]
-        )
+        // Create location if this company has none yet
+        if (!defaultLocation) {
+          const locName = packet.location?.name ?? `${resolvedCompany.name} Main Location`
+          run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)`,
+            [resolvedCompany.company_id, locName, resolvedCompany.province ?? province]
+          )
+          defaultLocation = queryOne(
+            `SELECT * FROM locations WHERE company_id = ? ORDER BY location_id DESC LIMIT 1`,
+            [resolvedCompany.company_id]
+          )
+        }
       }
 
       for (const emp of packet.employees ?? []) {
@@ -351,6 +467,44 @@ run(`INSERT INTO companies
     console.error('IMPORT ERROR:', e)
     return { imported: 0, error: e.message }
   }
+}
+
+// Try to resolve a packet's location against active locations in the DB.
+function resolveLocation(companyId, packet) {
+  if (packet.location?.location_id) {
+    const loc = queryOne(
+      `SELECT * FROM locations WHERE location_id = ? AND company_id = ? AND active = 1`,
+      [packet.location.location_id, companyId]
+    )
+    if (loc) return loc
+  }
+  if (packet.location?.name) {
+    const loc = queryOne(
+      `SELECT * FROM locations WHERE company_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND active = 1 LIMIT 1`,
+      [companyId, packet.location.name]
+    )
+    if (loc) return loc
+  }
+  return null
+}
+
+// Return the location_id of the best name match from a list, or null.
+function suggestLocation(locations, packetLocName) {
+  if (!packetLocName || !locations.length) return null
+  const pLower = packetLocName.toLowerCase()
+  // Canonical name is a substring of the packet name (e.g. "Saskatoon" ⊂ "Saskatoon, SK")
+  let best = locations.find(l => pLower.includes(l.name.toLowerCase()))
+  if (best) return best.location_id
+  // Packet name is a substring of location name
+  best = locations.find(l => l.name.toLowerCase().includes(pLower))
+  if (best) return best.location_id
+  // Share the same # number prefix
+  const pNum = (packetLocName.match(/^#?(\d+)/) ?? [])[1]
+  if (pNum) {
+    best = locations.find(l => new RegExp(`^#?${pNum}\\b`).test(l.name))
+    if (best) return best.location_id
+  }
+  return null
 }
 
 function esc(s) {
