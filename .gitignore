@@ -7,3 +7,5 @@ lead-finder/node_modules/
 Thumbs.db
 *.swp
 .vscode/settings.json
+
+lead-finder/supabase/.temp/

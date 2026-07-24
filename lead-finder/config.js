@@ -9,4 +9,3 @@
 
 export const SUPABASE_URL      = 'https://jiteqaeiftjuswwmgksf.supabase.co';
   export const SUPABASE_ANON_KEY = 'sb_publishable_juTinJrBbuJA2O7nhRWxFA_oNQpB-nr';
-  export const GOOGLE_PLACES_API_KEY = 'AIzaSyCemO7nD62VS_GL_2V87_k1cqP_VX7xMk4';

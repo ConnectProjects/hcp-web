@@ -1,21 +1,6 @@
 import { db } from './supabase.js';
 import { requireAuth, renderUserEmail, logout } from './auth.js';
 import { showToast } from './toast.js';
-import { GOOGLE_PLACES_API_KEY } from '../config.js';
-
-// Google Places Text Search (New) REST endpoint — supports CORS from browser
-const PLACES_API = 'https://places.googleapis.com/v1/places:searchText';
-const PLACES_FIELDS = [
-  'places.id',
-  'places.displayName',
-  'places.formattedAddress',
-  'places.nationalPhoneNumber',
-  'places.websiteUri',
-  'places.types',
-  'places.location',
-  'places.shortFormattedAddress',
-  'nextPageToken',
-].join(',');
 
 // ---- Boot ---------------------------------------------------
 const session = await requireAuth();
@@ -96,20 +81,10 @@ document.getElementById('search-form').addEventListener('submit', async e => {
 });
 
 async function fetchPlaces(body) {
-  const res = await fetch(PLACES_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
-      'X-Goog-FieldMask': PLACES_FIELDS,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Places API ${res.status}: ${errText.slice(0, 200)}`);
-  }
-  return res.json();
+  const { data, error } = await db.functions.invoke('places-search', { body });
+  if (error) throw new Error(error.message ?? 'Places search failed');
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 async function runSearch() {
@@ -117,11 +92,6 @@ async function runSearch() {
   const location = document.getElementById('search-location').value.trim();
   const status   = document.getElementById('search-status');
   const btn      = document.getElementById('search-btn');
-
-  if (!GOOGLE_PLACES_API_KEY || GOOGLE_PLACES_API_KEY.startsWith('AIza...')) {
-    showToast('Google Places API key not configured in config.js', 'error');
-    return;
-  }
 
   // Build text query — append selected NAICS descriptors as context
   let textQuery = `${query} ${location} Canada`;
