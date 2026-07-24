@@ -11,6 +11,9 @@ export const SUPABASE_URL      = 'https://your-project-ref.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJ...your-anon-key...';
 export const GOOGLE_PLACES_API_KEY = 'AIza...your-places-api-key...';
 
+// Your display name as it appears in outgoing emails.
+export const LC_NAME = 'Your Name';
+
 // Microsoft Graph — required for email draft creation (Mail.ReadWrite scope).
 // Register a Single Page Application in Azure AD portal:
 //   Redirect URI: your GitHub Pages root (e.g. https://you.github.io)

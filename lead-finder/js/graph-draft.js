@@ -5,11 +5,12 @@ import {
 // MSAL_CLIENT_ID / MSAL_TENANT_ID may be absent in configs that haven't
 // been updated yet — we check before initialising and fall straight to
 // mailto: if they're missing.
-let _clientId, _tenantId;
+let _clientId, _tenantId, _lcName;
 try {
   const cfg = await import('../config.js');
   _clientId = cfg.MSAL_CLIENT_ID;
   _tenantId  = cfg.MSAL_TENANT_ID;
+  _lcName    = cfg.LC_NAME && !cfg.LC_NAME.startsWith('Your ') ? cfg.LC_NAME : null;
 } catch { /* config missing — mailto: fallback will be used */ }
 
 let _msalReady = false;
@@ -59,7 +60,7 @@ export async function createDraft({ outreach, company, session }) {
 
   const msalAvailable = tryInitMsal();
   const account = msalAvailable && isSignedIn() ? getAccount() : null;
-  const lcName  = account?.name ?? session?.user?.email ?? 'Your Connect Hearing Representative';
+  const lcName  = account?.name ?? _lcName ?? 'Your Connect Hearing Representative';
   const lcEmail = session?.user?.email ?? '';
 
   const templateHtml = await loadTemplate().catch(() => null);
@@ -121,8 +122,8 @@ export async function createDraft({ outreach, company, session }) {
     'If you have questions, reply to this email or call me directly.',
     '',
     lcName,
-    'Connect Hearing — Industrial Division',
     lcEmail,
+    'Connect Hearing — Industrial Division',
     '',
     '---',
     'You received this email because you gave verbal consent during a recent phone call.',
