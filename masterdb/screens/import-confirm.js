@@ -30,6 +30,14 @@ export function renderImportConfirm(container, state, navigate) {
        packet.company?.name ?? ''])
     : []
 
+  const mismatchLocName = queryOne('SELECT value FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])?.value
+  const activeLocations = (company && mismatchLocName)
+    ? query('SELECT location_id, name FROM locations WHERE company_id = ? AND active = 1 ORDER BY name', [company.company_id])
+    : []
+  if (mismatchLocName && state._importLocId === undefined) {
+    state._importLocId = suggestLocationId(activeLocations, mismatchLocName) ?? null
+  }
+
   const employees      = packet.employees ?? []
   const testedEmps     = employees.filter(e => e.completed_tests?.length > 0)
   const totalTests     = testedEmps.reduce((acc, e) => acc + (e.completed_tests?.length ?? 0), 0)
@@ -49,6 +57,7 @@ export function renderImportConfirm(container, state, navigate) {
       ? queryOne('SELECT * FROM companies WHERE company_id = ?', [state._importCoId])
       : null
     const canImport = !!(resolvedCompany || (isOffline && state._importCoId === 'new'))
+      && (!mismatchLocName || !!state._importLocId)
 
     container.innerHTML = `
       <div class="page">
@@ -127,6 +136,20 @@ export function renderImportConfirm(container, state, navigate) {
           </div>
         ` : ''}
 
+        ${mismatchLocName ? `
+          <div class="form-card" style="margin-bottom:16px; border-left:4px solid #f0ad4e">
+            <div class="form-card-header"><h2>⚠ Location Mismatch</h2></div>
+            <p style="font-size:13px; color:var(--grey-700); margin-bottom:12px">
+              Packet location "<strong>${esc(mismatchLocName)}</strong>" is not an active location.
+              Select the correct location to import into:
+            </p>
+            <select id="loc-override-select" class="search-input" style="width:100%">
+              <option value="">-- Select location --</option>
+              ${activeLocations.map(l => `<option value="${l.location_id}" ${l.location_id === state._importLocId ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
+            </select>
+          </div>
+        ` : ''}
+
         <div class="import-results">
           ${testedEmps.map((emp, i) => empResultCard(emp, i, packet.company?.province)).join('')}
           ${employees.filter(e => !e.completed_tests?.length).map(e => `
@@ -156,10 +179,12 @@ export function renderImportConfirm(container, state, navigate) {
 
     container.querySelector('#btn-back').addEventListener('click', () => {
       state._importCoId = null
+      state._importLocId = undefined
       navigate('incoming')
     })
     container.querySelector('#btn-cancel').addEventListener('click', () => {
       state._importCoId = null
+      state._importLocId = undefined
       navigate('incoming')
     })
     container.querySelector('#btn-reject').addEventListener('click', () => {
@@ -167,6 +192,8 @@ export function renderImportConfirm(container, state, navigate) {
       if (note !== null) {
         updatePacketStatus(packetId, 'rejected', note)
         run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
+        run('DELETE FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])
+        state._importLocId = undefined
         navigate('packets')
       }
     })
@@ -184,11 +211,16 @@ export function renderImportConfirm(container, state, navigate) {
       state._importCoId = 'new'
     }
 
+    container.querySelector('#loc-override-select')?.addEventListener('change', e => {
+      state._importLocId = e.target.value ? parseInt(e.target.value) : null
+      render()
+    })
+
     container.querySelector('#btn-import')?.addEventListener('click', () => {
       const resolvedCo = state._importCoId === 'new'
         ? null  // will create new company in doImport
         : queryOne('SELECT * FROM companies WHERE company_id = ?', [state._importCoId])
-      doImport(container, packet, resolvedCo, packetId, isOffline, navigate, state)
+      doImport(container, packet, resolvedCo, packetId, isOffline, navigate, state, mismatchLocName ? (state._importLocId ?? null) : null)
     })
   }
 }
@@ -270,7 +302,7 @@ function empResultCard(emp, empIndex, province) {
   }).join('')
 }
 
-async function doImport(container, packet, company, packetId, isOffline, navigate, state) {
+async function doImport(container, packet, company, packetId, isOffline, navigate, state, locationIdOverride = null) {
   const btn    = container.querySelector('#btn-import')
   const errEl  = container.querySelector('#import-error')
   const sucEl  = container.querySelector('#import-success')
@@ -309,41 +341,32 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
         if (!resolvedCompany) throw new Error('Failed to create company record.')
       }
 
-      // Resolve the location the packet was generated for, falling back to
-      // the company's default location only when the packet has none.
-      let defaultLocation = packet.location?.location_id
-        ? queryOne(
-            `SELECT * FROM locations WHERE location_id = ? AND company_id = ?`,
+      let defaultLocation = null
+      if (locationIdOverride) {
+        defaultLocation = queryOne('SELECT * FROM locations WHERE location_id = ? AND active = 1', [locationIdOverride])
+        if (!defaultLocation) throw new Error(`Selected location ${locationIdOverride} not found or is inactive.`)
+      } else {
+        if (packet.location?.location_id) {
+          defaultLocation = queryOne(
+            `SELECT * FROM locations WHERE location_id = ? AND company_id = ? AND active = 1`,
             [packet.location.location_id, resolvedCompany.company_id]
           )
-        : null
-
-      // Fall back to name match (handles id mismatch between devices)
-      if (!defaultLocation && packet.location?.name) {
-        defaultLocation = queryOne(
-          `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) LIMIT 1`,
-          [resolvedCompany.company_id, packet.location.name]
-        )
-      }
-
-      if (!defaultLocation) {
-        run(`
-          INSERT INTO locations
-          (company_id, name, province, active)
-          VALUES (?, ?, ?, 1)
-        `, [
-          resolvedCompany.company_id,
-          `${resolvedCompany.name} Main Location`,
-          resolvedCompany.province ?? province
-        ])
-
-        defaultLocation = queryOne(
-          `SELECT * FROM locations
-           WHERE company_id = ?
-           ORDER BY location_id DESC
-           LIMIT 1`,
-          [resolvedCompany.company_id]
-        )
+        }
+        if (!defaultLocation && packet.location?.name) {
+          defaultLocation = queryOne(
+            `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) AND active = 1 LIMIT 1`,
+            [resolvedCompany.company_id, packet.location.name]
+          )
+        }
+        if (!defaultLocation) {
+          run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)`,
+            [resolvedCompany.company_id, packet.location?.name ?? `${resolvedCompany.name} Main Location`, resolvedCompany.province ?? province]
+          )
+          defaultLocation = queryOne(
+            `SELECT * FROM locations WHERE company_id = ? ORDER BY location_id DESC LIMIT 1`,
+            [resolvedCompany.company_id]
+          )
+        }
       }
 
       for (const emp of packet.employees) {
@@ -453,6 +476,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
     run('UPDATE packets SET testing_duration = ? WHERE packet_id = ?', [packet.testing_duration ?? null, packetId])
     run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
     state._importCoId = null
+    state._importLocId = undefined
 
     sucEl.textContent = `✓ Imported ${imported} test(s)${skippedEmpty > 0 ? ` · ${skippedEmpty} skipped (no threshold data)` : ''}.`
     sucEl.classList.remove('hidden')
@@ -467,6 +491,21 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
   btn.disabled = false
   btn.textContent = 'Import Tests into MasterDB'
 }
+}
+
+function suggestLocationId(locations, packetLocName) {
+  if (!packetLocName || !locations.length) return null
+  const pLower = packetLocName.toLowerCase()
+  let best = locations.find(l => pLower.includes(l.name.toLowerCase()))
+  if (best) return best.location_id
+  best = locations.find(l => l.name.toLowerCase().includes(pLower))
+  if (best) return best.location_id
+  const pNum = (packetLocName.match(/^#?(\d+)/) ?? [])[1]
+  if (pNum) {
+    best = locations.find(l => new RegExp(`^#?${pNum}\\b`).test(l.name))
+    if (best) return best.location_id
+  }
+  return null
 }
 
 function esc(s) {
