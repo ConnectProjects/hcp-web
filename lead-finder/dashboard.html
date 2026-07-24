@@ -57,6 +57,16 @@
           <div class="stat-card__value" id="stat-high-hazard">—</div>
           <div class="stat-card__sub">score 4–5</div>
         </div>
+        <div class="stat-card stat-card--blue">
+          <div class="stat-card__label">Contacted</div>
+          <div class="stat-card__value" id="stat-contacted">—</div>
+          <div class="stat-card__sub">outreach started</div>
+        </div>
+        <div class="stat-card stat-card--green">
+          <div class="stat-card__label">Responded</div>
+          <div class="stat-card__value" id="stat-responded">—</div>
+          <div class="stat-card__sub">form submitted</div>
+        </div>
         <div class="stat-card" id="stat-province-card" style="min-width:180px">
           <div class="stat-card__label">By province</div>
           <div class="stat-card__value text-small" id="stat-by-province" style="font-size:13px;font-weight:500;margin-top:6px">—</div>
@@ -116,6 +126,16 @@
           </select>
         </div>
         <div class="filter-group">
+          <label for="f-outreach">Outreach</label>
+          <select id="f-outreach">
+            <option value="">All</option>
+            <option value="not_contacted">Not contacted</option>
+            <option value="contacted">Contacted</option>
+            <option value="opened">Email opened</option>
+            <option value="responded">Responded</option>
+          </select>
+        </div>
+        <div class="filter-group">
           <label for="f-search">Search</label>
           <input type="search" id="f-search" placeholder="Name or city…" style="min-width:140px">
         </div>
@@ -124,6 +144,7 @@
           <select id="sort-select" class="filter-group select" style="border:1px solid var(--grey-300);border-radius:var(--radius);padding:5px 8px;font-size:13px;background:#fff">
             <option value="hazard_score-desc">Score ↓</option>
             <option value="hazard_score-asc">Score ↑</option>
+            <option value="responded_at-desc">Responded ↓</option>
             <option value="created_at-desc">Newest first</option>
             <option value="created_at-asc">Oldest first</option>
             <option value="name-asc">Name A→Z</option>
@@ -151,13 +172,14 @@
                 <th>Phone</th>
                 <th data-sort="hazard_score">Score</th>
                 <th>NAICS</th>
+                <th>Outreach</th>
                 <th data-sort="rbs_status">RBS</th>
                 <th data-sort="created_at">Added</th>
-                <th style="width:120px">Actions</th>
+                <th style="width:130px">Actions</th>
               </tr>
             </thead>
             <tbody id="companies-tbody">
-              <tr class="loading-row"><td colspan="8">Loading…</td></tr>
+              <tr class="loading-row"><td colspan="9">Loading…</td></tr>
             </tbody>
           </table>
         </div>
@@ -250,6 +272,72 @@
   </div>
 </div>
 
+<!-- Call Panel Modal -->
+<div class="modal-backdrop hidden" id="call-modal">
+  <div class="modal modal--wide">
+    <div class="modal-header">
+      <h2 id="call-modal-title">Call &amp; Outreach</h2>
+      <button class="btn btn-ghost btn-sm" id="call-modal-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Phone + call script -->
+      <div class="call-phone-row">
+        <div id="call-phone-display" style="flex:1"></div>
+      </div>
+
+      <details class="call-script">
+        <summary>Call script (expand)</summary>
+        <div class="call-script-body">
+          <p><strong>[PLACEHOLDER — Norm to rewrite before first use]</strong></p>
+          <p>"Hi, I'm [your name] calling from Connect Hearing's Industrial Division. I'm reaching out to businesses in your area about a workplace hearing conservation requirement that many employers aren't aware of. WorkSafeBC and Alberta OHS Part 16 both place the obligation to provide regular hearing tests on the employer if noise levels require workers to raise their voice. I'd love to send you a short link — just four questions — to see if it applies to you. Would that be okay?"</p>
+          <p>If yes: confirm their email, explain it takes 90 seconds, get verbal consent, and note their name.</p>
+        </div>
+      </details>
+
+      <!-- Unsubscribe warning (shown if company has unsubscribed) -->
+      <div class="unsub-warning hidden" id="call-unsub-warning">
+        This company has unsubscribed. Email outreach is blocked per CASL. You may still call, but do not send email.
+      </div>
+
+      <!-- Existing outreach status (shown when a record already exists) -->
+      <div class="outreach-status-bar hidden" id="call-status-bar"></div>
+
+      <!-- Contact fields -->
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label for="call-contact-name">Contact name</label>
+          <input type="text" id="call-contact-name" placeholder="Jane Smith" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="call-contact-phone">Contact phone</label>
+          <input type="tel" id="call-contact-phone" placeholder="(604) 555-0100">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="call-contact-email">Contact email *</label>
+        <input type="email" id="call-contact-email" placeholder="jsmith@example.com">
+      </div>
+
+      <!-- CASL consent -->
+      <div class="consent-section">
+        <label class="consent-label">
+          <input type="checkbox" id="call-consent-check">
+          <span>Contact gave verbal consent to receive information by email (express CASL consent recorded)</span>
+        </label>
+      </div>
+
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-ghost btn-sm" id="call-mark-sent-btn" style="margin-right:auto" title="Confirm email was sent from Outlook">Mark as sent</button>
+      <button class="btn btn-secondary" id="call-save-btn">Save contact info</button>
+      <button class="btn btn-primary" id="call-draft-btn" disabled>Prepare email</button>
+    </div>
+  </div>
+</div>
+
+<!-- MSAL vendor (required for Graph draft creation; loaded before the module) -->
+<script src="../masterdb/vendor/msal-browser.min.js"></script>
 <script type="module" src="./js/dashboard.js"></script>
 </body>
 </html>

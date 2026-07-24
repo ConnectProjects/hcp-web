@@ -32,7 +32,8 @@
 
 export const GRAPH_SCOPES = [
   'Files.ReadWrite',
-  'User.Read'
+  'User.Read',
+  'Mail.ReadWrite',
 ]
 
 // OneDrive folder paths used by TechTool and MasterDB

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<!--
+  Lead Finder — Outreach Email Template
+  ======================================
+  *** PLACEHOLDER — DO NOT USE UNTIL REVIEWED BY SONOVA MARKETING/COMPLIANCE ***
+
+  Merge fields (replaced at send time by graph-draft.js):
+    {{CONTACT_NAME}}    — recipient's first name or "there"
+    {{COMPANY_NAME}}    — company name
+    {{LC_NAME}}         — LC's display name from Microsoft account
+    {{LC_EMAIL}}        — LC's Supabase login email (reply-to reference)
+    {{RESPONSE_URL}}    — tokenised response form URL
+    {{UNSUBSCRIBE_URL}} — tokenised unsubscribe URL
+    {{CURRENT_YEAR}}    — four-digit year for CASL footer
+
+  CASL compliance checklist (verify before first use):
+    [x] Sender identification — Connect Hearing name present
+    [x] Mailing address — ADD REAL ADDRESS below before use
+    [x] Contact method valid 60+ days — LC email listed
+    [x] Unsubscribe mechanism — link present, leads to Edge Function
+    [ ] Compliance sign-off — PENDING
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin: 0; padding: 0; background: #f4f4f4; font-family: Arial, sans-serif; }
+  .wrapper { max-width: 580px; margin: 32px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .header  { background: #76B214; padding: 28px 32px; }
+  .header h1 { margin: 0; color: #fff; font-size: 20px; font-weight: 700; }
+  .header p  { margin: 4px 0 0; color: rgba(255,255,255,.8); font-size: 13px; }
+  .body    { padding: 28px 32px; color: #1f2937; font-size: 15px; line-height: 1.65; }
+  .body p  { margin: 0 0 16px; }
+  .body h2 { font-size: 17px; color: #1f2937; margin: 24px 0 10px; }
+  .callout { background: #f0fff4; border-left: 4px solid #76B214; padding: 14px 18px; border-radius: 0 6px 6px 0; margin: 20px 0; }
+  .callout p { margin: 0; font-size: 14px; color: #276749; }
+  .cta-wrap { text-align: center; margin: 28px 0; }
+  .cta-btn  { display: inline-block; background: #76B214; color: #ffffff !important; text-decoration: none; padding: 13px 32px; border-radius: 6px; font-size: 15px; font-weight: 700; }
+  .footer   { background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 20px 32px; font-size: 12px; color: #6b7280; line-height: 1.6; }
+  .footer a { color: #6b7280; }
+  .unsub    { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>Connect Hearing</h1>
+    <p>Industrial Hearing Conservation Division</p>
+  </div>
+
+  <!-- Body -->
+  <div class="body">
+    <p>Hi {{CONTACT_NAME}},</p>
+
+    <p>
+      Thank you for taking my call today. I'm following up as promised with some
+      information about workplace hearing conservation — and a quick way for you
+      to tell us about your situation so we can make our next conversation
+      as useful as possible.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Did you know?</strong> WorkSafeBC and Alberta OHS Part 16 both
+        place the obligation to provide hearing tests on the <em>employer</em> —
+        not the worker. If your employees are regularly exposed to noise levels
+        where they need to raise their voice to be heard, testing may be a
+        legal requirement for {{COMPANY_NAME}}.
+      </p>
+    </div>
+
+    <h2>It takes about 90 seconds</h2>
+
+    <p>
+      The link below opens a short form (four questions). Your answers help us
+      understand whether a hearing conservation program makes sense for your team
+      and what that might look like. There's no obligation and no sales pressure.
+    </p>
+
+    <div class="cta-wrap">
+      <a href="{{RESPONSE_URL}}" class="cta-btn">Answer four quick questions →</a>
+    </div>
+
+    <p style="font-size:13px;color:#6b7280;text-align:center">
+      Or copy this link: {{RESPONSE_URL}}
+    </p>
+
+    <p>
+      If you have questions in the meantime, reply to this email or reach me
+      directly at {{LC_EMAIL}}.
+    </p>
+
+    <p>
+      Thanks again for your time,<br>
+      <strong>{{LC_NAME}}</strong><br>
+      Connect Hearing — Industrial Division
+    </p>
+  </div>
+
+  <!-- CASL Footer -->
+  <div class="footer">
+    <p>
+      <strong>Connect Hearing — Industrial Division</strong><br>
+      [PLACEHOLDER: 123 Main Street, Suite 100, City, Province, Postal Code]<br>
+      [PLACEHOLDER: 1-800-000-0000] &nbsp;|&nbsp; {{LC_EMAIL}}
+    </p>
+    <p>
+      You are receiving this email because {{LC_NAME}} obtained your verbal consent
+      to send you information about workplace hearing conservation services during
+      a phone call. This consent was recorded on {{CURRENT_YEAR}}-07-23.
+      <!-- TODO: replace hardcoded date with actual consent date at send time -->
+    </p>
+    <div class="unsub">
+      <p>
+        To unsubscribe from future emails from Connect Hearing, click the link
+        below. Unsubscribe requests are honoured within 10 business days.
+        <br><br>
+        <a href="{{UNSUBSCRIBE_URL}}">Unsubscribe {{COMPANY_NAME}}</a>
+      </p>
+    </div>
+    <p style="margin-top:10px;color:#9ca3af;font-size:11px">
+      &copy; {{CURRENT_YEAR}} Connect Hearing. All rights reserved.
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

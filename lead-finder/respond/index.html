@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#76B214">
+  <title>Workplace Hearing Assessment — Connect Hearing</title>
+  <link rel="icon" href="../../favicon.ico">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body
+  data-fn-base="https://jiteqaeiftjuswwmgksf.supabase.co/functions/v1"
+>
+
+<!-- Loading -->
+<div id="view-loading" class="view">
+  <div class="card">
+    <div class="spinner"></div>
+    <p class="text-muted">Loading…</p>
+  </div>
+</div>
+
+<!-- Invalid / expired link -->
+<div id="view-invalid" class="view hidden">
+  <div class="card card--narrow">
+    <div class="status-icon status-icon--warn">!</div>
+    <h1>Link not found</h1>
+    <p class="text-muted">This link is invalid, has expired, or has already been used. Please contact Connect Hearing directly if you believe this is an error.</p>
+  </div>
+</div>
+
+<!-- Already submitted -->
+<div id="view-done" class="view hidden">
+  <div class="card card--narrow">
+    <div class="status-icon status-icon--ok">✓</div>
+    <h1>Already received</h1>
+    <p class="text-muted">We already have your response on file. Thank you — someone from our team will be in touch.</p>
+  </div>
+</div>
+
+<!-- Unsubscribe confirmation -->
+<div id="view-unsub" class="view hidden">
+  <div class="card card--narrow">
+    <div class="brand-logo">Connect Hearing</div>
+    <h1>Unsubscribe</h1>
+    <p>You have requested to stop receiving communications from Connect Hearing on behalf of <strong id="unsub-company"></strong>.</p>
+    <p class="text-muted">This will unsubscribe this organisation. You will not receive further emails from us.</p>
+    <button class="btn btn-danger" id="unsub-confirm-btn">Confirm unsubscribe</button>
+    <p id="unsub-error" class="error-msg hidden"></p>
+  </div>
+</div>
+
+<!-- Unsubscribed success -->
+<div id="view-unsub-done" class="view hidden">
+  <div class="card card--narrow">
+    <div class="status-icon status-icon--ok">✓</div>
+    <h1>Unsubscribed</h1>
+    <p class="text-muted">You have been removed from our contact list. We will not email this organisation again. Requests are honoured within 10 business days per CASL.</p>
+  </div>
+</div>
+
+<!-- Response form -->
+<div id="view-form" class="view hidden">
+  <div class="card">
+    <div class="brand-logo">Connect Hearing</div>
+    <h1>Workplace Hearing Assessment</h1>
+    <p class="intro" id="form-company-intro"></p>
+
+    <div class="obligation-banner">
+      <strong>WorkSafeBC &amp; Alberta OHS Part 16</strong> place the obligation to
+      provide hearing tests on the employer. This short form helps us understand
+      whether your team may be affected — no obligation, no sales pressure.
+    </div>
+
+    <form id="response-form" novalidate>
+
+      <fieldset>
+        <legend>1. Do any of your workers spend time in areas where they need to raise their voice to be heard?</legend>
+        <div class="radio-group">
+          <label><input type="radio" name="noise_exposure" value="yes" required> Yes</label>
+          <label><input type="radio" name="noise_exposure" value="no"> No</label>
+          <label><input type="radio" name="noise_exposure" value="not_sure"> Not sure</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>2. Roughly how many workers?</legend>
+        <div class="radio-group">
+          <label><input type="radio" name="employee_count" value="1"> 1–10</label>
+          <label><input type="radio" name="employee_count" value="11"> 11–25</label>
+          <label><input type="radio" name="employee_count" value="26"> 26–50</label>
+          <label><input type="radio" name="employee_count" value="51"> 51–100</label>
+          <label><input type="radio" name="employee_count" value="100"> 100+</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>3. When were they last given a hearing test?</legend>
+        <select name="last_tested">
+          <option value="">— Select —</option>
+          <option value="within_a_year">Within the last year</option>
+          <option value="one_to_three_years">1–3 years ago</option>
+          <option value="more_than_three_years">More than 3 years ago</option>
+          <option value="never">Never / not to my knowledge</option>
+          <option value="not_sure">Not sure</option>
+        </select>
+      </fieldset>
+
+      <fieldset>
+        <legend>4. Best way to follow up with you</legend>
+        <div class="form-group">
+          <label for="preferred_contact">Best person or phone number to reach</label>
+          <input type="text" id="preferred_contact" name="preferred_contact" maxlength="200" placeholder="Jane Smith, (604) 555-0100">
+        </div>
+        <div class="form-group">
+          <label for="preferred_time">Preferred time to call</label>
+          <input type="text" id="preferred_time" name="preferred_time" maxlength="200" placeholder="Weekday mornings before 10 am">
+        </div>
+        <div class="form-group">
+          <label for="notes">Anything else you'd like us to know? <span class="optional">(optional)</span></label>
+          <textarea id="notes" name="notes" maxlength="1000" rows="3" placeholder="e.g. we have a stamping operation and a grinding area"></textarea>
+        </div>
+      </fieldset>
+
+      <p id="form-error" class="error-msg hidden"></p>
+
+      <button type="submit" class="btn btn-primary" id="submit-btn">Submit</button>
+
+    </form>
+  </div>
+</div>
+
+<!-- Success -->
+<div id="view-success" class="view hidden">
+  <div class="card card--narrow">
+    <div class="status-icon status-icon--ok">✓</div>
+    <h1>Thank you!</h1>
+    <p id="success-msg"></p>
+    <p class="text-muted">Someone from our team will be in touch based on your preferred contact and time.</p>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>

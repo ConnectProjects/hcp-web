@@ -1,0 +1,243 @@
+/* ============================================================
+   Lead Finder — Public Response Page
+   Mobile-first. No dependency on the main app stylesheet.
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --brand:      #76B214;
+  --brand-dark: #5a8a0e;
+  --green:      #276749;
+  --green-bg:   #f0fff4;
+  --red:        #9b2335;
+  --red-bg:     #fff5f5;
+  --red-bd:     #feb2b2;
+  --grey-100:   #f3f4f6;
+  --grey-200:   #e5e7eb;
+  --grey-300:   #d1d5db;
+  --grey-500:   #6b7280;
+  --grey-700:   #374151;
+  --grey-900:   #111827;
+  --radius:     8px;
+  --font:       -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+html, body {
+  min-height: 100%;
+  font-family: var(--font);
+  font-size: 16px;
+  color: var(--grey-900);
+  background: #f0f4f0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Layout ------------------------------------------------ */
+.view {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px 48px;
+}
+
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 560px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.08);
+}
+
+.card--narrow { max-width: 400px; text-align: center; padding-top: 40px; }
+
+/* ---- Brand ------------------------------------------------- */
+.brand-logo {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-dark);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 18px;
+}
+
+/* ---- Headings --------------------------------------------- */
+h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--grey-900);
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+.intro {
+  font-size: 15px;
+  color: var(--grey-700);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+/* ---- Obligation banner ------------------------------------ */
+.obligation-banner {
+  background: #f0fff4;
+  border-left: 4px solid var(--brand);
+  padding: 12px 16px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  font-size: 14px;
+  color: var(--green);
+  line-height: 1.55;
+  margin-bottom: 24px;
+}
+
+/* ---- Form ------------------------------------------------- */
+form { margin-top: 8px; }
+
+fieldset {
+  border: none;
+  margin-bottom: 24px;
+}
+
+legend {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--grey-900);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.radio-group label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border: 1.5px solid var(--grey-300);
+  border-radius: 100px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  user-select: none;
+}
+
+.radio-group label:has(input:checked) {
+  border-color: var(--brand);
+  background: #f4f9e9;
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.radio-group input[type=radio] {
+  accent-color: var(--brand);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--grey-700);
+  margin-bottom: 5px;
+}
+
+.form-group .optional {
+  font-weight: 400;
+  color: var(--grey-500);
+}
+
+.form-group input,
+.form-group textarea,
+fieldset select {
+  width: 100%;
+  border: 1.5px solid var(--grey-300);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: var(--font);
+  color: var(--grey-900);
+  background: #fff;
+  transition: border-color .12s;
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+fieldset select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(118,178,20,.15);
+}
+
+.form-group textarea { min-height: 88px; }
+
+/* ---- Buttons --------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 28px;
+  border-radius: var(--radius);
+  border: none;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .12s, opacity .12s;
+  width: 100%;
+  margin-top: 8px;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--brand-dark); }
+
+.btn-danger { background: var(--red-bg); color: var(--red); border: 1.5px solid var(--red-bd); }
+.btn-danger:hover:not(:disabled) { background: #ffe5e5; }
+
+/* ---- Status icons ---------------------------------------- */
+.status-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0 auto 20px;
+}
+.status-icon--ok   { background: var(--green-bg); color: var(--green); }
+.status-icon--warn { background: #fffbeb; color: #92400e; }
+
+/* ---- Spinner --------------------------------------------- */
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--grey-200);
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin: 0 auto 14px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Misc ------------------------------------------------- */
+.text-muted { color: var(--grey-500); font-size: 15px; line-height: 1.55; margin-top: 8px; }
+.error-msg  { color: var(--red); font-size: 14px; margin-top: 10px; }
+.hidden     { display: none !important; }
+
+/* ---- Tablet+ --------------------------------------------- */
+@media (min-width: 560px) {
+  .view { padding: 40px 24px 64px; }
+  .card { padding: 36px 40px; }
+}
