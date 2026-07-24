@@ -345,6 +345,10 @@ export function renderDataTools(container, state, navigate) {
               (
                 (l_bad.name LIKE '% AB' OR l_bad.name LIKE '% SK' OR l_bad.name LIKE '% BC')
                 AND SUBSTR(l_bad.name, 1, LENGTH(l_bad.name) - 3) = l_good.name
+              ) OR
+              (
+                (l_bad.name LIKE '% - % AB' OR l_bad.name LIKE '% - % SK' OR l_bad.name LIKE '% - % BC')
+                AND REPLACE(SUBSTR(l_bad.name, 1, LENGTH(l_bad.name) - 3), ' - ', ' ') = l_good.name
               )
             )
       JOIN companies c ON c.company_id = l_bad.company_id
