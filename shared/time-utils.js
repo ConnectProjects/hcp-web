@@ -11,14 +11,14 @@ export const TimeService = {
    */
   async sync() {
     try {
-      // Use a HEAD request to get the server time from the headers
-      const response = await fetch(window.location.href, { method: 'HEAD' });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(window.location.href, { method: 'HEAD', signal: controller.signal });
+      clearTimeout(timeout);
       const serverDateStr = response.headers.get('date');
-      
       if (serverDateStr) {
         const networkTime = new Date(serverDateStr).getTime();
-        const localTime = Date.now();
-        clockOffset = networkTime - localTime;
+        clockOffset = networkTime - Date.now();
         console.log(`🕒 Time synced. Offset: ${clockOffset}ms`);
       }
     } catch (e) {
