@@ -789,7 +789,7 @@ export function renderDataTools(container, state, navigate) {
                   <td><span style="color:${r.status === 'imported' ? 'green' : r.status === 'submitted' ? '#e67e22' : '#999'}">${esc(r.status)}</span></td>
                   <td>${r.totalTests}</td>
                   <td style="color:var(--red);font-weight:600">${esc(r.issue)}</td>
-                  <td>${r.issue && r.status !== 'submitted'
+                  <td>${r.issue
                     ? `<button class="btn btn-outline btn-sm btn-requeue"
                          data-filename="${esc(r.name)}"
                          data-packet-id="${esc(r.packetId)}"
