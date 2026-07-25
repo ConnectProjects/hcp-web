@@ -7,6 +7,7 @@
 
 import { query, queryOne, run, transaction, logAction } from '../db/sqlite.js'
 import { JsonDatabase } from '../../shared/fs/json-database.js'
+import { listJsonFiles, readJsonFile, moveJsonFile } from '../../shared/fs/sync-folder.js'
 import { createTest } from '../db/tests.js'
 import { createBaseline } from '../db/employees.js'
 
@@ -25,6 +26,7 @@ export function renderDataTools(container, state, navigate) {
         <button class="tab-btn" data-tab="move-loc">Transfer Locations</button>
         <button class="tab-btn" data-tab="cleanup">Intelligent Cleanup</button>
         <button class="tab-btn" data-tab="import">Legacy Import</button>
+        <button class="tab-btn" data-tab="packets">Packet Audit</button>
       </div>
 
       <!-- TAB 1: MOVE EMPLOYEES -->
@@ -166,6 +168,17 @@ export function renderDataTools(container, state, navigate) {
           </div>
         </div>
       </div>
+
+      <!-- TAB 5: PACKET AUDIT -->
+      <div id="tab-packets" class="tab-content" style="display:none">
+        <div class="form-card">
+          <h3>Archive Packet Audit</h3>
+          <p class="section-desc">Scans the OneDrive archive folder and cross-references each packet against the database to surface import issues.</p>
+          <button class="btn btn-outline btn-sm" id="btn-audit-archive">Scan Archive</button>
+          <div id="audit-results" style="margin-top:16px; font-size:13px"></div>
+        </div>
+      </div>
+
     </div>
   `;
 
@@ -689,6 +702,144 @@ export function renderDataTools(container, state, navigate) {
       navigate('dashboard');
     } catch (err) { alert(err.message); btn.disabled = false; }
   };
+
+  // --- PACKET AUDIT ---
+  container.querySelector('#btn-audit-archive').onclick = async () => {
+    const btn     = container.querySelector('#btn-audit-archive')
+    const results = container.querySelector('#audit-results')
+
+    if (!state.syncFolder) {
+      results.innerHTML = '<p style="color:var(--red)">Sync folder not connected. Go to Settings to connect first.</p>'
+      return
+    }
+
+    btn.disabled    = true
+    btn.textContent = 'Scanning…'
+    results.innerHTML = '<p style="color:#666">Reading archive folder…</p>'
+
+    try {
+      const files = await listJsonFiles(state.syncFolder, 'archive')
+
+      if (!files.length) {
+        results.innerHTML = '<p>No packets found in archive folder.</p>'
+        return
+      }
+
+      const rows = []
+      for (const { name } of files) {
+        try {
+          const packet      = await readJsonFile(state.syncFolder, 'archive', name)
+          const packetId    = packet.packet_id
+          const companyName = packet.company?.name ?? '—'
+          const locName     = packet.location?.name ?? '—'
+          const visitDate   = packet.visit?.visit_date ?? '—'
+          const testedCount = packet.employees?.filter(e => e.completed_tests?.length > 0).length ?? 0
+
+          const dbPacket = queryOne('SELECT status FROM packets WHERE packet_id = ?', [packetId])
+          const status   = dbPacket?.status ?? 'not in DB'
+
+          const testLocs = query(`
+            SELECT l.name, l.active, COUNT(t.test_id) AS n
+            FROM tests t
+            JOIN employees e ON e.employee_id = t.employee_id
+            JOIN locations l ON l.location_id = e.location_id
+            WHERE t.packet_id = ?
+            GROUP BY l.location_id
+          `, [packetId])
+
+          const totalTests = testLocs.reduce((s, r) => s + r.n, 0)
+          const badTests   = testLocs.filter(r => !r.active).reduce((s, r) => s + r.n, 0)
+
+          let issue = ''
+          if      (status === 'not in DB')                        issue = '⚠ Never scanned'
+          else if (status === 'imported' && totalTests === 0)     issue = '⚠ No tests in DB'
+          else if (badTests > 0)                                  issue = `⚠ ${badTests} test(s) in inactive location`
+          else if (status === 'submitted')                        issue = '⏳ Pending import'
+
+          rows.push({ name, packetId, companyName, locName, visitDate, testedCount, status, totalTests, badTests, issue })
+        } catch (e) {
+          rows.push({ name, packetId: '?', companyName: 'Read error', locName: '?', visitDate: '?',
+            testedCount: 0, status: 'error', totalTests: 0, badTests: 0, issue: `⚠ ${e.message}` })
+        }
+      }
+
+      rows.sort((a, b) => (b.issue ? 1 : 0) - (a.issue ? 1 : 0))
+      const issueCount = rows.filter(r => r.issue).length
+
+      results.innerHTML = `
+        <p style="margin-bottom:10px">
+          ${files.length} packet(s) in archive ·
+          <span style="color:${issueCount > 0 ? 'var(--red)' : 'green'};font-weight:600">${issueCount} issue(s)</span>
+        </p>
+        <div style="overflow-x:auto">
+          <table class="data-table" style="width:100%;font-size:12px">
+            <thead>
+              <tr>
+                <th>Company</th><th>Location (packet)</th><th>Visit</th>
+                <th>Tested</th><th>DB Status</th><th>Tests in DB</th><th>Issue</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr style="${r.issue ? 'background:#fff8e1' : ''}">
+                  <td>${esc(r.companyName)}</td>
+                  <td>${esc(r.locName)}</td>
+                  <td>${esc(r.visitDate)}</td>
+                  <td>${r.testedCount}</td>
+                  <td><span style="color:${r.status === 'imported' ? 'green' : r.status === 'submitted' ? '#e67e22' : '#999'}">${esc(r.status)}</span></td>
+                  <td>${r.totalTests}</td>
+                  <td style="color:var(--red);font-weight:600">${esc(r.issue)}</td>
+                  <td>${r.issue && r.status !== 'submitted'
+                    ? `<button class="btn btn-outline btn-sm btn-requeue"
+                         data-filename="${esc(r.name)}"
+                         data-packet-id="${esc(r.packetId)}"
+                         data-bad-tests="${r.badTests > 0}"
+                         style="font-size:11px;white-space:nowrap">Re-queue →</button>`
+                    : ''}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+
+      results.querySelectorAll('.btn-requeue').forEach(b => {
+        b.onclick = async () => {
+          const filename  = b.dataset.filename
+          const packetId  = b.dataset.packetId
+          const hasBad    = b.dataset.badTests === 'true'
+          const extra     = hasBad ? '\n\nTests imported to the wrong location will be deleted first.' : ''
+          if (!confirm(`Re-queue "${filename}" back to inbox for re-import?${extra}`)) return
+          b.disabled    = true
+          b.textContent = '…'
+          try {
+            if (hasBad) {
+              run('DELETE FROM tests WHERE packet_id = ?', [packetId])
+              run(`DELETE FROM employees WHERE location_id IN (SELECT location_id FROM locations WHERE active = 0)
+                     AND employee_id NOT IN (SELECT DISTINCT employee_id FROM tests)`)
+            }
+            await moveJsonFile(state.syncFolder, 'archive', 'inbox', filename)
+            run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
+            run('DELETE FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])
+            run(`UPDATE packets SET status = 'submitted', updated_at = datetime('now') WHERE packet_id = ?`, [packetId])
+            b.textContent    = '✓ Re-queued'
+            b.style.color    = 'green'
+            b.style.border   = 'none'
+          } catch (e) {
+            b.disabled    = false
+            b.textContent = 'Re-queue →'
+            alert('Failed: ' + e.message)
+          }
+        }
+      })
+
+    } catch (e) {
+      results.innerHTML = `<p style="color:var(--red)">Scan failed: ${e.message}</p>`
+    } finally {
+      btn.disabled    = false
+      btn.textContent = 'Scan Archive'
+    }
+  }
 }
 
 // --- SHARED UTILS ---
