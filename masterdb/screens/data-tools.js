@@ -822,6 +822,7 @@ export function renderDataTools(container, state, navigate) {
             run('DELETE FROM settings WHERE key = ?', [`pending_packet_${packetId}`])
             run('DELETE FROM settings WHERE key = ?', [`packet_loc_mismatch_${packetId}`])
             run(`UPDATE packets SET status = 'submitted', updated_at = datetime('now') WHERE packet_id = ?`, [packetId])
+            await JsonDatabase.pushMaster(state.syncFolder, query)
             b.textContent    = '✓ Re-queued'
             b.style.color    = 'green'
             b.style.border   = 'none'

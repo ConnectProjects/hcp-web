@@ -118,16 +118,19 @@ export function renderSettings(container, state, navigate) {
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
             <button class="btn btn-outline btn-sm" id="btn-diag-mismatch">⚠ Location Mismatches</button>
             <button class="btn btn-outline btn-sm" id="btn-diag-dupes">Duplicate Employees</button>
+            <button class="btn btn-outline btn-sm" id="btn-diag-inactive-tests">Tests in Inactive Locations</button>
           </div>
           <textarea id="sql-input" spellcheck="false"
             style="width:100%;height:110px;font-family:monospace;font-size:12px;padding:8px;
                    box-sizing:border-box;border:1px solid #ccc;border-radius:4px;resize:vertical"
             placeholder="SELECT ..."></textarea>
-          <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-primary btn-sm" id="btn-run-sql">Run</button>
             <button class="btn btn-ghost btn-sm" id="btn-clear-sql">Clear</button>
+            <button class="btn btn-outline btn-sm" id="btn-push-cloud" style="margin-left:auto">☁ Sync to Cloud</button>
             <span id="sql-row-count" style="font-size:12px;color:#666"></span>
           </div>
+          <p style="font-size:11px;color:#888;margin:4px 0 0">After running DELETE/UPDATE, click <strong>Sync to Cloud</strong> to push changes to OneDrive — otherwise the next sync will restore the old data.</p>
           <div id="sql-results" style="margin-top:10px;overflow-x:auto;font-size:12px;max-height:400px;overflow-y:auto"></div>
         </section>
 
@@ -234,12 +237,22 @@ GROUP BY l.company_id, e.first_name, e.last_name
 HAVING occurrences > 1
 ORDER BY company, last_name, first_name`
 
+  const INACTIVE_TESTS_SQL =
+`SELECT l.name AS location, l.active, t.packet_id, COUNT(*) AS test_count
+FROM tests t
+JOIN employees e ON e.employee_id = t.employee_id
+JOIN locations l ON l.location_id = e.location_id
+WHERE l.active = 0
+GROUP BY l.location_id, t.packet_id
+ORDER BY l.name`
+
   const sqlInput   = container.querySelector('#sql-input')
   const sqlResults = container.querySelector('#sql-results')
   const sqlCount   = container.querySelector('#sql-row-count')
 
-  container.querySelector('#btn-diag-mismatch').onclick = () => { sqlInput.value = MISMATCH_SQL }
-  container.querySelector('#btn-diag-dupes').onclick    = () => { sqlInput.value = DUPES_SQL }
+  container.querySelector('#btn-diag-mismatch').onclick        = () => { sqlInput.value = MISMATCH_SQL }
+  container.querySelector('#btn-diag-dupes').onclick           = () => { sqlInput.value = DUPES_SQL }
+  container.querySelector('#btn-diag-inactive-tests').onclick  = () => { sqlInput.value = INACTIVE_TESTS_SQL }
 
   container.querySelector('#btn-clear-sql').onclick = () => {
     sqlInput.value = ''
@@ -272,10 +285,29 @@ ORDER BY company, last_name, first_name`
         sqlCount.textContent = `${rows.length} row${rows.length !== 1 ? 's' : ''}`
       } else {
         run(sql)
-        sqlResults.innerHTML = '<span style="color:green">✓ Executed.</span>'
+        sqlResults.innerHTML = '<span style="color:green">✓ Executed. Click <strong>Sync to Cloud</strong> to push changes to OneDrive.</span>'
       }
     } catch (e) {
       sqlResults.innerHTML = `<span style="color:var(--red)">Error: ${esc(e.message)}</span>`
+    }
+  }
+
+  container.querySelector('#btn-push-cloud').onclick = async () => {
+    const btn = container.querySelector('#btn-push-cloud')
+    if (!state.syncFolder) {
+      sqlResults.innerHTML = '<span style="color:var(--red)">Not connected to OneDrive. Connect sync folder first.</span>'
+      return
+    }
+    btn.disabled = true
+    btn.textContent = '☁ Syncing…'
+    try {
+      await JsonDatabase.pushMaster(state.syncFolder, query)
+      sqlResults.innerHTML = '<span style="color:green">✓ Pushed to OneDrive. The deleted records will no longer be restored by sync.</span>'
+    } catch (e) {
+      sqlResults.innerHTML = `<span style="color:var(--red)">Push failed: ${esc(e.message)}</span>`
+    } finally {
+      btn.disabled = false
+      btn.textContent = '☁ Sync to Cloud'
     }
   }
 }
