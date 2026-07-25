@@ -473,28 +473,52 @@ async function checkSyncFolder(container, state, navigate) {
     status.textContent = `Found ${files.length} packet(s), importing...`
     let saved = 0
 
+    let parked = 0
+
     for (const { name } of files) {
       try {
-        const packet = await readJsonFile(folder, 'inbox', name)
-        const coName = packet.company?.name ?? ''
-        const companyId = queryOne(
-          `SELECT company_id FROM companies WHERE name = ? LIMIT 1`, [coName]
-        )?.company_id ?? coName
+        const packet      = await readJsonFile(folder, 'inbox', name)
+        const packetId    = packet.packet_id
+        const coName      = packet.company?.name ?? ''
+        const resolvedCo  = queryOne(
+          `SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`, [coName]
+        )
+        const companyId   = resolvedCo?.company_id ?? coName
 
         run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
-          [`pending_packet_${packet.packet_id}`, JSON.stringify(packet)]
+          [`pending_packet_${packetId}`, JSON.stringify(packet)]
         )
         run(`INSERT OR REPLACE INTO packets
           (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-          [packet.packet_id, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+          [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
         )
+
+        // Flag mismatch if company has active locations but this packet's location doesn't match any
+        if (resolvedCo) {
+          const hasLocs = queryOne('SELECT 1 FROM locations WHERE company_id = ? AND active = 1 LIMIT 1', [resolvedCo.company_id])
+          if (hasLocs) {
+            const byId = packet.location?.location_id
+              ? queryOne('SELECT 1 FROM locations WHERE location_id = ? AND company_id = ? AND active = 1', [packet.location.location_id, resolvedCo.company_id])
+              : null
+            const byName = !byId && packet.location?.name
+              ? queryOne('SELECT 1 FROM locations WHERE company_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND active = 1 LIMIT 1', [resolvedCo.company_id, packet.location.name])
+              : null
+            if (!byId && !byName) {
+              run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+                [`packet_loc_mismatch_${packetId}`, packet.location?.name ?? '(unknown)'])
+              parked++
+            }
+          }
+        }
+
         await moveJsonFile(folder, 'inbox', 'archive', name)
         saved++
       } catch (e) { console.warn('Could not process packet:', name, e) }
     }
 
-    status.textContent = `✓ ${saved} packet(s) ready for review.`
+    const parkedMsg = parked > 0 ? ` · ${parked} need location review (see Review →).` : ''
+    status.textContent = `✓ ${saved} packet(s) ready for review.${parkedMsg}`
     status.className = 'alert alert-success'
     setTimeout(() => navigate('dashboard'), 1500)
   } catch (e) {
