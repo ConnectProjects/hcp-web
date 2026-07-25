@@ -26,6 +26,7 @@ import { renderProvinceRules }from './screens/province-rules.js'
 import { renderReports }      from './screens/reports.js'
 import { renderHelp }         from './screens/help.js'
 import { renderLocationDetail } from './screens/location-detail.js'
+import { renderDbBrowser }    from './screens/db-browser.js'
 import { ROLES, PERMISSIONS } from '../shared/auth-utils.js'
 
 // ---------------------------------------------------------------------------
@@ -319,7 +320,7 @@ const SCREENS = {
   incoming: renderIncoming, 'import-confirm': renderImportConfirm,
   reports: renderReports, settings: renderSettings,
   users: renderUsers, logs: renderLogs, 'data-tools': renderDataTools,
-  'legacy-import': renderLegacyImport, help: renderHelp,
+  'legacy-import': renderLegacyImport, 'db-browser': renderDbBrowser, help: renderHelp,
   'generate-packet': renderGeneratePacket, 'rejected-packets': renderRejectedPackets,
   'province-rules': renderProvinceRules,
 };
@@ -333,6 +334,7 @@ const NAV_ITEMS = [
   { screen: 'users',     label: 'Team',      icon: '👥' },
   { screen: 'settings',  label: 'Settings',  icon: '⚙️' },
   { screen: 'data-tools',label: 'Data Tools',icon: '🛠️' },
+  { screen: 'db-browser',label: 'DB Browser',icon: '🗄️' },
   { screen: 'logs',      label: 'Logs',      icon: '📜' },
   { screen: 'help',      label: 'Help',      icon: '❓' }
 ];
