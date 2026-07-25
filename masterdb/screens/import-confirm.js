@@ -41,10 +41,8 @@ export function renderImportConfirm(container, state, navigate) {
   const employees      = packet.employees ?? []
   const testedEmps     = employees.filter(e => e.completed_tests?.length > 0)
   const totalTests     = testedEmps.reduce((acc, e) => acc + (e.completed_tests?.length ?? 0), 0)
-  const testedEmpIds = testedEmps.map(e => e.employee_id).filter(Boolean)
-  const alreadyImported = testedEmpIds.length === 0 ? 0 : query(
-    `SELECT COUNT(*) AS n FROM tests WHERE packet_id = ? AND employee_id IN (${testedEmpIds.map(() => '?').join(',')})`,
-    [packetId, ...testedEmpIds]
+  const alreadyImported = query(
+    `SELECT COUNT(*) AS n FROM tests WHERE packet_id = ?`, [packetId]
   )[0]?.n ?? 0
 
   // State for company selection (offline packets)
