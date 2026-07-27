@@ -268,7 +268,8 @@ export function renderDbBrowser(container, state, navigate) {
         const col = th.dataset.col
         if (sortCol === col) sortAsc = !sortAsc
         else { sortCol = col; sortAsc = true }
-        applyView()
+        if (tbl) loadTable(tbl, 0)   // re-query DB with ORDER BY from page 1
+        else applyView()              // custom SQL: client-side sort is fine (smaller result set)
       })
     )
 
@@ -338,11 +339,12 @@ export function renderDbBrowser(container, state, navigate) {
   function loadTable(tbl, page = 0) {
     activeTable  = tbl
     currentPage  = page
-    sortCol      = null; sortAsc = true
     searchEl.value = ''
     pagerEl.innerHTML = ''
 
-    const offset = page * PAGE_SIZE
+    const offset  = page * PAGE_SIZE
+    const orderBy = sortCol ? `ORDER BY "${sortCol}" ${sortAsc ? 'ASC' : 'DESC'}` : ''
+
     container.querySelectorAll('.dbb-tbl').forEach(b => {
       const on = b.dataset.table === tbl
       b.style.background = on ? '#dce8ff' : 'none'
@@ -353,9 +355,9 @@ export function renderDbBrowser(container, state, navigate) {
     const countRow = queryOne(`SELECT COUNT(*) AS n FROM "${tbl}"`)
     totalRows = countRow?.n ?? 0
 
-    const rows = query(`SELECT rowid, * FROM "${tbl}" LIMIT ? OFFSET ?`, [PAGE_SIZE, offset])
+    const rows = query(`SELECT rowid, * FROM "${tbl}" ${orderBy} LIMIT ? OFFSET ?`, [PAGE_SIZE, offset])
     const cols = rows.length ? Object.keys(rows[0]) : []
-    sqlEl.value = `SELECT * FROM "${tbl}" LIMIT ${PAGE_SIZE} OFFSET ${offset}`
+    sqlEl.value = `SELECT * FROM "${tbl}" ${orderBy} LIMIT ${PAGE_SIZE} OFFSET ${offset}`.replace(/\s+/g, ' ').trim()
     setRows(cols, rows, tbl)
     renderPager(tbl, page, totalRows)
   }
@@ -433,9 +435,12 @@ export function renderDbBrowser(container, state, navigate) {
     status(`✓ Exported ${rows.length} rows`)
   })
 
-  // Table list clicks
+  // Table list clicks — reset sort when switching to a new table
   container.querySelectorAll('.dbb-tbl').forEach(btn =>
-    btn.addEventListener('click', () => loadTable(btn.dataset.table))
+    btn.addEventListener('click', () => {
+      sortCol = null; sortAsc = true
+      loadTable(btn.dataset.table)
+    })
   )
 
   // Load first table on open
