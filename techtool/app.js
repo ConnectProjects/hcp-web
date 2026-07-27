@@ -217,7 +217,7 @@ async function boot() {
       // Auto-download any new packets assigned since last session
       try {
         const newCount = await pullPacketsFromFolder(state.syncFolder, state.user);
-        if (newCount > 0) state.packets = await getAllPackets();
+        if (newCount > 0) await refreshPackets();
       } catch {}
 
       startHeartbeat();
@@ -244,11 +244,17 @@ async function startHeartbeat() {
     try {
       const newCount = await pullPacketsFromFolder(state.syncFolder, state.user);
       if (newCount > 0) {
-        state.packets = await getAllPackets();
+        await refreshPackets();
         if (state.screen === 'dashboard' || state.screen === 'schedule') paint();
       }
     } catch {}
   }, 60000);
+}
+
+async function refreshPackets() {
+  const all = await getAllPackets()
+  const uid = state.user?.user_id
+  state.packets = uid ? all.filter(p => p.tech?.tech_id === uid) : all
 }
 
 openDB().then(boot);

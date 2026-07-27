@@ -1,43 +1,62 @@
 import { archivePacket } from '../db/idb.js'
 
 export function renderDashboard(container, state, navigate) {
-  // Filter logic: Hide packets that are manually archived OR already submitted to the office
-  const activePackets = (state.packets || []).filter(p => {
-    return !p.ui_archived && p.status !== 'submitted';
-  });
+  // Hide archived and submitted packets
+  const activePackets = (state.packets || []).filter(p =>
+    !p.ui_archived && p.status !== 'submitted'
+  )
 
-  const d = new Date()
-  const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
-  const DOW   = ['SUN','MON','TUE','WED','THU','FRI','SAT']
+  // --- Current-week date range (local time, no UTC shift) ---
+  const now        = new Date()
+  const todayStr   = localDateStr(now)
+  const dow0       = now.getDay()                    // 0=Sun … 6=Sat
+  const daysFromMon = dow0 === 0 ? 6 : dow0 - 1     // Mon→0, Sun→6
+  const weekMon    = new Date(now)
+  weekMon.setDate(now.getDate() - daysFromMon)
+  const weekSun    = new Date(weekMon)
+  weekSun.setDate(weekMon.getDate() + 6)
+  const weekStart  = localDateStr(weekMon)
+  const weekEnd    = localDateStr(weekSun)
 
-  // Group by day-of-week; within each group sort chronologically
-  const byDow = new Map() // dow index (0-6) → packets[]
-  for (const p of [...activePackets].sort((a, b) =>
+  // Partition: this week vs prior-week overdue
+  const weekPackets  = activePackets.filter(p => {
+    const vd = p.visit?.visit_date || ''
+    return vd >= weekStart && vd <= weekEnd
+  })
+  const priorOverdue = activePackets.filter(p => {
+    const vd = p.visit?.visit_date || ''
+    return vd && vd < weekStart
+  })
+
+  // Group this-week visits by day-of-week (no cross-week collision possible)
+  const DOW    = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
+  const byDow  = new Map()
+  for (const p of [...weekPackets].sort((a, b) =>
     (a.visit?.visit_date || '').localeCompare(b.visit?.visit_date || '')
   )) {
-    const d = p.visit?.visit_date
-    const dow = d ? new Date(d + 'T12:00:00').getDay() : -1
+    const vd  = p.visit?.visit_date
+    const dow = vd ? new Date(vd + 'T12:00:00').getDay() : -1
     if (!byDow.has(dow)) byDow.set(dow, [])
     byDow.get(dow).push(p)
   }
-  // Order columns Mon→Sun (treat Sun=7 so Mon comes first)
+  // Mon→Fri order (treat Sun=7 so Mon sorts first)
   const orderedDows = [...byDow.keys()].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
 
   function colCard(p) {
-    const d        = p.visit?.visit_date || ''
-    const isPast   = d && d < today
-    const isToday  = d === today
-    const dateCls  = isToday ? 'cc-date--today' : (isPast ? 'cc-date--overdue' : '')
-    const dateLabel= isToday ? 'TODAY' : (isPast ? 'OVERDUE' : '')
-    const dt       = d ? new Date(d + 'T12:00:00') : null
-    const dateStr  = dt ? dt.toLocaleString('en-CA', { month: 'short', day: 'numeric' }) : '—'
-    const empCount = (p.employees || []).length
-    const done     = (p.employees || []).filter(e => (e.completed_tests?.length > 0) || e.skipped_at).length
-    const pct      = empCount > 0 ? Math.round((done / empCount) * 100) : 0
-    const locName  = p.location?.name || p.location_name || ''
-    const province = p.visit?.province || p.company?.province || ''
-    const notes    = p.company?.sticky_notes || ''
-    const subParts = [locName, province, `${empCount}w`].filter(Boolean)
+    const d         = p.visit?.visit_date || ''
+    const isPast    = d && d < todayStr
+    const isToday   = d === todayStr
+    const dateCls   = isToday ? 'cc-date--today' : (isPast ? 'cc-date--overdue' : '')
+    const dateLabel = isToday ? 'TODAY' : (isPast ? 'OVERDUE' : '')
+    const dt        = d ? new Date(d + 'T12:00:00') : null
+    const dateStr   = dt ? dt.toLocaleString('en-CA', { month: 'short', day: 'numeric' }) : '—'
+    const empCount  = (p.employees || []).length
+    const done      = (p.employees || []).filter(e => (e.completed_tests?.length > 0) || e.skipped_at).length
+    const pct       = empCount > 0 ? Math.round((done / empCount) * 100) : 0
+    const locName   = p.location?.name || p.location_name || ''
+    const province  = p.visit?.province || p.company?.province || ''
+    const notes     = p.company?.sticky_notes || ''
+    const subParts  = [locName, province, `${empCount}w`].filter(Boolean)
     return `
       <div class="col-card" data-id="${p.packet_id}">
         <div class="col-card__top">
@@ -67,65 +86,82 @@ export function renderDashboard(container, state, navigate) {
         <button class="btn btn-sm btn-outline" id="btn-sync-now">🔄 Sync Now</button>
       </div>
 
-      ${activePackets.length > 0 ? `
+      ${priorOverdue.length > 0 ? `
+        <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;
+                    padding:8px 12px;margin-bottom:10px;font-size:13px;color:#856404">
+          ⚠ ${priorOverdue.length} overdue packet${priorOverdue.length !== 1 ? 's' : ''} from previous weeks —
+          <a href="#" id="btn-go-packets-od" style="color:#856404;font-weight:600">view in Packets</a>
+        </div>
+      ` : ''}
+
+      ${weekPackets.length > 0 ? `
         <div class="day-columns">
           ${orderedDows.map(dow => {
-            const packets = byDow.get(dow)
-            let lastDate  = null
-            const cards   = packets.map(p => {
-              const d      = p.visit?.visit_date || ''
-              const divider = (lastDate !== null && d !== lastDate) ? '<div class="day-divider"></div>' : ''
-              lastDate = d
+            const packets   = byDow.get(dow)
+            const sampleDt  = new Date((packets[0]?.visit?.visit_date || '') + 'T12:00:00')
+            const dateLabel = packets[0]?.visit?.visit_date
+              ? sampleDt.toLocaleString('en-CA', { month: 'short', day: 'numeric' })
+              : ''
+            let lastDate = null
+            const cards  = packets.map(p => {
+              const vd      = p.visit?.visit_date || ''
+              const divider = (lastDate !== null && vd !== lastDate) ? '<div class="day-divider"></div>' : ''
+              lastDate = vd
               return divider + colCard(p)
             }).join('')
             return `
               <div class="day-column">
-                <div class="day-col-header">${DOW[dow]}</div>
+                <div class="day-col-header">${DOW[dow]}${dateLabel ? `<span style="font-weight:400;opacity:.7;margin-left:4px">${dateLabel}</span>` : ''}</div>
                 ${cards}
               </div>`
           }).join('')}
         </div>
       ` : `
         <div class="empty-state">
-          <p>No active packets found on this device.</p>
-          <p style="font-size: 13px; color: #999; margin-bottom: 20px;">Packets are hidden once they are submitted to the office.</p>
+          <p>No active packets found for this week.</p>
+          <p style="font-size:13px;color:#999;margin-bottom:20px">Packets are hidden once submitted to the office.</p>
           <button class="btn btn-primary" id="btn-empty-sync">Check for New Packets</button>
         </div>
       `}
     </div>
-  `;
+  `
 
   // --- Handlers ---
-  
-  const goToSync = () => navigate('sync');
-  container.querySelector('#btn-sync-now')?.addEventListener('click', goToSync);
-  container.querySelector('#btn-empty-sync')?.addEventListener('click', goToSync);
+  const goToSync    = () => navigate('sync')
+  const goToPackets = (e) => { e.preventDefault(); navigate('schedule') }
+
+  container.querySelector('#btn-sync-now')?.addEventListener('click', goToSync)
+  container.querySelector('#btn-empty-sync')?.addEventListener('click', goToSync)
+  container.querySelector('#btn-go-packets-od')?.addEventListener('click', goToPackets)
 
   container.querySelectorAll('.col-card').forEach(card => {
     card.onclick = (e) => {
-        if (e.target.classList.contains('btn-archive')) return;
-        const selected = activePackets.find(p => p.packet_id === card.dataset.id);
-        if (selected) {
-            state.currentPacket = selected;
-            navigate('employee-list');
-        }
-    };
-  });
+      if (e.target.classList.contains('btn-archive')) return
+      const selected = activePackets.find(p => p.packet_id === card.dataset.id)
+      if (selected) {
+        state.currentPacket = selected
+        navigate('employee-list')
+      }
+    }
+  })
 
   container.querySelectorAll('.btn-archive').forEach(btn => {
     btn.onclick = async (e) => {
-        e.stopPropagation(); 
-        if (confirm("Hide this packet from your dashboard?")) {
-            await archivePacket(btn.dataset.id);
-            const p = state.packets.find(p => p.packet_id === btn.dataset.id);
-            if (p) p.ui_archived = true;
-            renderDashboard(container, state, navigate);
-        }
-    };
-  });
+      e.stopPropagation()
+      if (confirm('Hide this packet from your dashboard?')) {
+        await archivePacket(btn.dataset.id)
+        const p = state.packets.find(p => p.packet_id === btn.dataset.id)
+        if (p) p.ui_archived = true
+        renderDashboard(container, state, navigate)
+      }
+    }
+  })
 }
 
+function localDateStr(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
 
 function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
