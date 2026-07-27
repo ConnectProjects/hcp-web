@@ -231,8 +231,9 @@ async function startHeartbeat() {
   setInterval(async () => {
     if (!state.user || state.screen === 'login') return;
     try {
-      state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
-      await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+      const hasPending = countPendingRows() > 0;
+      state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run, { push: hasPending });
+      if (hasPending) await JsonDatabase.pushBranding(state.syncFolder, queryOne);
       await scanAndImportInbox(state.syncFolder);
       recordSyncTime();
       updateSyncIndicator();

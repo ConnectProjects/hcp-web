@@ -63,7 +63,7 @@ export const JsonDatabase = {
    * IMPORTANT: Use soft-deletes (set active=0) instead of hard deletes,
    * otherwise deleted rows will reappear from the other side on next sync.
    */
-  async syncMaster(syncFolder, queryFn, runFn) {
+  async syncMaster(syncFolder, queryFn, runFn, { push = true } = {}) {
     if (!syncFolder) return {};
 
     for (const table of this.tables) {
@@ -156,8 +156,8 @@ export const JsonDatabase = {
           runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
         }
 
-        // Write merged result back to cloud so both sides are in sync
-        await writeJsonFile(syncFolder, '', `${table}.json`, [...merged.values()]);
+        // Write merged result back to cloud only if this computer has local changes
+        if (push) await writeJsonFile(syncFolder, '', `${table}.json`, [...merged.values()]);
 
       } catch (e) {
         console.warn(`Sync error on ${table}:`, e.message);
