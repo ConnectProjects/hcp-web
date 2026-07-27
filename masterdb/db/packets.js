@@ -28,7 +28,10 @@ export function getPacketsByStatus(status) {
       COALESCE(c.name, '')  AS company_name,
       COALESCE(l.name, '')  AS location_name,
       COALESCE(l.province, '') AS province,
-      COALESCE(u.folder_name, t.folder_name) AS tech_folder_name
+      COALESCE(u.folder_name, t.folder_name) AS tech_folder_name,
+      CASE WHEN INSTR(COALESCE(u.name,''), ' ') > 0
+        THEN SUBSTR(u.name, 1, INSTR(u.name, ' ') - 1)
+        ELSE COALESCE(u.name, '') END AS tech_first_name
     FROM packets p
     LEFT JOIN companies c ON c.company_id = p.company_id
     LEFT JOIN locations l ON l.location_id = p.location_id

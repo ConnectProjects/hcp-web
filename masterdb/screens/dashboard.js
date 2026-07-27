@@ -36,7 +36,9 @@ export function renderDashboard(container, state, navigate) {
     SELECT p.*,
       COALESCE(c.name, '')  AS company_name,
       COALESCE(l.name, '')  AS location_name,
-      COALESCE(u.name, '')  AS tech_name
+      CASE WHEN INSTR(COALESCE(u.name,''), ' ') > 0
+        THEN SUBSTR(u.name, 1, INSTR(u.name, ' ') - 1)
+        ELSE COALESCE(u.name, '') END AS tech_first_name
     FROM packets p
     LEFT JOIN companies c ON c.company_id = p.company_id
     LEFT JOIN locations l ON l.location_id = p.location_id
@@ -154,11 +156,8 @@ export function renderDashboard(container, state, navigate) {
             : `<div class="panel-scroll">
                 ${inField.map(p => `
                   <div class="overdue-row">
-                    <div class="overdue-name">${esc(p.company_name)}</div>
-                    <div class="overdue-meta">
-                      ${p.visit_date} · ${esc(p.tech_name || p.tech_id || 'Unassigned')}
-                      ${p.location_name ? ` · ${esc(p.location_name)}` : ''}
-                    </div>
+                    <div class="overdue-name">${esc(p.company_name)}${p.location_name ? ` · ${esc(p.location_name)}` : ''}</div>
+                    <div class="overdue-meta">${p.visit_date} · ${esc(p.tech_first_name || 'Unassigned')}</div>
                   </div>
                 `).join('')}
               </div>`
@@ -229,8 +228,8 @@ export function renderDashboard(container, state, navigate) {
             : `<div class="panel-scroll">
                 ${recentlyImported.map(p => `
                   <div class="overdue-row">
-                    <div class="overdue-name">${esc(p.company_name)}</div>
-                    <div class="overdue-meta">Visit: ${p.visit_date} · Imported: ${(p.updated_at ?? '').slice(0,10)}${p.tech_name ? ` · ${esc(p.tech_name)}` : ''}</div>
+                    <div class="overdue-name">${esc(p.company_name)}${p.location_name ? ` · ${esc(p.location_name)}` : ''}</div>
+                    <div class="overdue-meta">Visit: ${p.visit_date} · Imported: ${(p.updated_at ?? '').slice(0,10)}${p.tech_first_name ? ` · ${esc(p.tech_first_name)}` : ''}</div>
                   </div>
                 `).join('')}
               </div>`
