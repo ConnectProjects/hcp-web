@@ -1,4 +1,4 @@
-const CACHE = 'hcp-masterdb-v3'
+const CACHE = 'hcp-masterdb-v4'
 
 const APP_SHELL = [
   './index.html',
