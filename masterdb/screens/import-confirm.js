@@ -3,6 +3,7 @@ import { updatePacketStatus }               from '../db/packets.js'
 import { getCompany }                       from '../db/companies.js'
 import { createEmployee, createBaseline }   from '../db/employees.js'
 import { createTest, createHPDAssessment }  from '../db/tests.js'
+import { reconcileImport }                  from '@shared/validation/reconcile-import.js'
 
 export function renderImportConfirm(container, state, navigate) {
   const packetId = state.params?.packetId
@@ -313,6 +314,8 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
     const province = packet.company?.province ?? 'BC'
     let   imported = 0
     let   skippedEmpty = 0
+    let   skippedDuplicate = 0
+    const insertedTestIds = []
     let   resolvedCompany = company
 
     transaction(() => {
@@ -424,6 +427,7 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
 
           if (existingTest) {
             console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
+            skippedDuplicate++
             continue
           }
 
@@ -464,9 +468,18 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
             )
           }
 
+          insertedTestIds.push(testId)
           imported++
         }
       }
+
+      // Fail loud: verify the whole packet landed correctly before COMMIT.
+      // Any mismatch throws → the transaction rolls back → nothing imports.
+      reconcileImport({
+        packet, queryOne, defaultLocation,
+        locationIdOverride: locationIdOverride ?? null,
+        imported, skippedDuplicate, skippedEmpty, insertedTestIds
+      })
 
       })
 
@@ -476,7 +489,10 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
     state._importCoId = null
     state._importLocId = undefined
 
-    sucEl.textContent = `✓ Imported ${imported} test(s)${skippedEmpty > 0 ? ` · ${skippedEmpty} skipped (no threshold data)` : ''}.`
+    sucEl.textContent = `✓ Imported ${imported} test(s)`
+      + (skippedDuplicate > 0 ? ` · ${skippedDuplicate} already on file (skipped)` : '')
+      + (skippedEmpty > 0 ? ` · ${skippedEmpty} skipped (no threshold data)` : '')
+      + '.'
     sucEl.classList.remove('hidden')
     btn.textContent = '✓ Imported'
 

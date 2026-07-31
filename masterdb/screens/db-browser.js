@@ -42,49 +42,38 @@ GROUP BY l.location_id
 ORDER BY c.name, l.active DESC, l.name`
   },
   {
-    label: '🔧 Fix SK-suffix Locations',
+    label: '🔧 Merge duplicate SK locations (→ ", SK")',
     sql:
-`-- This moves employees and tests from inactive ", SK" locations
--- to their correct active counterparts (e.g. "#711 North Battleford, SK" → "#711 North Battleford").
--- Review the SELECT below first, then delete it and click Run for each UPDATE.
+`-- Consolidates the WRONG-PROVINCE duplicate (e.g. "#731 Yorkton", prov AB, active)
+-- onto the province-CORRECT record (e.g. "#731 Yorkton, SK", prov SK) and retires the
+-- duplicate. See INCIDENT-2026-07-29-yorkton.md / RECOVERY-2026-07-29-yorkton.md.
+--
+-- IMPORTANT: the direction is  duplicate (no ", SK")  →  canonical (", SK").
+-- The old preset did the reverse and stamped SK workers as AB — do NOT do that.
+-- Review the SELECT, then run the UPDATEs (uncomment) one at a time.
 
--- Step 1 – preview the mapping:
-SELECT bad.name AS wrong_location, good.name AS correct_location,
-  bad.location_id AS wrong_id, good.location_id AS correct_id
-FROM locations bad
-JOIN locations good
-  ON good.company_id = bad.company_id
-  AND good.active = 1
-  AND TRIM(good.name) = TRIM(REPLACE(bad.name, ', SK', ''))
-WHERE bad.active = 0 AND bad.name LIKE '%, SK'
+-- Step 1 – preview the mapping ( dup_id → sk_id ):
+SELECT dup.location_id AS dup_id, dup.name AS dup_name, dup.province AS dup_prov, dup.active AS dup_active,
+       sk.location_id  AS sk_id,  sk.name  AS sk_name,  sk.province AS sk_prov,  sk.active AS sk_active
+FROM locations dup
+JOIN locations sk
+  ON sk.company_id = dup.company_id
+ AND sk.name = dup.name || ', SK'
+WHERE sk.name LIKE '%, SK'
 
--- Step 2 – move employees (delete the SELECT above, run this):
--- UPDATE employees
--- SET location_id = (
---   SELECT good.location_id FROM locations bad
---   JOIN locations good ON good.company_id = bad.company_id
---     AND good.active = 1
---     AND TRIM(good.name) = TRIM(REPLACE(bad.name, ', SK', ''))
---   WHERE bad.location_id = employees.location_id AND bad.active = 0
--- )
--- WHERE location_id IN (
---   SELECT location_id FROM locations WHERE active = 0 AND name LIKE '%, SK'
--- )
+-- Step 2 – repoint child rows dup → sk, then flip active flags.
+-- Fill in the specific ids from Step 1 (safer than a blanket update). Example for 284→166:
+-- UPDATE tests      SET location_id = 166 WHERE location_id = 284;
+-- UPDATE baselines  SET location_id = 166 WHERE location_id = 284;
+-- UPDATE employees  SET location_id = 166 WHERE location_id = 284;
+-- UPDATE packets    SET location_id = 166 WHERE location_id = 284;
+-- UPDATE employment SET location_id = 166 WHERE location_id = 284;
+-- UPDATE schedules  SET location_id = 166 WHERE location_id = 284;
+-- UPDATE locations  SET active = 1, province = 'SK', updated_at = datetime('now') WHERE location_id = 166;
+-- UPDATE locations  SET active = 0,                   updated_at = datetime('now') WHERE location_id = 284;
 
--- Step 3 – move tests (run this next):
--- UPDATE tests
--- SET location_id = (
---   SELECT good.location_id FROM locations bad
---   JOIN locations good ON good.company_id = bad.company_id
---     AND good.active = 1
---     AND TRIM(good.name) = TRIM(REPLACE(bad.name, ', SK', ''))
---   WHERE bad.location_id = tests.location_id AND bad.active = 0
--- )
--- WHERE location_id IN (
---   SELECT location_id FROM locations WHERE active = 0 AND name LIKE '%, SK'
--- )
-
--- Step 4 – click ☁ Sync to push changes to OneDrive.`
+-- Step 3 – de-duplicate employees now doubled at the SK location
+--          (Data Tools → Merge Duplicate Employees), then click ☁ Sync to push.`
   }
 ]
 

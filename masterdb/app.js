@@ -7,6 +7,7 @@ import { initDB, query, queryOne, run, logAction, backupToSyncFolder, exportExce
 import { initSchema }         from './db/schema.js'
 import { getSyncFolder, querySyncFolder, pickSyncFolder } from '@shared/fs/sync-folder.js'
 import { JsonDatabase }       from '@shared/fs/json-database.js'
+import { withSyncLock, isImportOwner, acquireImportClaim, releaseImportClaim } from '@shared/fs/single-writer.js'
 import { TimeService }        from '../shared/time-utils.js'
 import { BrandLogo }          from '@shared/components/brand-logo.js'
 import { applyTheme, loadThemeColor } from './theme.js'
@@ -224,6 +225,17 @@ export function logout() {
   navigate('login');
 }
 
+// Stop-gap: only the designated import-owner computer auto-imports, and only
+// while it holds the shared claim. Non-owners still sync data but never import,
+// which removes the multi-computer import race (see single-writer.js).
+async function guardedScanAndImport(folder) {
+  if (!folder || !isImportOwner()) return;
+  const claimed = await acquireImportClaim(folder);
+  if (!claimed) return;
+  try { await scanAndImportInbox(folder); }
+  finally { await releaseImportClaim(folder); }
+}
+
 let _heartbeatRunning = false
 async function startHeartbeat() {
   if (!state.syncFolder || _heartbeatRunning) return;
@@ -231,12 +243,16 @@ async function startHeartbeat() {
   setInterval(async () => {
     if (!state.user || state.screen === 'login') return;
     try {
-      const hasPending = countPendingRows() > 0;
-      state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run, { push: hasPending });
-      if (hasPending) await JsonDatabase.pushBranding(state.syncFolder, queryOne);
-      await scanAndImportInbox(state.syncFolder);
-      recordSyncTime();
-      updateSyncIndicator();
+      // Web Lock serializes sync+import across tabs of this browser; a busy
+      // cycle is skipped rather than queued so heartbeats can't overlap.
+      await withSyncLock(async () => {
+        const hasPending = countPendingRows() > 0;
+        state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run, { push: hasPending });
+        if (hasPending) await JsonDatabase.pushBranding(state.syncFolder, queryOne);
+        await guardedScanAndImport(state.syncFolder);
+        recordSyncTime();
+        updateSyncIndicator();
+      });
     } catch (e) {}
   }, 60000);
 }
@@ -267,7 +283,7 @@ async function boot() {
     state.syncFolder = handle;
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
-    try { await scanAndImportInbox(state.syncFolder); } catch {}
+    try { await guardedScanAndImport(state.syncFolder); } catch {}
     recordSyncTime();
     startHeartbeat();
   };
@@ -300,7 +316,7 @@ async function boot() {
   if (state.syncFolder) {
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
-    try { await scanAndImportInbox(state.syncFolder); } catch {}
+    try { await guardedScanAndImport(state.syncFolder); } catch {}
     recordSyncTime();
     startHeartbeat();
   }

@@ -3,6 +3,7 @@ import { pickSyncFolder, getSyncFolder } from '@shared/fs/sync-folder.js'
 import { isDemoLoaded, clearDemoData }   from '../db/demo.js'
 import { applyTheme, saveThemeColor, loadThemeColor, DEFAULT_COLOR } from '../theme.js'
 import { JsonDatabase } from '@shared/fs/json-database.js'
+import { isImportOwner, setImportOwner } from '@shared/fs/single-writer.js'
 
 export function renderSettings(container, state, navigate) {
   const provinces = query('SELECT * FROM provinces ORDER BY province_code')
@@ -98,6 +99,24 @@ export function renderSettings(container, state, navigate) {
           <button class="btn btn-primary btn-sm" id="btn-pick-folder" style="margin-top:10px">
             ${state.syncFolder ? 'Change Folder' : 'Connect Folder'}
           </button>
+
+          <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--grey-200)">
+            <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer">
+              <input type="checkbox" id="chk-import-owner" ${isImportOwner() ? 'checked' : ''}
+                style="margin-top:3px; accent-color:var(--navy-mid); transform:scale(1.2)" />
+              <span>
+                <strong>Auto-import packets on this computer</strong>
+                <span id="import-owner-state" style="font-size:12px; color:${isImportOwner() ? 'var(--green,#2e7d32)' : 'var(--grey-600)'}; margin-left:6px">
+                  ${isImportOwner() ? '● ON — this computer imports' : '○ OFF'}
+                </span>
+                <span style="display:block; font-size:12px; color:var(--grey-600); margin-top:4px; max-width:520px">
+                  Enable on <strong>exactly one</strong> office computer. That machine auto-imports incoming
+                  packets; the others still sync data but won't import, which prevents the concurrent-import
+                  corruption. Any computer can still import manually from the Incoming screen.
+                </span>
+              </span>
+            </label>
+          </div>
         </section>
 
         <!-- 6. Maintenance -->
@@ -193,6 +212,15 @@ export function renderSettings(container, state, navigate) {
 
   container.querySelector('#btn-pick-folder').onclick = async () => {
     state.syncFolder = await pickSyncFolder(); navigate('settings');
+  };
+
+  container.querySelector('#chk-import-owner').onchange = (e) => {
+    setImportOwner(e.target.checked);
+    const label = container.querySelector('#import-owner-state');
+    if (label) {
+      label.textContent = e.target.checked ? '● ON — this computer imports' : '○ OFF';
+      label.style.color = e.target.checked ? 'var(--green,#2e7d32)' : 'var(--grey-600)';
+    }
   };
 
   container.querySelector('#btn-export-db').onclick = () => exportDB()

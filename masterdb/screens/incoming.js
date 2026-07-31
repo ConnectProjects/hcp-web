@@ -4,6 +4,8 @@ import { updatePacketStatus }  from '../db/packets.js'
 import { createTest, createHPDAssessment } from '../db/tests.js'
 import { createBaseline }      from '../db/employees.js'
 import { getSyncFolder, pickSyncFolder, listJsonFiles, readJsonFile, moveJsonFile } from '@shared/fs/sync-folder.js'
+import { reconcileImport } from '@shared/validation/reconcile-import.js'
+import { withSyncLock, acquireImportClaim, releaseImportClaim } from '@shared/fs/single-writer.js'
 
 export function renderIncoming(container, state, navigate) {
   const packets = getPacketsByStatus('submitted')
@@ -241,70 +243,96 @@ async function checkInbox(container, state, navigate) {
       state.syncFolder = folder
     }
 
-    status.textContent = 'Scanning inbox for completed packets…'
-    const files = await listJsonFiles(folder, 'inbox')
+    // Randomized 1–3s delay so two people clicking at nearly the same instant
+    // don't both read the shared import lock before the other's claim lands.
+    // On its own a delay barely helps; combined with the claim below it lets
+    // the loser back off cleanly instead of racing.
+    status.textContent = 'Preparing…'
+    await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000))
 
-    if (files.length === 0) {
+    // Serialize within this browser (Web Lock) and across computers (claim file).
+    const outcome = await withSyncLock(async () => {
+      const claimed = await acquireImportClaim(folder)
+      if (!claimed) return { busy: true }
+      try {
+        const files = await listJsonFiles(folder, 'inbox')
+        if (files.length === 0) return { empty: true }
+
+        status.textContent = `Found ${files.length} packet(s) — importing…`
+        let totalImported = 0
+        let errors = []
+        let parked = 0
+
+        for (const { name } of files) {
+          try {
+            const packet = await readJsonFile(folder, 'inbox', name)
+            const packetId = packet.packet_id
+
+            await moveJsonFile(folder, 'inbox', 'archive', name)
+
+            const coName     = packet.company?.name ?? ''
+            const resolvedCo = queryOne(
+              `SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`, [coName]
+            )
+            const companyId  = resolvedCo?.company_id ?? coName
+
+            run(`INSERT OR REPLACE INTO packets
+              (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
+              [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
+            )
+
+            if (resolvedCo) {
+              const hasLocs = queryOne('SELECT 1 FROM locations WHERE company_id = ? AND active = 1 LIMIT 1', [resolvedCo.company_id])
+              if (hasLocs && !resolveLocation(resolvedCo.company_id, packet)) {
+                run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+                  [`pending_packet_${packetId}`, JSON.stringify(packet)])
+                run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
+                  [`packet_loc_mismatch_${packetId}`, packet.location?.name ?? '(unknown)'])
+                parked++
+                continue
+              }
+            }
+
+            const { imported, error } = importPacket(packet, packetId)
+            if (error) {
+              errors.push(`${name}: ${error}`)
+            } else {
+              totalImported += imported
+            }
+          } catch (e) {
+            errors.push(`${name}: ${e.message}`)
+            console.warn('Could not process packet:', name, e)
+          }
+        }
+
+        return { totalImported, errors, parked, fileCount: files.length }
+      } finally {
+        await releaseImportClaim(folder)
+      }
+    })
+
+    // Another tab (skipped) or another computer (busy) is already importing.
+    if (outcome?.skipped || outcome?.result?.busy) {
+      status.textContent = 'Another computer is importing right now — please try again in a moment.'
+      status.className   = 'alert alert-warn'
+      return
+    }
+
+    const r = outcome.result
+    if (r.empty) {
       status.textContent = 'No packets found in inbox.'
       status.className   = 'alert alert-info'
       return
     }
 
-    status.textContent = `Found ${files.length} packet(s) — importing…`
-    let totalImported = 0
-    let errors = []
-    let parked = 0
-
-    for (const { name } of files) {
-      try {
-        const packet = await readJsonFile(folder, 'inbox', name)
-        const packetId = packet.packet_id
-
-        await moveJsonFile(folder, 'inbox', 'archive', name)
-
-        const coName     = packet.company?.name ?? ''
-        const resolvedCo = queryOne(
-          `SELECT * FROM companies WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1`, [coName]
-        )
-        const companyId  = resolvedCo?.company_id ?? coName
-
-        run(`INSERT OR REPLACE INTO packets
-          (packet_id, company_id, location_id, tech_id, visit_date, filename, status, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'submitted', datetime('now'))`,
-          [packetId, companyId, packet.location?.location_id ?? null, packet.tech?.tech_id ?? null, packet.visit?.visit_date ?? '', name]
-        )
-
-        if (resolvedCo) {
-          const hasLocs = queryOne('SELECT 1 FROM locations WHERE company_id = ? AND active = 1 LIMIT 1', [resolvedCo.company_id])
-          if (hasLocs && !resolveLocation(resolvedCo.company_id, packet)) {
-            run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
-              [`pending_packet_${packetId}`, JSON.stringify(packet)])
-            run(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`,
-              [`packet_loc_mismatch_${packetId}`, packet.location?.name ?? '(unknown)'])
-            parked++
-            continue
-          }
-        }
-
-        const { imported, error } = importPacket(packet, packetId)
-        if (error) {
-          errors.push(`${name}: ${error}`)
-        } else {
-          totalImported += imported
-        }
-      } catch (e) {
-        errors.push(`${name}: ${e.message}`)
-        console.warn('Could not process packet:', name, e)
-      }
-    }
-
-    const parkedMsg = parked > 0 ? ` · ${parked} packet(s) need location review — check Incoming.` : ''
-    if (errors.length > 0) {
-      status.textContent = `Imported ${totalImported} test(s). Errors: ${errors.join('; ')}${parkedMsg}`
+    const parkedMsg = r.parked > 0 ? ` · ${r.parked} packet(s) need location review — check Incoming.` : ''
+    if (r.errors.length > 0) {
+      status.textContent = `Imported ${r.totalImported} test(s). Errors: ${r.errors.join('; ')}${parkedMsg}`
       status.className = 'alert alert-warn'
     } else {
-      status.textContent = `✓ ${totalImported} test(s) imported from ${files.length} packet(s).${parkedMsg}`
-      status.className = parked > 0 ? 'alert alert-warn' : 'alert alert-success'
+      status.textContent = `✓ ${r.totalImported} test(s) imported from ${r.fileCount} packet(s).${parkedMsg}`
+      status.className = r.parked > 0 ? 'alert alert-warn' : 'alert alert-success'
     }
 
     setTimeout(() => navigate('incoming'), 1500)
@@ -323,6 +351,8 @@ export function importPacket(packet, packetId, locationIdOverride = null) {
   try {
     const province = packet.company?.province ?? 'BC'
     let imported = 0
+    let skippedDuplicate = 0
+    const insertedTestIds = []
 
     transaction(() => {
       let resolvedCompany =
@@ -423,6 +453,7 @@ run(`INSERT INTO companies
           )
           if (existingTest) {
             console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
+            skippedDuplicate++
             continue
           }
           const effectiveType = (!hasExistingTests && empImportCount === 0)
@@ -450,10 +481,18 @@ run(`INSERT INTO companies
             createBaseline(dbEmp.employee_id, defaultLocation.location_id, test.test_date, test.thresholds ?? {})
           }
 
+          insertedTestIds.push(testId)
           empImportCount++
           imported++
         }
       }
+
+      // Fail loud: verify the whole packet landed correctly before COMMIT.
+      // Any mismatch throws → the transaction rolls back → nothing imports.
+      reconcileImport({
+        packet, queryOne, defaultLocation, locationIdOverride,
+        imported, skippedDuplicate, skippedEmpty: 0, insertedTestIds
+      })
     })
 
     updatePacketStatus(packetId, 'imported')
