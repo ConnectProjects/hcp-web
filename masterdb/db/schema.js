@@ -8,6 +8,10 @@
 
 import { getDB, run, query } from './sqlite.js'
 
+// Tables that sync via row-level merge and therefore need a globally-unique
+// `uid` (the cross-instance identity) and a `deleted_at` tombstone.
+const UID_TABLES = ['companies', 'locations', 'employees', 'tests', 'baselines', 'hpd_assessments']
+
 const CREATE_TABLES = `
 
 -- 1. PROVINCES & RULES
@@ -312,7 +316,7 @@ const MIGRATIONS = [
 
 const REBUILD_DEFS = {
   companies: {
-    columns: ['company_id', 'name', 'address', 'city', 'contact_name', 'contact_phone', 'contact_email', 'website', 'sticky_notes', 'active', 'created_at', 'updated_at'],
+    columns: ['company_id', 'name', 'address', 'city', 'contact_name', 'contact_phone', 'contact_email', 'website', 'sticky_notes', 'active', 'created_at', 'updated_at', 'uid', 'deleted_at'],
     sql: `CREATE TABLE companies_new (
       company_id    INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT NOT NULL,
@@ -325,11 +329,13 @@ const REBUILD_DEFS = {
       sticky_notes  TEXT,
       active        INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      uid           TEXT,
+      deleted_at    TEXT
     )`
   },
   locations: {
-    columns: ['location_id', 'company_id', 'name', 'province', 'address', 'city', 'postal_code', 'contact_name', 'contact_phone', 'contact_email', 'cu_code', 'hpd_inventory', 'sticky_notes', 'active', 'created_at', 'updated_at'],
+    columns: ['location_id', 'company_id', 'name', 'province', 'address', 'city', 'postal_code', 'contact_name', 'contact_phone', 'contact_email', 'cu_code', 'hpd_inventory', 'sticky_notes', 'active', 'created_at', 'updated_at', 'uid', 'deleted_at'],
     sql: `CREATE TABLE locations_new (
       location_id   INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id    INTEGER NOT NULL,
@@ -347,11 +353,13 @@ const REBUILD_DEFS = {
       active        INTEGER NOT NULL DEFAULT 1,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      uid           TEXT,
+      deleted_at    TEXT,
       FOREIGN KEY (company_id) REFERENCES companies(company_id)
     )`
   },
   employees: {
-    columns: ['employee_id', 'location_id', 'first_name', 'last_name', 'dob', 'hire_date', 'job_title', 'status', 'created_at', 'updated_at'],
+    columns: ['employee_id', 'location_id', 'first_name', 'last_name', 'dob', 'hire_date', 'job_title', 'status', 'created_at', 'updated_at', 'uid', 'deleted_at'],
     sql: `CREATE TABLE employees_new (
       employee_id   INTEGER PRIMARY KEY AUTOINCREMENT,
       location_id   INTEGER,
@@ -363,6 +371,8 @@ const REBUILD_DEFS = {
       status        TEXT NOT NULL DEFAULT 'active',
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      uid           TEXT,
+      deleted_at    TEXT,
       FOREIGN KEY (location_id) REFERENCES locations(location_id)
     )`
   },
@@ -374,7 +384,7 @@ const REBUILD_DEFS = {
       'classification', 'triggered_rule_id', 'sts_flag', 'counsel_text', 'tech_notes', 'questionnaire', 'packet_id',
       'referral_given_to_worker', 'referral_sent_to_employer', 'referral_sent_date',
       'triggering_freq_hz', 'triggering_ear', 'shift_db',
-      'created_at', 'updated_at'
+      'created_at', 'updated_at', 'uid', 'deleted_at'
     ],
     sql: `CREATE TABLE tests_new (
       test_id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -403,6 +413,8 @@ const REBUILD_DEFS = {
       shift_db                  REAL,
       created_at                TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at                TEXT NOT NULL DEFAULT (datetime('now')),
+      uid                       TEXT,
+      deleted_at                TEXT,
       FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
       FOREIGN KEY (location_id) REFERENCES locations(location_id)
     )`
@@ -412,7 +424,7 @@ const REBUILD_DEFS = {
       'baseline_id', 'employee_id', 'location_id', 'test_date', 'archived',
       'left_500', 'left_1k', 'left_2k', 'left_3k', 'left_4k', 'left_6k', 'left_8k',
       'right_500', 'right_1k', 'right_2k', 'right_3k', 'right_4k', 'right_6k', 'right_8k',
-      'created_at', 'updated_at'
+      'created_at', 'updated_at', 'uid', 'deleted_at'
     ],
     sql: `CREATE TABLE baselines_new (
       baseline_id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -426,6 +438,8 @@ const REBUILD_DEFS = {
       right_4k      REAL, right_6k REAL, right_8k REAL,
       created_at    TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      uid           TEXT,
+      deleted_at    TEXT,
       FOREIGN KEY (employee_id) REFERENCES employees(employee_id),
       FOREIGN KEY (location_id) REFERENCES locations(location_id)
     )`
@@ -502,6 +516,15 @@ export async function initSchema() {
     }
   }
 
+  // Schema 2.3 — global sync identity (uid) + soft-delete tombstones (deleted_at).
+  // Columns are added BEFORE reconcileTable so the rebuilt shape matches REBUILD_DEFS
+  // (which now lists uid/deleted_at). Triggers + indexes are (re)created AFTER
+  // reconcile, since a table rebuild drops them.
+  for (const t of UID_TABLES) {
+    try { run(`ALTER TABLE ${t} ADD COLUMN uid TEXT`) } catch (e) {}
+    try { run(`ALTER TABLE ${t} ADD COLUMN deleted_at TEXT`) } catch (e) {}
+  }
+
   // Reconcile tables whose shape has changed across schema versions (e.g.
   // companies used to carry a NOT NULL province column directly, before
   // that moved to locations; employees used to carry company_id, before
@@ -516,6 +539,22 @@ export async function initSchema() {
     } catch (e) {
       console.warn(`${table} table migration:`, e)
     }
+  }
+
+  // Backfill uids for existing rows, enforce uniqueness, and install a trigger
+  // that stamps a uid on any future insert that doesn't supply one — so every
+  // insert path (helpers, inline INSERTs) gets a globally-unique id, while merge
+  // reinserts keep their explicit uid (trigger fires only WHEN NEW.uid IS NULL).
+  for (const t of UID_TABLES) {
+    try { run(`UPDATE ${t} SET uid = lower(hex(randomblob(16))) WHERE uid IS NULL OR uid = ''`) } catch (e) {}
+    try { run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_uid ON ${t}(uid)`) } catch (e) {}
+    try {
+      run(`CREATE TRIGGER IF NOT EXISTS ${t}_set_uid
+           AFTER INSERT ON ${t} WHEN NEW.uid IS NULL
+           BEGIN
+             UPDATE ${t} SET uid = lower(hex(randomblob(16))) WHERE rowid = NEW.rowid;
+           END`)
+    } catch (e) {}
   }
 
   // Seed provinces if empty
