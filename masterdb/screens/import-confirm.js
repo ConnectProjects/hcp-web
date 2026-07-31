@@ -1,9 +1,11 @@
 import { query, queryOne, run, transaction } from '../db/sqlite.js'
 import { updatePacketStatus }               from '../db/packets.js'
 import { getCompany }                       from '../db/companies.js'
-import { createEmployee, createBaseline }   from '../db/employees.js'
+import { createEmployee, createBaseline, getActiveBaseline } from '../db/employees.js'
 import { createTest, createHPDAssessment }  from '../db/tests.js'
 import { reconcileImport }                  from '@shared/validation/reconcile-import.js'
+import { classify }                         from '@shared/classification/engine.js'
+import { importPacket }                     from '../db/import-packet.js'
 
 export function renderImportConfirm(container, state, navigate) {
   const packetId = state.params?.packetId
@@ -311,177 +313,21 @@ async function doImport(container, packet, company, packetId, isOffline, navigat
   errEl.classList.add('hidden')
 
   try {
-    const province = packet.company?.province ?? 'BC'
-    let   imported = 0
-    let   skippedEmpty = 0
-    let   skippedDuplicate = 0
-    const insertedTestIds = []
-    let   resolvedCompany = company
-
+    // The import core lives in db/import-packet.js as a pure, dependency-injected
+    // function (also driven by the Yorkton regression fixture). We wrap it in a
+    // single transaction here so rollback semantics are unchanged: reconcileImport
+    // (inside importPacket) throws on any mismatch → the whole packet rolls back
+    // and nothing is imported.
+    const deps = {
+      query, queryOne, run,
+      createTest, createHPDAssessment, createBaseline, getActiveBaseline,
+      classify, reconcileImport
+    }
+    let result
     transaction(() => {
-
-      // Create company if needed (offline packet, user chose "new")
-      if (!resolvedCompany) {
-        run(`INSERT INTO companies
-          (name, province, address, contact_name, contact_phone, contact_email, sticky_notes, active)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-          [
-            packet.company?.name     ?? '',
-            packet.company?.province ?? province,
-            packet.company?.address       ?? null,
-            packet.company?.contact_name  ?? null,
-            packet.company?.contact_phone ?? null,
-            packet.company?.contact_email ?? null,
-            packet.company?.sticky_notes  ?? null
-          ]
-        )
-        resolvedCompany = queryOne(
-          `SELECT * FROM companies WHERE name = ? LIMIT 1`,
-          [packet.company?.name ?? '']
-        )
-        if (!resolvedCompany) throw new Error('Failed to create company record.')
-      }
-
-      let defaultLocation = null
-      if (locationIdOverride) {
-        defaultLocation = queryOne('SELECT * FROM locations WHERE location_id = ? AND active = 1', [locationIdOverride])
-        if (!defaultLocation) throw new Error(`Selected location ${locationIdOverride} not found or is inactive.`)
-      } else {
-        if (packet.location?.location_id) {
-          defaultLocation = queryOne(
-            `SELECT * FROM locations WHERE location_id = ? AND company_id = ? AND active = 1`,
-            [packet.location.location_id, resolvedCompany.company_id]
-          )
-        }
-        if (!defaultLocation && packet.location?.name) {
-          defaultLocation = queryOne(
-            `SELECT * FROM locations WHERE company_id = ? AND LOWER(name) = LOWER(?) AND active = 1 LIMIT 1`,
-            [resolvedCompany.company_id, packet.location.name]
-          )
-        }
-        if (!defaultLocation) {
-          run(`INSERT INTO locations (company_id, name, province, active) VALUES (?, ?, ?, 1)`,
-            [resolvedCompany.company_id, packet.location?.name ?? `${resolvedCompany.name} Main Location`, resolvedCompany.province ?? province]
-          )
-          defaultLocation = queryOne(
-            `SELECT * FROM locations WHERE company_id = ? ORDER BY location_id DESC LIMIT 1`,
-            [resolvedCompany.company_id]
-          )
-        }
-      }
-
-      for (const emp of packet.employees) {
-        if (!emp.completed_tests?.length) continue
-
-        // Find or create employee within default location
-        let dbEmp = queryOne(
-          `SELECT employee_id FROM employees
-           WHERE location_id = ? AND first_name = ? AND last_name = ?`,
-          [defaultLocation.location_id, emp.first_name, emp.last_name]
-        )
-
-        if (!dbEmp) {
-          run(`INSERT INTO employees
-            (location_id, first_name, last_name, dob, hire_date, job_title, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [
-              defaultLocation.location_id,
-              emp.first_name,
-              emp.last_name,
-              emp.dob        ?? null,
-              emp.hire_date  ?? null,
-              emp.job_title  ?? null,
-              emp.status     ?? 'active'
-            ]
-          )
-
-          dbEmp = queryOne(
-            `SELECT employee_id FROM employees
-             WHERE location_id = ? AND first_name = ? AND last_name = ?
-             LIMIT 1`,
-            [defaultLocation.location_id, emp.first_name, emp.last_name]
-          )
-
-          if (!dbEmp) {
-            console.warn(`Could not create employee: ${emp.last_name}, ${emp.first_name}`)
-            continue
-          }
-        }
-
-        for (const test of emp.completed_tests) {
-          // Skip tests with no threshold data
-          const thresholds = test.thresholds ?? {}
-          const hasData = Object.values(thresholds).some(v => v != null && v !== '')
-          if (!hasData) {
-            console.warn(`Skipping test for ${emp.last_name} on ${test.test_date}: no threshold data`)
-            skippedEmpty++
-            continue
-          }
-
-          // Prevention: Check if this specific test already exists
-          const existingTest = queryOne(
-            `SELECT test_id FROM tests
-             WHERE employee_id = ? AND test_date = ? AND tech_id = ?`,
-            [dbEmp.employee_id, test.test_date, test.tech_id ?? packet.tech?.tech_id ?? null]
-          )
-
-          if (existingTest) {
-            console.log(`Skipping duplicate test for ${emp.last_name} on ${test.test_date}`)
-            skippedDuplicate++
-            continue
-          }
-
-          // If this employee has no prior tests at this location, it's their first —
-          // automatically treat it as the baseline regardless of what TechTool tagged it.
-          const priorCount = queryOne(
-            'SELECT COUNT(*) AS n FROM tests WHERE employee_id = ? AND location_id = ?',
-            [dbEmp.employee_id, defaultLocation.location_id]
-          )?.n ?? 0
-          const isFirstTest = priorCount === 0
-
-          const testId = createTest({
-            employee_id:              dbEmp.employee_id,
-            location_id:              defaultLocation.location_id,
-            test_date:                test.test_date,
-            tech_id:                  test.tech_id ?? packet.tech?.tech_id,
-            test_type:                isFirstTest ? 'Baseline' : (test.test_type ?? 'Periodic'),
-            province,
-            ...(test.thresholds ?? {}),
-            classification:           test.classification,
-            counsel_text:             test.counsel_text,
-            tech_notes:               test.tech_notes,
-            questionnaire:            test.questionnaire,
-            referral_given_to_worker: test.referral_given_to_worker ?? 0,
-            packet_id:                packet.packet_id
-          })
-
-          if (test.hpd_assessment?.valid) {
-            createHPDAssessment(testId, test.hpd_assessment)
-          }
-
-          if (isFirstTest || test.test_type === 'Baseline') {
-            createBaseline(
-              dbEmp.employee_id,
-              defaultLocation.location_id,
-              test.test_date,
-              test.thresholds ?? {}
-            )
-          }
-
-          insertedTestIds.push(testId)
-          imported++
-        }
-      }
-
-      // Fail loud: verify the whole packet landed correctly before COMMIT.
-      // Any mismatch throws → the transaction rolls back → nothing imports.
-      reconcileImport({
-        packet, queryOne, defaultLocation,
-        locationIdOverride: locationIdOverride ?? null,
-        imported, skippedDuplicate, skippedEmpty, insertedTestIds
-      })
-
-      })
+      result = importPacket({ packet, company, locationIdOverride, deps })
+    })
+    const { imported, skippedDuplicate, skippedEmpty } = result
 
     updatePacketStatus(packetId, 'imported')
     run('UPDATE packets SET testing_duration = ? WHERE packet_id = ?', [packet.testing_duration ?? null, packetId])

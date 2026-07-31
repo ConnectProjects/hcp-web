@@ -2,6 +2,11 @@
 lead-finder/.env
 lead-finder/node_modules/
 
+# Local-only regression harnesses. These run against COPIES of real MasterDB
+# data (worker health records) and must never enter git — neither the harness
+# nor any .sqlite / packet copies it points at. See local-tests/README.md.
+local-tests/
+
 # OS / editor
 .DS_Store
 Thumbs.db
