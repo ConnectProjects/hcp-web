@@ -5,6 +5,7 @@
  * v2.0 — Row-level merge sync (syncMaster) replaces destructive pullMaster on boot.
  */
 import { readJsonFile, writeJsonFile } from './sync-folder.js'
+import { mergeUidTable, toWireRows, buildIdToUidMaps, UID_TABLES, UID_FK_DEFS } from './merge-uid.js'
 
 export const JsonDatabase = {
 
@@ -24,7 +25,9 @@ export const JsonDatabase = {
     techs:           { pk: 'tech_id',     merge: false },
     schedules:       { pk: null,          merge: false },
     packets:         { pk: 'packet_id',   merge: true  },
-    hpd_assessments: { pk: 'hpd_id',      merge: true  },
+    // pk here is only a fallback — the uid merge derives the real pk from the
+    // live table via getLocalPk (deployed: assessment_id, fresh install: hpd_id).
+    hpd_assessments: { pk: 'assessment_id', merge: true },
   },
 
   /**
@@ -65,6 +68,12 @@ export const JsonDatabase = {
    */
   async syncMaster(syncFolder, queryFn, runFn, { push = true } = {}) {
     if (!syncFolder) return {};
+
+    // Per-table id↔uid maps for the uid-keyed merge, accumulated as we go so a
+    // child table (e.g. tests) can translate its foreign keys against a parent
+    // table (employees/locations) already merged this pass. The `tables` list
+    // orders parents before children for every uid table.
+    const parentMaps = {};
 
     for (const table of this.tables) {
       const config = this.tableConfig[table];
@@ -114,7 +123,50 @@ export const JsonDatabase = {
         continue;
       }
 
-      // --- Merge-enabled tables ---
+      // --- uid-keyed merge (the six entity tables) ---
+      // Identity is the globally-unique `uid`, not the per-instance integer PK,
+      // so two instances that each created a row can never collide on an
+      // AUTOINCREMENT id and overwrite each other (INCIDENT-2026-07-29). Foreign
+      // keys travel as parent uids and are translated back to local integer ids.
+      if (UID_TABLES.includes(table)) {
+        try {
+          const pk = this.getLocalPk(queryFn, table);
+          const localRows = queryFn(`SELECT * FROM ${table}`);
+          const { localRows: merged, uidToId, idToUid, quarantined } = mergeUidTable({
+            table, pk, localRows, cloudRows,
+            fkDefs: UID_FK_DEFS[table], parentMaps, localCols,
+          });
+          parentMaps[table] = { uidToId, idToUid };
+
+          if (quarantined.length) {
+            console.warn(`Sync: ${quarantined.length} ${table} row(s) quarantined (unresolved parent uid):`,
+              quarantined.slice(0, 5).map(q => q.reason));
+          }
+
+          // Rewrite local table from the merged result.
+          runFn(`DELETE FROM ${table}`);
+          for (const row of merged) {
+            const cols = Object.keys(row).join(',');
+            const vals = Object.values(row);
+            const qs = vals.map(() => '?').join(',');
+            runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
+          }
+
+          // Publish the merged result in wire form (integer FKs → parent uids)
+          // only when this computer has local changes to contribute.
+          if (push) {
+            const parentIdToUid = {};
+            for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = parentMaps[fk.parent]?.idToUid ?? new Map();
+            const wire = toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid });
+            await writeJsonFile(syncFolder, '', `${table}.json`, wire);
+          }
+        } catch (e) {
+          console.warn(`Sync error on ${table}:`, e.message);
+        }
+        continue;
+      }
+
+      // --- Non-uid merge tables (users, packets): legacy integer-PK merge ---
       try {
         const pk = config.pk;
         const localRows = queryFn(`SELECT * FROM ${table}`);
@@ -181,14 +233,43 @@ export const JsonDatabase = {
   },
 
   /**
+   * The table's actual integer primary-key column, read from the live schema
+   * rather than a hardcoded name. Needed because hpd_assessments' pk differs
+   * across installs (assessment_id vs hpd_id). Falls back to the config pk.
+   */
+  getLocalPk(queryFn, table) {
+    try {
+      const cols = queryFn(`SELECT name FROM pragma_table_info('${table}') WHERE pk > 0 ORDER BY pk`);
+      if (cols.length === 1) return cols[0].name;
+    } catch (e) { /* fall through */ }
+    return this.tableConfig[table]?.pk ?? null;
+  },
+
+  /**
    * Pushes current local SQLite data to OneDrive JSONs.
    * Use after bulk operations or when you need a full push.
    */
   async pushMaster(syncFolder, queryFn) {
     if (!syncFolder) return;
+
+    // Build id→uid maps for the uid tables so foreign keys can be published as
+    // parent uids. A file written WITHOUT the *_uid fields would make every
+    // child row un-adoptable (quarantined) on another instance's next sync, so
+    // pushMaster and syncMaster must emit the exact same wire schema.
+    const uidRows = {}, pkByTable = {};
+    for (const t of UID_TABLES) { uidRows[t] = queryFn(`SELECT * FROM ${t}`); pkByTable[t] = this.getLocalPk(queryFn, t); }
+    const idToUid = buildIdToUidMaps(uidRows, pkByTable);
+
     for (const table of this.tables) {
-      const data = queryFn(`SELECT * FROM ${table}`);
-      await writeJsonFile(syncFolder, '', `${table}.json`, data);
+      if (UID_TABLES.includes(table)) {
+        const parentIdToUid = {};
+        for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = idToUid[fk.parent];
+        const wire = toWireRows({ table, rows: uidRows[table], fkDefs: UID_FK_DEFS[table], parentIdToUid });
+        await writeJsonFile(syncFolder, '', `${table}.json`, wire);
+      } else {
+        const data = queryFn(`SELECT * FROM ${table}`);
+        await writeJsonFile(syncFolder, '', `${table}.json`, data);
+      }
     }
     return await this.getCloudTimestamps(syncFolder);
   },
@@ -199,6 +280,19 @@ export const JsonDatabase = {
    */
   async pushTable(syncFolder, queryFn, tableName) {
     if (!syncFolder) return;
+    // A uid table must be published in wire form (FKs as parent uids), same as
+    // pushMaster/syncMaster — otherwise its children become un-adoptable. For a
+    // single uid table we still need its PARENT id→uid maps, so read those too.
+    if (UID_TABLES.includes(tableName)) {
+      const uidRows = {}, pkByTable = {};
+      for (const t of UID_TABLES) { uidRows[t] = queryFn(`SELECT * FROM ${t}`); pkByTable[t] = this.getLocalPk(queryFn, t); }
+      const idToUid = buildIdToUidMaps(uidRows, pkByTable);
+      const parentIdToUid = {};
+      for (const fk of UID_FK_DEFS[tableName]) parentIdToUid[fk.parent] = idToUid[fk.parent];
+      const wire = toWireRows({ table: tableName, rows: uidRows[tableName], fkDefs: UID_FK_DEFS[tableName], parentIdToUid });
+      await writeJsonFile(syncFolder, '', `${tableName}.json`, wire);
+      return;
+    }
     const data = queryFn(`SELECT * FROM ${tableName}`);
     await writeJsonFile(syncFolder, '', `${tableName}.json`, data);
   },
