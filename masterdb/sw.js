@@ -1,4 +1,4 @@
-const CACHE = 'hcp-masterdb-v5'
+const CACHE = 'hcp-masterdb-v6'
 
 const APP_SHELL = [
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './db/employees.js',
   './db/tests.js',
   './db/packets.js',
+  './db/import-packet.js',
   './screens/dashboard.js',
   './screens/companies.js',
   './screens/company-detail.js',
@@ -27,6 +28,7 @@ const APP_SHELL = [
   '../shared/validation/reconcile-import.js',
   '../shared/fs/sync-folder.js',
   '../shared/fs/json-database.js',
+  '../shared/fs/merge-uid.js',
   '../shared/fs/single-writer.js',
   '../shared/packet/schema.js',
   '../shared/auth/msal-stub.js',

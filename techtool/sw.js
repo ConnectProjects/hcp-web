@@ -1,4 +1,8 @@
-const CACHE_NAME = 'techtool-v2';
+// v3: json-database.js now statically imports shared/fs/merge-uid.js (the
+// uid-keyed sync merge). TechTool only reads the merge tables, but the import
+// chain must resolve — bump the cache so the fleet picks up the new modules
+// cleanly instead of failing the import from a stale cache.
+const CACHE_NAME = 'techtool-v3';
 
 // Add only the absolute essentials here
 const ASSETS_TO_CACHE = [
