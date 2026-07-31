@@ -4,8 +4,11 @@
  * 
  * v2.0 — Row-level merge sync (syncMaster) replaces destructive pullMaster on boot.
  */
-import { readJsonFile, writeJsonFile } from './sync-folder.js'
+import { readJsonFile, writeJsonFile, listJsonFiles, deleteJsonFile } from './sync-folder.js'
 import { mergeUidTable, toWireRows, buildIdToUidMaps, UID_TABLES, UID_FK_DEFS } from './merge-uid.js'
+
+// Map(a->b) → Map(b->a). Used to derive uid→id from an id→uid map.
+const invert = m => { const r = new Map(); for (const [k, v] of m) r.set(v, k); return r; }
 
 export const JsonDatabase = {
 
@@ -78,8 +81,9 @@ export const JsonDatabase = {
     for (const table of this.tables) {
       const config = this.tableConfig[table];
 
-      // --- Read cloud data ---
+      // --- Read cloud data (capture mtime for the optimistic write check) ---
       let cloudRows = [];
+      const readMtime = await this.getFileMtime(syncFolder, `${table}.json`);
       try {
         const data = await readJsonFile(syncFolder, '', `${table}.json`);
         if (Array.isArray(data)) cloudRows = data;
@@ -131,34 +135,52 @@ export const JsonDatabase = {
       if (UID_TABLES.includes(table)) {
         try {
           const pk = this.getLocalPk(queryFn, table);
-          const localRows = queryFn(`SELECT * FROM ${table}`);
-          const { localRows: merged, uidToId, idToUid, quarantined } = mergeUidTable({
-            table, pk, localRows, cloudRows,
-            fkDefs: UID_FK_DEFS[table], parentMaps, localCols,
-          });
-          parentMaps[table] = { uidToId, idToUid };
 
-          if (quarantined.length) {
-            console.warn(`Sync: ${quarantined.length} ${table} row(s) quarantined (unresolved parent uid):`,
-              quarantined.slice(0, 5).map(q => q.reason));
-          }
+          // Merge cloud into local, rewrite local, and (if pushing) publish.
+          // Factored so the optimistic-mtime path can re-run it after a
+          // concurrent write without duplicating the logic.
+          const applyMerge = (cloudInput) => {
+            const localRows = queryFn(`SELECT * FROM ${table}`);
+            const res = mergeUidTable({
+              table, pk, localRows, cloudRows: cloudInput,
+              fkDefs: UID_FK_DEFS[table], parentMaps, localCols,
+            });
+            parentMaps[table] = { uidToId: res.uidToId, idToUid: res.idToUid };
+            if (res.quarantined.length) {
+              console.warn(`Sync: ${res.quarantined.length} ${table} row(s) quarantined (unresolved parent uid):`,
+                res.quarantined.slice(0, 5).map(q => q.reason));
+            }
+            runFn(`DELETE FROM ${table}`);
+            for (const row of res.localRows) {
+              const cols = Object.keys(row).join(',');
+              const vals = Object.values(row);
+              runFn(`INSERT INTO ${table} (${cols}) VALUES (${vals.map(() => '?').join(',')})`, vals);
+            }
+            return res.localRows;
+          };
 
-          // Rewrite local table from the merged result.
-          runFn(`DELETE FROM ${table}`);
-          for (const row of merged) {
-            const cols = Object.keys(row).join(',');
-            const vals = Object.values(row);
-            const qs = vals.map(() => '?').join(',');
-            runFn(`INSERT INTO ${table} (${cols}) VALUES (${qs})`, vals);
-          }
+          let merged = applyMerge(cloudRows);
 
           // Publish the merged result in wire form (integer FKs → parent uids)
           // only when this computer has local changes to contribute.
           if (push) {
+            // Optimistic concurrency: if another instance wrote this file after
+            // we read it, fold their rows in before we overwrite, so we don't
+            // clobber a concurrent write. Best-effort (the FSA has no atomic
+            // compare-and-swap), bounded to a couple of retries; the uid merge
+            // is the real safety net (a clobber is only re-published churn, not
+            // loss, because the other instance still holds its rows locally).
+            for (let attempt = 0; attempt < 2; attempt++) {
+              const nowMtime = await this.getFileMtime(syncFolder, `${table}.json`);
+              if (nowMtime === readMtime || nowMtime == null) break;
+              try {
+                const data = await readJsonFile(syncFolder, '', `${table}.json`);
+                merged = applyMerge(Array.isArray(data) ? data : []);
+              } catch (e) { break; }
+            }
             const parentIdToUid = {};
             for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = parentMaps[fk.parent]?.idToUid ?? new Map();
-            const wire = toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid });
-            await writeJsonFile(syncFolder, '', `${table}.json`, wire);
+            await writeJsonFile(syncFolder, '', `${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
           }
         } catch (e) {
           console.warn(`Sync error on ${table}:`, e.message);
@@ -217,6 +239,118 @@ export const JsonDatabase = {
     }
 
     return await this.getCloudTimestamps(syncFolder);
+  },
+
+  /**
+   * The lastModified time of a file in the sync root, or null if absent.
+   * Used by syncMaster's optimistic write check.
+   */
+  async getFileMtime(syncFolder, filename) {
+    try {
+      const fh = await syncFolder.getFileHandle(filename);
+      const file = await fh.getFile();
+      return file.lastModified;
+    } catch (e) { return null; }
+  },
+
+  /**
+   * Reconcile OneDrive conflict copies (`<table>-<SUFFIX>.json`, e.g.
+   * `tests-CA21WW6R6Q673.json`) back into the canonical `<table>.json`.
+   *
+   * OneDrive makes a conflict copy when two machines write the same file before
+   * syncing; the copy is split-brain data the normal sync never reads, so it
+   * accumulates and silently strands rows. Because the merge is uid-keyed and
+   * non-destructive, we can fold each copy's rows into local + canonical without
+   * loss and then remove the copy.
+   *
+   * SAFETY: a conflict copy is deleted ONLY if every one of its rows was
+   * absorbed (0 quarantined). A pre-uid copy (rows without uid) or one whose
+   * parent uids don't resolve is left in place and surfaced, never dropped — so
+   * this can't lose data even on an old-format copy.
+   *
+   * Run before syncMaster. Returns a summary for logging.
+   */
+  async reconcileConflictCopies(syncFolder, queryFn, runFn) {
+    if (!syncFolder) return { reconciled: 0, left: 0 };
+
+    let files;
+    try { files = await listJsonFiles(syncFolder, ''); }
+    catch (e) { return { reconciled: 0, left: 0 }; }
+
+    // Group conflict copies (`<table>-<suffix>.json`) by base uid table.
+    const copiesByTable = {};
+    for (const { name } of files) {
+      const m = name.match(/^(.+?)-.+\.json$/);
+      if (m && UID_TABLES.includes(m[1])) (copiesByTable[m[1]] ??= []).push(name);
+    }
+    if (Object.keys(copiesByTable).length === 0) return { reconciled: 0, left: 0 };
+
+    // Parent id→uid maps start from the current LOCAL rows (stable existing ids)
+    // and are replaced per table as copies are absorbed, so children resolve
+    // against the same view.
+    const localRowsByTable = {};
+    const pkByTable = {};
+    for (const t of UID_TABLES) { localRowsByTable[t] = queryFn(`SELECT * FROM ${t}`); pkByTable[t] = this.getLocalPk(queryFn, t); }
+    const idToUidMaps = buildIdToUidMaps(localRowsByTable, pkByTable);
+    const parentMaps = {};
+    for (const t of UID_TABLES) parentMaps[t] = { uidToId: invert(idToUidMaps[t]), idToUid: idToUidMaps[t] };
+
+    let reconciled = 0, left = 0;
+    // Dependency order so a child's parent map already reflects absorbed rows.
+    for (const table of UID_TABLES) {
+      const copies = copiesByTable[table];
+      if (!copies || !copies.length) continue;
+
+      const pk = pkByTable[table];
+      const localCols = this.getLocalColumns(queryFn, table);
+      const localRows = queryFn(`SELECT * FROM ${table}`);
+
+      // Gather every conflict copy's rows as extra cloud input.
+      let cloudRows = [];
+      const perFile = {};
+      for (const fname of copies) {
+        try {
+          const data = await readJsonFile(syncFolder, '', fname);
+          perFile[fname] = Array.isArray(data) ? data : [];
+          cloudRows = cloudRows.concat(perFile[fname]);
+        } catch (e) { perFile[fname] = null; }
+      }
+
+      const { localRows: merged, uidToId, idToUid, quarantined } = mergeUidTable({
+        table, pk, localRows, cloudRows, fkDefs: UID_FK_DEFS[table], parentMaps, localCols,
+      });
+
+      // A copy is safe to delete only if NONE of its rows were quarantined.
+      const quarantinedUids = new Set(quarantined.map(q => String(q.uid)));
+      const safeToDelete = [];
+      for (const fname of copies) {
+        const rows = perFile[fname];
+        if (!rows) { left++; continue; }                       // unreadable — leave it
+        const anyStranded = rows.some(r => !r.uid || quarantinedUids.has(String(r.uid)));
+        if (anyStranded) { left++; console.warn(`Conflict copy ${fname}: has rows that couldn't be absorbed (pre-uid or unresolved parent) — left for manual review.`); }
+        else safeToDelete.push(fname);
+      }
+
+      // Only mutate local + canonical when there's something safe to absorb.
+      if (safeToDelete.length) {
+        runFn(`DELETE FROM ${table}`);
+        for (const row of merged) {
+          const cols = Object.keys(row).join(',');
+          const vals = Object.values(row);
+          runFn(`INSERT INTO ${table} (${cols}) VALUES (${vals.map(() => '?').join(',')})`, vals);
+        }
+        parentMaps[table] = { uidToId, idToUid };
+
+        const parentIdToUid = {};
+        for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = parentMaps[fk.parent]?.idToUid ?? new Map();
+        await writeJsonFile(syncFolder, '', `${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
+
+        for (const fname of safeToDelete) { await deleteJsonFile(syncFolder, '', fname); reconciled++; }
+      }
+    }
+
+    if (reconciled || left) console.log(`Conflict-copy reconcile: ${reconciled} file(s) folded in, ${left} left for review.`);
+    return { reconciled, left };
   },
 
   /**

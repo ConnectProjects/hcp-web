@@ -169,6 +169,7 @@ function paint() {
       state.syncFolder = handle;
       const trigger = document.getElementById('sync-trigger');
       if (trigger) trigger.textContent = '⟳ Syncing…';
+      try { await JsonDatabase.reconcileConflictCopies(state.syncFolder, query, run); } catch (e) { console.warn('Conflict reconcile:', e.message); }
       state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
       await JsonDatabase.pushBranding(state.syncFolder, queryOne);
       recordSyncTime();
@@ -247,6 +248,7 @@ async function startHeartbeat() {
       // cycle is skipped rather than queued so heartbeats can't overlap.
       await withSyncLock(async () => {
         const hasPending = countPendingRows() > 0;
+        try { await JsonDatabase.reconcileConflictCopies(state.syncFolder, query, run); } catch (e) { console.warn('Conflict reconcile:', e.message); }
         state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run, { push: hasPending });
         if (hasPending) await JsonDatabase.pushBranding(state.syncFolder, queryOne);
         await guardedScanAndImport(state.syncFolder);
@@ -281,6 +283,7 @@ async function boot() {
   // Called by the login screen after the user picks the sync folder for the first time.
   state._onSyncConnected = async (handle) => {
     state.syncFolder = handle;
+    try { await JsonDatabase.reconcileConflictCopies(state.syncFolder, query, run); } catch (e) { console.warn('Conflict reconcile:', e.message); }
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     try { await guardedScanAndImport(state.syncFolder); } catch {}
@@ -314,6 +317,7 @@ async function boot() {
   applyTheme(loadThemeColor());
   
   if (state.syncFolder) {
+    try { await JsonDatabase.reconcileConflictCopies(state.syncFolder, query, run); } catch (e) { console.warn('Conflict reconcile:', e.message); }
     state.cloudTimestamps = await JsonDatabase.syncMaster(state.syncFolder, query, run);
     await JsonDatabase.pushBranding(state.syncFolder, queryOne);
     try { await guardedScanAndImport(state.syncFolder); } catch {}
