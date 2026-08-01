@@ -14,6 +14,44 @@ just sit there; the corruption only happens in the multi-instance merge.
 
 ---
 
+## Addendum (2026-08-01): uid-ADOPTION fix — service worker **v7**
+
+**Found mid-rollout (after v6 was live and the owner had migrated):** schema 2.3
+backfills each instance's rows with its OWN random uids
+(`schema.js`: `UPDATE … SET uid = lower(hex(randomblob(16)))`), and the merge
+keys purely on uid. So bringing a *second, already-diverged* machine online would
+stamp DIFFERENT uids on the same shared rows and the merge would **duplicate the
+entire shared history** (~6.8k employees / 7.3k tests / …). The original Phase 4
+line "existing uids map to local ids" wrongly assumed followers already share
+canonical's uids — they don't.
+
+**Fix:** `shared/fs/adopt-uid.js`, called by `syncMaster` **before** the merge. A
+follower adopts canonical's uid for each shared row, identified by
+`(integer pk, created_at)` **plus** corroborating business fields (validated on
+real data: every unambiguous ancestor row shares the same id + created_at across
+instances). A post-fork id-collision of DISTINCT rows (Selsek/Garding) differs on
+created_at/content and is left alone — it flows up as a new row. Genuinely-new
+follower rows (e.g. Heather's 385 divergent tests) get folded in automatically.
+Idempotent. Covered by `local-tests/import-packet/adopt.mjs` (18/18) with no
+regression to the real-`syncMaster` integration test.
+
+**Ships:** `shared/fs/adopt-uid.js`; adoption pass in `shared/fs/json-database.js`;
+SW bumps **MasterDB v6 → v7** (adopt-uid.js added to the app-shell) and
+**TechTool v3 → v4**.
+
+**Two corrections to the phases below:**
+- **Phase 2 SW check:** a machine whose site data was cleared has **no registered
+  service worker** (MasterDB registers none in code), so it loads fresh from the
+  network every time — the "confirm v6/v7 in the SW panel" check does not apply to
+  it (it's simply on the latest served code). Only machines that still hold an old
+  registered SW show one to confirm.
+- **Phase 4 adoption:** followers now adopt losslessly. After each follower syncs,
+  **verify no duplication**: row counts must not balloon (they should be canonical
+  + that machine's genuinely-unique rows), and `COUNT(*) - COUNT(DISTINCT uid)`
+  must be 0 per uid table. Watch the console for `Adopt <table>: N uid(s) adopted`.
+
+---
+
 ## What ships in this rollout
 
 - **Step 1** schema 2.3: `uid` + `deleted_at` on the six entity tables, backfill
@@ -23,8 +61,9 @@ just sit there; the corruption only happens in the multi-instance merge.
 - **Step 3** uid-keyed non-destructive merge (`shared/fs/merge-uid.js`,
   `shared/fs/json-database.js`).
 - **Step 4** conflict-copy reconciler + optimistic mtime check.
-- Service workers bumped: **MasterDB `sw.js` v5 → v6**, **TechTool `sw.js`
-  v2 → v3** (new modules `merge-uid.js`, `import-packet.js`).
+- Service workers bumped: **MasterDB `sw.js` v5 → v6 → v7**, **TechTool `sw.js`
+  v2 → v3 → v4** (new modules `merge-uid.js`, `import-packet.js`, `adopt-uid.js`).
+  See the v7 addendum above for the uid-adoption fix added mid-rollout.
 
 All verified on a real pre-incident copy via git-ignored `local-tests/`
 (126 checks). None pushed/deployed yet.

@@ -6,6 +6,7 @@
  */
 import { readJsonFile, writeJsonFile, listJsonFiles, deleteJsonFile } from './sync-folder.js'
 import { mergeUidTable, toWireRows, buildIdToUidMaps, UID_TABLES, UID_FK_DEFS } from './merge-uid.js'
+import { adoptUids } from './adopt-uid.js'
 
 // Map(a->b) → Map(b->a). Used to derive uid→id from an id→uid map.
 const invert = m => { const r = new Map(); for (const [k, v] of m) r.set(v, k); return r; }
@@ -158,6 +159,24 @@ export const JsonDatabase = {
             }
             return res.localRows;
           };
+
+          // Cross-instance uid ADOPTION — runs BEFORE the merge. schema 2.3
+          // gives each instance its own random uids, so an already-diverged
+          // second instance must first rewrite its uids to canonical's for the
+          // shared ancestor rows, or the uid-keyed merge would duplicate that
+          // whole history. Identity = (pk, created_at) + corroborating business
+          // fields; an id-collision of DISTINCT rows (Selsek/Garding) has a
+          // different created_at/content and is left untouched to flow up as a
+          // new row. Idempotent once uids line up. See adopt-uid.js.
+          try {
+            const localForAdopt = queryFn(`SELECT * FROM ${table}`);
+            const { adoptions, skippedCollision } = adoptUids({ table, pk, localRows: localForAdopt, cloudRows });
+            for (const a of adoptions) runFn(`UPDATE ${table} SET uid = ? WHERE ${pk} = ?`, [a.toUid, a.id]);
+            if (adoptions.length || skippedCollision) {
+              console.log(`Adopt ${table}: ${adoptions.length} uid(s) adopted from canonical` +
+                (skippedCollision ? `, ${skippedCollision} id-collision(s) kept distinct` : ''));
+            }
+          } catch (e) { console.warn(`Adopt error on ${table}:`, e.message); }
 
           let merged = applyMerge(cloudRows);
 
