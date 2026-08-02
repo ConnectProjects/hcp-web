@@ -278,8 +278,9 @@ function showSyncWarning() {
 // App version — bump alongside the service-worker CACHE in sw.js on each deploy.
 // Shown on the login/block screens and exposed as window.MASTERDB_VERSION for a
 // quick console check.
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 try { window.MASTERDB_VERSION = APP_VERSION; } catch (e) {}
+try { document.title = 'MasterDB - HCP-Web (' + APP_VERSION + ')'; } catch (e) {}
 
 // Sanctioned-launch gate: MasterDB may only run when opened via the dedicated
 // launcher (an app window from FirstRun.bat / the Desktop shortcut), never a
