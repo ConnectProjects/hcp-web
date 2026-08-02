@@ -275,7 +275,44 @@ function showSyncWarning() {
 // Boot
 // ---------------------------------------------------------------------------
 
+// Sanctioned-launch gate: MasterDB may only run when opened via the dedicated
+// launcher (an app window from FirstRun.bat / the Desktop shortcut), never a
+// normal browser tab. This stops an old/dirty browser profile from auto-syncing
+// and corrupting the shared data. The launcher opens an app window (display-mode
+// standalone) AND passes ?launcher=1; a normal tab has neither.
+function isSanctionedLaunch() {
+  try {
+    if (sessionStorage.getItem('mdb_launcher') === '1') return true;
+    const standalone = (window.matchMedia && (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: minimal-ui)').matches ||
+        window.matchMedia('(display-mode: window-controls-overlay)').matches
+      )) || window.navigator.standalone === true;
+    const flagged = /[?&#]launcher\b/.test(location.href);
+    if (standalone || flagged) { sessionStorage.setItem('mdb_launcher', '1'); return true; }
+  } catch (e) {}
+  return false;
+}
+
+function renderBlockScreen() {
+  const app = document.getElementById('app');
+  if (app) app.innerHTML = `
+    <div class="screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f3f4f6;padding:20px;">
+      <div class="form-card" style="width:100%;max-width:480px;padding:36px;text-align:center;">
+        <h1 style="color:#76B214;margin-bottom:12px;">MasterDB</h1>
+        <div class="alert alert-info" style="text-align:left;font-size:14px;line-height:1.55;">
+          <strong>Please open MasterDB with the MasterDB shortcut — not a browser tab.</strong>
+          <br><br>Opening it in a normal browser window is turned off to keep everyone's data safe and in sync.
+          <br><br><strong>First-time setup:</strong> open your OneDrive &rarr; <strong>MasterDB FIX</strong> folder &rarr; double-click <strong>FirstRun.bat</strong>. It puts a <strong>MasterDB</strong> icon on your Desktop and opens the app.
+          <br><br>After that, always open MasterDB from that <strong>Desktop icon</strong>.
+        </div>
+        <p style="color:#999;font-size:12px;margin-top:16px;">Need help, or something looks wrong? Contact Norm.</p>
+      </div>
+    </div>`;
+}
+
 async function boot() {
+  if (!isSanctionedLaunch()) { renderBlockScreen(); return; }
   await TimeService.sync();
   await initDB();
   await initSchema();
