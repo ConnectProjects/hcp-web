@@ -2,10 +2,10 @@ import { getAllUsers } from '../db/users.js'
 import { hashPin }     from '../../shared/auth-utils.js'
 import { pickSyncFolder, readJsonFile } from '../../shared/fs/sync-folder.js'
 
-export async function renderLogin(container, state, navigate) {
-  
-  // 1. If folder is NOT connected, show the "Connection Required" view
-  if (!state.syncFolder) {
+export async function renderLogin(container, state, navigate, offline = false) {
+
+  // 1. If folder is NOT connected (and not entering offline), show the "Connection Required" view
+  if (!state.syncFolder && !offline) {
     container.innerHTML = `
       <div class="screen screen-login" style="display:flex; align-items:center; justify-content:center; height:100vh; background:#f3f4f6;">
         <div class="form-card" style="width:100%; max-width:400px; padding:40px; text-align:center;">
@@ -22,6 +22,13 @@ export async function renderLogin(container, state, navigate) {
             📂 Connect &amp; Sync
           </button>
           <div id="sync-status" style="margin-top:16px; font-size:13px; color:#666; min-height:20px;"></div>
+
+          <div style="margin-top:24px; border-top:1px solid #eee; padding-top:16px;">
+            <button class="btn btn-link btn-sm" id="btn-offline-login" style="color:#999; font-size:12px;">
+              Continue offline (no sync) →
+            </button>
+            <div style="color:#aaa; font-size:11px; margin-top:4px;">Work on this browser's local data only. Connect the folder later to sync.</div>
+          </div>
         </div>
       </div>
     `;
@@ -45,19 +52,22 @@ export async function renderLogin(container, state, navigate) {
         status.textContent = 'Connection failed: ' + e.message;
       }
     };
+    container.querySelector('#btn-offline-login').onclick = () => renderLogin(container, state, navigate, true);
     return;
   }
 
-  // 2. If folder IS connected, load users from the JSON file
+  // 2. Load users — from OneDrive when connected, otherwise from this browser's local DB (offline)
   let users = [];
-  try {
-    // We fetch fresh from OneDrive to ensure we see new team members
-    users = await readJsonFile(state.syncFolder, '', 'users.json');
-  } catch (e) {
-    console.error("User load failed", e);
+  if (state.syncFolder) {
+    try {
+      // We fetch fresh from OneDrive to ensure we see new team members
+      users = await readJsonFile(state.syncFolder, '', 'users.json');
+    } catch (e) {
+      console.error("User load failed", e);
+    }
   }
 
-  // Fallback to local DB if OneDrive file is missing (unlikely but safe)
+  // Local DB when offline, or fallback if the OneDrive file is missing
   if (users.length === 0) {
     users = getAllUsers();
   }
@@ -68,7 +78,8 @@ export async function renderLogin(container, state, navigate) {
     <div class="screen screen-login" style="display:flex; align-items:center; justify-content:center; height:100vh; background:#f3f4f6;">
       <div class="form-card" style="width:100%; max-width:400px; padding:40px; text-align:center;">
         <h1 style="color:#76B214; margin-bottom:10px;">MasterDB</h1>
-        <p style="color:#666; margin-bottom:30px;">Authorized Staff Login</p>
+        <p style="color:#666; margin-bottom:${offline ? '12' : '30'}px;">Authorized Staff Login</p>
+        ${offline ? `<div class="alert alert-info" style="margin-bottom:20px; font-size:12px; text-align:left;">⚠ <strong>Offline mode</strong> — this browser's local data only, not syncing. Use “Connect Sync Folder” inside the app to sync.</div>` : ''}
 
         <form id="login-form" autocomplete="off" novalidate>
           <div class="form-group" style="text-align:left;">

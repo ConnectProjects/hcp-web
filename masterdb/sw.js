@@ -1,4 +1,4 @@
-const CACHE = 'hcp-masterdb-v7'
+const CACHE = 'hcp-masterdb-v8'
 
 const APP_SHELL = [
   './index.html',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   './db/tests.js',
   './db/packets.js',
   './db/import-packet.js',
+  './screens/login.js',
   './screens/dashboard.js',
   './screens/companies.js',
   './screens/company-detail.js',
