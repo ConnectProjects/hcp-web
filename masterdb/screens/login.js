@@ -1,6 +1,6 @@
 import { getAllUsers } from '../db/users.js'
 import { hashPin }     from '../../shared/auth-utils.js'
-import { pickSyncFolder, readJsonFile } from '../../shared/fs/sync-folder.js'
+import { pickSyncFolder, readJsonFile, DB_SUBDIR } from '../../shared/fs/sync-folder.js'
 
 export async function renderLogin(container, state, navigate, offline = false) {
 
@@ -61,7 +61,7 @@ export async function renderLogin(container, state, navigate, offline = false) {
   if (state.syncFolder) {
     try {
       // We fetch fresh from OneDrive to ensure we see new team members
-      users = await readJsonFile(state.syncFolder, '', 'users.json');
+      users = await readJsonFile(state.syncFolder, DB_SUBDIR, 'users.json');
     } catch (e) {
       console.error("User load failed", e);
     }

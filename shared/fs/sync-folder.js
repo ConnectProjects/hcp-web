@@ -117,6 +117,11 @@ export async function hasSyncFolder() {
 // Public: file operations
 // ---------------------------------------------------------------------------
 
+// Subfolder (under the connected OneDrive folder) where the canonical database
+// files live from v10 on. Keeping the real data out of the root means older app
+// code — which reads/writes the root — physically cannot touch it.
+export const DB_SUBDIR = 'db'
+
 async function getDir(root, sub) {
   const parts = sub.split('/')
   let dir = root

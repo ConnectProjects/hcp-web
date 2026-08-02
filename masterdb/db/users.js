@@ -1,6 +1,6 @@
 import { query, queryOne, run, transaction } from './sqlite.js'
 import { hashPin } from '../../shared/auth-utils.js'
-import { writeJsonFile } from '@shared/fs/sync-folder.js'
+import { writeJsonFile, DB_SUBDIR } from '@shared/fs/sync-folder.js'
 
 export function getAllUsers() {
   // Only return users where active is 1 (true)
@@ -46,5 +46,5 @@ export async function resetUserPin(userId, newPin, syncFolder) {
 
 async function pushUsersToCloud(syncFolder) {
   const allUsers = query("SELECT user_id, name, initials, role, folder_name, pin_hash, active FROM users");
-  await writeJsonFile(syncFolder, '', 'users.json', allUsers);
+  await writeJsonFile(syncFolder, DB_SUBDIR, 'users.json', allUsers);
 }

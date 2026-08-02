@@ -20,7 +20,7 @@
  * cover, best-effort, given OneDrive's propagation latency.
  */
 
-import { readJsonFile, writeJsonFile, deleteJsonFile } from './sync-folder.js'
+import { readJsonFile, writeJsonFile, deleteJsonFile, DB_SUBDIR } from './sync-folder.js'
 
 // ---------------------------------------------------------------------------
 // Web Locks — serialize within a single browser
@@ -94,20 +94,20 @@ export async function acquireImportClaim(syncFolder) {
   const now = Date.now()
 
   let existing = null
-  try { existing = await readJsonFile(syncFolder, '', CLAIM_FILE) } catch {}
+  try { existing = await readJsonFile(syncFolder, DB_SUBDIR, CLAIM_FILE) } catch {}
 
   if (existing && existing.instanceId && existing.instanceId !== me &&
       typeof existing.ts === 'number' && (now - existing.ts) < CLAIM_TTL_MS) {
     return false  // a fresh claim is held by someone else
   }
 
-  try { await writeJsonFile(syncFolder, '', CLAIM_FILE, { instanceId: me, ts: now }) }
+  try { await writeJsonFile(syncFolder, DB_SUBDIR, CLAIM_FILE, { instanceId: me, ts: now }) }
   catch { return false }
 
   // Settle + read back. If someone else's write landed last, yield.
   await new Promise(r => setTimeout(r, 400))
   let after = null
-  try { after = await readJsonFile(syncFolder, '', CLAIM_FILE) } catch {}
+  try { after = await readJsonFile(syncFolder, DB_SUBDIR, CLAIM_FILE) } catch {}
   return !!after && after.instanceId === me
 }
 
@@ -116,7 +116,7 @@ export async function releaseImportClaim(syncFolder) {
   if (!syncFolder) return
   const me = getInstanceId()
   try {
-    const cur = await readJsonFile(syncFolder, '', CLAIM_FILE)
-    if (cur && cur.instanceId === me) await deleteJsonFile(syncFolder, '', CLAIM_FILE)
+    const cur = await readJsonFile(syncFolder, DB_SUBDIR, CLAIM_FILE)
+    if (cur && cur.instanceId === me) await deleteJsonFile(syncFolder, DB_SUBDIR, CLAIM_FILE)
   } catch {}
 }

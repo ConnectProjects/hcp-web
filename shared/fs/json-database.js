@@ -4,7 +4,7 @@
  * 
  * v2.0 — Row-level merge sync (syncMaster) replaces destructive pullMaster on boot.
  */
-import { readJsonFile, writeJsonFile, listJsonFiles, deleteJsonFile } from './sync-folder.js'
+import { readJsonFile, writeJsonFile, listJsonFiles, deleteJsonFile, DB_SUBDIR } from './sync-folder.js'
 import { mergeUidTable, toWireRows, buildIdToUidMaps, UID_TABLES, UID_FK_DEFS } from './merge-uid.js'
 import { adoptUids } from './adopt-uid.js'
 
@@ -41,9 +41,12 @@ export const JsonDatabase = {
   async getCloudTimestamps(syncFolder) {
     if (!syncFolder) return {};
     const stats = {};
+    let dir;
+    try { dir = await syncFolder.getDirectoryHandle(DB_SUBDIR, { create: true }); }
+    catch (e) { return stats; }
     for (const table of this.tables) {
       try {
-        const fileHandle = await syncFolder.getFileHandle(`${table}.json`);
+        const fileHandle = await dir.getFileHandle(`${table}.json`);
         const file = await fileHandle.getFile();
         stats[table] = file.lastModified;
       } catch (e) {
@@ -86,7 +89,7 @@ export const JsonDatabase = {
       let cloudRows = [];
       const readMtime = await this.getFileMtime(syncFolder, `${table}.json`);
       try {
-        const data = await readJsonFile(syncFolder, '', `${table}.json`);
+        const data = await readJsonFile(syncFolder, DB_SUBDIR,`${table}.json`);
         if (Array.isArray(data)) cloudRows = data;
       } catch (e) {
         // JSON file doesn't exist yet — that's fine
@@ -193,13 +196,13 @@ export const JsonDatabase = {
               const nowMtime = await this.getFileMtime(syncFolder, `${table}.json`);
               if (nowMtime === readMtime || nowMtime == null) break;
               try {
-                const data = await readJsonFile(syncFolder, '', `${table}.json`);
+                const data = await readJsonFile(syncFolder, DB_SUBDIR,`${table}.json`);
                 merged = applyMerge(Array.isArray(data) ? data : []);
               } catch (e) { break; }
             }
             const parentIdToUid = {};
             for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = parentMaps[fk.parent]?.idToUid ?? new Map();
-            await writeJsonFile(syncFolder, '', `${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
+            await writeJsonFile(syncFolder, DB_SUBDIR,`${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
           }
         } catch (e) {
           console.warn(`Sync error on ${table}:`, e.message);
@@ -250,7 +253,7 @@ export const JsonDatabase = {
         }
 
         // Write merged result back to cloud only if this computer has local changes
-        if (push) await writeJsonFile(syncFolder, '', `${table}.json`, [...merged.values()]);
+        if (push) await writeJsonFile(syncFolder, DB_SUBDIR,`${table}.json`, [...merged.values()]);
 
       } catch (e) {
         console.warn(`Sync error on ${table}:`, e.message);
@@ -266,7 +269,8 @@ export const JsonDatabase = {
    */
   async getFileMtime(syncFolder, filename) {
     try {
-      const fh = await syncFolder.getFileHandle(filename);
+      const dir = await syncFolder.getDirectoryHandle(DB_SUBDIR, { create: true });
+      const fh = await dir.getFileHandle(filename);
       const file = await fh.getFile();
       return file.lastModified;
     } catch (e) { return null; }
@@ -293,7 +297,7 @@ export const JsonDatabase = {
     if (!syncFolder) return { reconciled: 0, left: 0 };
 
     let files;
-    try { files = await listJsonFiles(syncFolder, ''); }
+    try { files = await listJsonFiles(syncFolder, DB_SUBDIR); }
     catch (e) { return { reconciled: 0, left: 0 }; }
 
     // Group conflict copies (`<table>-<suffix>.json`) by base uid table.
@@ -329,7 +333,7 @@ export const JsonDatabase = {
       const perFile = {};
       for (const fname of copies) {
         try {
-          const data = await readJsonFile(syncFolder, '', fname);
+          const data = await readJsonFile(syncFolder, DB_SUBDIR,fname);
           perFile[fname] = Array.isArray(data) ? data : [];
           cloudRows = cloudRows.concat(perFile[fname]);
         } catch (e) { perFile[fname] = null; }
@@ -362,9 +366,9 @@ export const JsonDatabase = {
 
         const parentIdToUid = {};
         for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = parentMaps[fk.parent]?.idToUid ?? new Map();
-        await writeJsonFile(syncFolder, '', `${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
+        await writeJsonFile(syncFolder, DB_SUBDIR,`${table}.json`, toWireRows({ table, rows: merged, fkDefs: UID_FK_DEFS[table], parentIdToUid }));
 
-        for (const fname of safeToDelete) { await deleteJsonFile(syncFolder, '', fname); reconciled++; }
+        for (const fname of safeToDelete) { await deleteJsonFile(syncFolder, DB_SUBDIR,fname); reconciled++; }
       }
     }
 
@@ -418,10 +422,10 @@ export const JsonDatabase = {
         const parentIdToUid = {};
         for (const fk of UID_FK_DEFS[table]) parentIdToUid[fk.parent] = idToUid[fk.parent];
         const wire = toWireRows({ table, rows: uidRows[table], fkDefs: UID_FK_DEFS[table], parentIdToUid });
-        await writeJsonFile(syncFolder, '', `${table}.json`, wire);
+        await writeJsonFile(syncFolder, DB_SUBDIR,`${table}.json`, wire);
       } else {
         const data = queryFn(`SELECT * FROM ${table}`);
-        await writeJsonFile(syncFolder, '', `${table}.json`, data);
+        await writeJsonFile(syncFolder, DB_SUBDIR,`${table}.json`, data);
       }
     }
     return await this.getCloudTimestamps(syncFolder);
@@ -443,11 +447,11 @@ export const JsonDatabase = {
       const parentIdToUid = {};
       for (const fk of UID_FK_DEFS[tableName]) parentIdToUid[fk.parent] = idToUid[fk.parent];
       const wire = toWireRows({ table: tableName, rows: uidRows[tableName], fkDefs: UID_FK_DEFS[tableName], parentIdToUid });
-      await writeJsonFile(syncFolder, '', `${tableName}.json`, wire);
+      await writeJsonFile(syncFolder, DB_SUBDIR,`${tableName}.json`, wire);
       return;
     }
     const data = queryFn(`SELECT * FROM ${tableName}`);
-    await writeJsonFile(syncFolder, '', `${tableName}.json`, data);
+    await writeJsonFile(syncFolder, DB_SUBDIR,`${tableName}.json`, data);
   },
 
   /**
@@ -461,8 +465,8 @@ export const JsonDatabase = {
     // without local branding settings doesn't wipe what another instance pushed.
     if (!logo && !favicon) return;
     let existing = {};
-    try { existing = await readJsonFile(syncFolder, '', 'branding.json') ?? {} } catch {}
-    await writeJsonFile(syncFolder, '', 'branding.json', {
+    try { existing = await readJsonFile(syncFolder, DB_SUBDIR,'branding.json') ?? {} } catch {}
+    await writeJsonFile(syncFolder, DB_SUBDIR,'branding.json', {
       logo:    logo    ?? existing.logo    ?? null,
       favicon: favicon ?? existing.favicon ?? null,
     });
@@ -474,7 +478,7 @@ export const JsonDatabase = {
   async pullBranding(syncFolder) {
     if (!syncFolder) return null;
     try {
-      return await readJsonFile(syncFolder, '', 'branding.json');
+      return await readJsonFile(syncFolder, DB_SUBDIR,'branding.json');
     } catch (e) { return null; }
   },
 
@@ -487,8 +491,8 @@ export const JsonDatabase = {
     if (!syncFolder) return null;
     try {
       const [companies, locations] = await Promise.all([
-        readJsonFile(syncFolder, '', 'companies.json').catch(() => []),
-        readJsonFile(syncFolder, '', 'locations.json').catch(() => [])
+        readJsonFile(syncFolder, DB_SUBDIR,'companies.json').catch(() => []),
+        readJsonFile(syncFolder, DB_SUBDIR,'locations.json').catch(() => [])
       ]);
       const locsByCompany = {};
       for (const loc of locations) {
