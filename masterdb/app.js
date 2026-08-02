@@ -275,6 +275,12 @@ function showSyncWarning() {
 // Boot
 // ---------------------------------------------------------------------------
 
+// App version — bump alongside the service-worker CACHE in sw.js on each deploy.
+// Shown on the login/block screens and exposed as window.MASTERDB_VERSION for a
+// quick console check.
+const APP_VERSION = 'v11';
+try { window.MASTERDB_VERSION = APP_VERSION; } catch (e) {}
+
 // Sanctioned-launch gate: MasterDB may only run when opened via the dedicated
 // launcher (an app window from FirstRun.bat / the Desktop shortcut), never a
 // normal browser tab. This stops an old/dirty browser profile from auto-syncing
@@ -307,6 +313,7 @@ function renderBlockScreen() {
           <br><br>After that, always open MasterDB from that <strong>Desktop icon</strong>.
         </div>
         <p style="color:#999;font-size:12px;margin-top:16px;">Need help, or something looks wrong? Contact Norm.</p>
+        <p style="color:#c9c9c9;font-size:11px;margin-top:10px;">MasterDB ${APP_VERSION}</p>
       </div>
     </div>`;
 }

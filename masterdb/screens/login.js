@@ -29,6 +29,7 @@ export async function renderLogin(container, state, navigate, offline = false) {
             </button>
             <div style="color:#aaa; font-size:11px; margin-top:4px;">Work on this browser's local data only. Connect the folder later to sync.</div>
           </div>
+          <div style="color:#c9c9c9; font-size:11px; margin-top:14px;">MasterDB ${window.MASTERDB_VERSION || ''}</div>
         </div>
       </div>
     `;
@@ -103,6 +104,7 @@ export async function renderLogin(container, state, navigate, offline = false) {
         <div style="margin-top: 25px;">
             <button class="btn btn-link btn-sm" id="btn-change-folder" style="color: #999; font-size: 11px;">Change OneDrive Folder</button>
         </div>
+        <div style="color:#c9c9c9; font-size:11px; margin-top:10px;">MasterDB ${window.MASTERDB_VERSION || ''}</div>
 
         <div id="login-error" class="alert alert-error hidden" style="margin-top:20px;"></div>
       </div>
