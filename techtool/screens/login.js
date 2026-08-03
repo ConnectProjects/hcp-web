@@ -1,5 +1,5 @@
 import { setSetting, getSetting, getAllPackets, savePacket, deletePacket } from '../db/idb.js'
-import { pickSyncFolder, readJsonFile } from '@shared/fs/sync-folder.js'
+import { pickSyncFolder, readJsonFile, DB_SUBDIR } from '@shared/fs/sync-folder.js'
 import { BrandLogo }      from '@shared/components/brand-logo.js'
 import { hashPin }        from '@shared/auth-utils.js'
 
@@ -14,7 +14,7 @@ export async function renderLogin(container, state, navigate) {
   // 2. Load the Master User list from OneDrive
   let users = [];
   try {
-    users = await readJsonFile(state.syncFolder, '', 'users.json');
+    users = await readJsonFile(state.syncFolder, DB_SUBDIR, 'users.json');
   } catch (e) {
     renderErrorView(container, "Could not find 'users.json' on OneDrive. Please contact your administrator.");
     return;
