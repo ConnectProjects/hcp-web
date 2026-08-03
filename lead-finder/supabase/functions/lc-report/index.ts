@@ -138,12 +138,14 @@ ${count === 0 ? '<div class="no-leads">No phone leads found.</div>' : `
 </html>`;
 }
 
+const HTML_HEADERS = new Headers({ 'content-type': 'text/html; charset=utf-8' });
+
 function html401(): Response {
   return new Response(
     `<!DOCTYPE html><html lang="en"><body style="font-family:Arial,sans-serif;padding:48px;text-align:center">
     <h2 style="color:#dc2626">Access Denied</h2>
     <p style="color:#6b7280">Invalid or missing access key.</p></body></html>`,
-    { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    { status: 401, headers: HTML_HEADERS },
   );
 }
 
@@ -154,7 +156,7 @@ Deno.serve(async (req) => {
   if (!expectedKey) {
     return new Response(
       'Server misconfigured: LC_REPORT_KEY is not set as a Supabase secret.',
-      { status: 500 },
+      { status: 500, headers: HTML_HEADERS },
     );
   }
   if (url.searchParams.get('key') !== expectedKey) {
@@ -173,10 +175,8 @@ Deno.serve(async (req) => {
     .order('name');
 
   if (error) {
-    return new Response('Database error: ' + error.message, { status: 500 });
+    return new Response('Database error: ' + error.message, { status: 500, headers: HTML_HEADERS });
   }
 
-  return new Response(buildHtml(leads ?? []), {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
+  return new Response(buildHtml(leads ?? []), { status: 200, headers: HTML_HEADERS });
 });
