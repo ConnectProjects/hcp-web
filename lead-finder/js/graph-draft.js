@@ -122,14 +122,18 @@ export async function createDraft({ outreach, company, session }) {
     '',
     `${senderName}, IAT`,
     'Industrial Audiometric Technician',
-    'Connect Hearing — Industrial Division',
     senderEmail,
+    '',
+    'Contact Us:',
+    '',
+    'Connect Hearing — Industrial Division',
     '4420 28 Street, Vernon, BC V1T 7P5 | 1-800-663-2884',
+    'ConnectHearing.ca/Workplace-Industrial-Division/',
     '',
     '---',
     `You are receiving this email because ${company.name} operates in a sector where workplace hearing regulations may apply, and your contact information was publicly listed (CASL implied B2B consent).`,
-    unsubscribeUrl ? `To unsubscribe: ${unsubscribeUrl}` : '',
-  ].filter(Boolean).join('\n');
+    unsubscribeUrl ? `To unsubscribe: ${unsubscribeUrl}` : null,
+  ].filter(line => line != null).join('\n');
 
   const fallback = `mailto:${encodeURIComponent(outreach.contact_email)}`
     + `?subject=${encodeURIComponent(subject)}`
