@@ -1,7 +1,7 @@
 import { db } from './supabase.js';
 import { requireAuth, renderUserEmail, logout } from './auth.js';
 import { showToast } from './toast.js';
-import { createDraft } from './graph-draft.js';
+import { createDraft, createLcReportDraft } from './graph-draft.js';
 
 // ---- Boot ---------------------------------------------------
 const session = await requireAuth();
@@ -17,10 +17,17 @@ const REFRESH_INTERVAL = 60_000;
 
 const filters = {
   province: '', rbs_status: '', score_min: '', score_max: '',
-  naics_code: '', source: '', outreach: '', search: '',
+  naics_code: '', source: '', outreach: '', search: '', fork: '',
 };
 let sortKey = 'hazard_score';
 let sortDir = 'desc';
+
+// Email outreach panel state
+const emailPanel = {
+  companyId:  null,
+  outreachId: null,
+  token:      null,
+};
 
 // Call panel state
 const callPanel = {
@@ -57,9 +64,11 @@ async function loadCompanies() {
 
   allCompanies = (data ?? []).map(c => ({
     ...c,
-    _latest_outreach: latestOutreach(c),
-    _outreach_status: deriveOutreachStatus(c),
+    _latest_outreach:  latestOutreach(c),
+    _outreach_status:  deriveOutreachStatus(c),
   }));
+
+  updateForkCounts();
 }
 
 async function loadNaics() {
@@ -70,9 +79,29 @@ async function loadNaics() {
   naicsList = data ?? [];
 }
 
+// ---- Fork counts (toolbar badges) --------------------------
+function isPhoneFork(c) {
+  return c.email_fork === 'phone' || (c.email_fork === 'pending' && !c.website);
+}
+
+function updateForkCounts() {
+  const pending = allCompanies.filter(c => c.email_fork === 'pending' && c.website).length;
+  const phone   = allCompanies.filter(isPhoneFork).length;
+  document.getElementById('pending-count').textContent = pending;
+  document.getElementById('phone-count').textContent   = phone;
+}
+
 // ---- Outreach helpers ---------------------------------------
 function latestOutreach(company) {
   const rows = company.outreach ?? [];
+  if (!rows.length) return null;
+  return rows.reduce((a, b) =>
+    new Date(a.created_at) > new Date(b.created_at) ? a : b,
+  );
+}
+
+function latestEmailOutreach(company) {
+  const rows = (company.outreach ?? []).filter(o => o.channel === 'email');
   if (!rows.length) return null;
   return rows.reduce((a, b) =>
     new Date(a.created_at) > new Date(b.created_at) ? a : b,
@@ -96,6 +125,7 @@ function applyFilters() {
   if (filters.source)     rows = rows.filter(c => c.source === filters.source);
   if (filters.naics_code) rows = rows.filter(c => c.naics_code === filters.naics_code);
   if (filters.outreach)   rows = rows.filter(c => c._outreach_status === filters.outreach);
+  if (filters.fork)       rows = rows.filter(c => c.email_fork === filters.fork);
 
   if (filters.score_min) {
     const min = parseInt(filters.score_min);
@@ -156,13 +186,29 @@ function renderStats() {
     sorted.map(([p, n]) => `<span style="display:inline-block;margin-right:10px"><b>${p}</b> ${n}</span>`).join('') || '—';
 }
 
+function forkBadge(company) {
+  const fork = company.email_fork ?? 'pending';
+  if (fork === 'email') {
+    const tip = company.contact_email ? ` title="${esc(company.contact_email)}"` : '';
+    return `<span class="badge" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;font-size:10px"${tip}>✉ Email</span>`;
+  }
+  if (fork === 'phone') {
+    return `<span class="badge" style="background:#fef9c3;color:#713f12;border:1px solid #fde68a;font-size:10px">📞 Phone</span>`;
+  }
+  // pending — only show Find button if there's a website to check
+  if (company.website) {
+    return `<button class="btn btn-ghost btn-xs find-email-btn" data-id="${company.id}" title="Find contact email">🔍 Find</button>`;
+  }
+  return `<span class="badge" style="background:#fef9c3;color:#713f12;border:1px solid #fde68a;font-size:10px" title="No website — in LC phone report">📞 Phone</span>`;
+}
+
 function renderTable() {
   const rows  = applyFilters();
   const tbody = document.getElementById('companies-tbody');
   document.getElementById('table-count').textContent = `${rows.length} lead${rows.length !== 1 ? 's' : ''}`;
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--grey-400)">No leads match the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--grey-400)">No leads match the current filters.</td></tr>`;
     return;
   }
 
@@ -178,14 +224,18 @@ function renderTable() {
       ? new Date(c.created_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
-    const os          = c._outreach_status;
+    const os           = c._outreach_status;
     const outreachLabel = OUTREACH_LABELS[os] ?? os;
     const outreachClass = `badge badge-outreach-${os}`;
 
-    // Show responded_at date in badge for responded leads
     const o = c._latest_outreach;
     const respondedDate = (os === 'responded' && o?.responded_at)
       ? `<div class="cell-sub">${new Date(o.responded_at).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' })}</div>`
+      : '';
+
+    // Email action button — shown for email-fork leads or pending-with-website
+    const emailActionBtn = c.email_fork === 'email'
+      ? `<button class="btn btn-ghost btn-xs email-outreach-btn" data-id="${c.id}" title="Draft outreach email">📧</button>`
       : '';
 
     return `<tr data-id="${c.id}">
@@ -201,6 +251,7 @@ function renderTable() {
         <span class="${outreachClass}">${outreachLabel}</span>
         ${respondedDate}
       </td>
+      <td class="nowrap">${forkBadge(c)}</td>
       <td class="nowrap">
         <button class="btn btn-xs ${c.rbs_status === 'submitted' ? 'badge-submitted btn-secondary' : 'btn-secondary'} rbs-toggle-btn"
                 data-id="${c.id}" data-status="${c.rbs_status}"
@@ -211,6 +262,7 @@ function renderTable() {
       <td class="text-muted text-small nowrap">${added}</td>
       <td>
         <div class="row-actions">
+          ${emailActionBtn}
           <button class="btn btn-ghost btn-xs call-btn" data-id="${c.id}" title="Call / outreach">📞</button>
           <button class="btn btn-ghost btn-xs edit-btn" data-id="${c.id}" title="Edit lead">✏️</button>
           <button class="btn btn-ghost btn-xs delete-btn" data-id="${c.id}" title="Archive lead">🗑</button>
@@ -250,6 +302,7 @@ document.getElementById('f-score-max').addEventListener('change',e => { filters.
 document.getElementById('f-naics').addEventListener('change',    e => { filters.naics_code = e.target.value; renderTable(); });
 document.getElementById('f-source').addEventListener('change',   e => { filters.source     = e.target.value; renderTable(); });
 document.getElementById('f-outreach').addEventListener('change', e => { filters.outreach   = e.target.value; renderTable(); });
+document.getElementById('f-fork').addEventListener('change',     e => { filters.fork       = e.target.value; renderTable(); });
 document.getElementById('f-search').addEventListener('input',    e => { filters.search     = e.target.value; renderTable(); });
 
 document.getElementById('clear-filters-btn').addEventListener('click', () => {
@@ -281,13 +334,272 @@ document.getElementById('sort-select').addEventListener('change', e => {
   renderTable();
 });
 
-// ---- Table row delegation ----------------------------------
+// ================================================================
+// FIND EMAIL — per-row and bulk
+// ================================================================
+
+async function runFindEmail(companyId) {
+  const company = allCompanies.find(c => c.id === companyId);
+  if (!company?.website) return null;
+
+  const { data, error } = await db.functions.invoke('find-email', {
+    body: { companyId, websiteUrl: company.website },
+  });
+
+  if (error) {
+    showToast(`Email search failed for ${company.name}: ${error.message}`, 'error');
+    return null;
+  }
+
+  // Update local state
+  company.contact_email = data.email ?? null;
+  company.email_fork    = data.email ? 'email' : 'phone';
+  return data.email;
+}
+
+// Per-row find-email button (delegated from tbody)
 document.getElementById('companies-tbody').addEventListener('click', async e => {
+  const findBtn = e.target.closest('.find-email-btn');
+  if (!findBtn) return;
+
+  const id  = findBtn.dataset.id;
+  findBtn.textContent = '…';
+  findBtn.disabled    = true;
+
+  const email = await runFindEmail(id);
+  updateForkCounts();
+  renderTable();
+  renderStats();
+
+  if (email) {
+    showToast(`Found: ${email}`, 'success');
+  } else {
+    showToast('No public email found — moved to phone report', 'info');
+  }
+});
+
+// Bulk "Find emails" button
+document.getElementById('find-emails-btn').addEventListener('click', async () => {
+  const pending = allCompanies.filter(c => c.email_fork === 'pending' && c.website);
+  if (!pending.length) { showToast('No pending leads with websites to check', 'info'); return; }
+
+  const btn = document.getElementById('find-emails-btn');
+  btn.disabled = true;
+
+  let found = 0, checked = 0;
+  for (const company of pending) {
+    btn.textContent = `Checking ${++checked}/${pending.length}…`;
+    const email = await runFindEmail(company.id);
+    if (email) found++;
+  }
+
+  btn.disabled    = false;
+  btn.textContent = `Find emails (${document.getElementById('pending-count').textContent})`;
+  updateForkCounts();
+  renderTable();
+  renderStats();
+
+  showToast(`Done — found emails for ${found} of ${pending.length} leads`, found > 0 ? 'success' : 'info');
+  // Reset button text to reflect new count
+  btn.textContent = `Find emails (${document.getElementById('pending-count').textContent})`;
+});
+
+// ================================================================
+// LC REPORT
+// ================================================================
+
+document.getElementById('lc-report-btn').addEventListener('click', async () => {
+  const phoneLeads = allCompanies.filter(isPhoneFork);
+  if (!phoneLeads.length) { showToast('No phone-fork leads to report', 'info'); return; }
+
+  const btn = document.getElementById('lc-report-btn');
+  btn.disabled    = true;
+  btn.textContent = 'Drafting…';
+
+  try {
+    const result = await createLcReportDraft(phoneLeads, session);
+    if (result.success) {
+      if (result.webLink) window.open(result.webLink, '_blank');
+      showToast('LC report drafted — check your Outlook Drafts', 'success');
+    } else {
+      window.location.href = result.fallback;
+      showToast('Report opened in your mail client', 'success');
+    }
+  } catch (err) {
+    showToast('Report failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = `LC Report (${document.getElementById('phone-count').textContent})`;
+  }
+});
+
+// ================================================================
+// EMAIL OUTREACH PANEL
+// ================================================================
+
+function openEmailPanel(companyId) {
+  const company = allCompanies.find(c => c.id === companyId);
+  if (!company) return;
+
+  emailPanel.companyId  = companyId;
+
+  // Find most recent email outreach (if any)
+  const existing = latestEmailOutreach(company);
+  emailPanel.outreachId = existing?.id    ?? null;
+  emailPanel.token      = existing?.token ?? null;
+
+  document.getElementById('email-modal-title').textContent = company.name;
+
+  // Unsubscribe warning
+  document.getElementById('email-unsub-warning').classList.toggle('hidden', !company.unsubscribed_at);
+
+  // Pre-fill email
+  const emailInput = document.getElementById('email-contact-to');
+  emailInput.value = existing?.contact_email ?? company.contact_email ?? '';
+  document.getElementById('email-contact-source').textContent =
+    company.contact_email ? 'Discovered from company website' : 'Enter contact email';
+
+  // Status bar
+  renderEmailStatusBar(existing);
+
+  // Mark as sent button
+  const sentBtn = document.getElementById('email-mark-sent-btn');
+  sentBtn.classList.toggle('hidden', !(existing?.drafted_at && !existing?.sent_at));
+
+  document.getElementById('email-modal').classList.remove('hidden');
+  emailInput.focus();
+}
+
+function closeEmailPanel() {
+  document.getElementById('email-modal').classList.add('hidden');
+  emailPanel.companyId  = null;
+  emailPanel.outreachId = null;
+  emailPanel.token      = null;
+}
+
+function renderEmailStatusBar(outreach) {
+  const bar = document.getElementById('email-status-bar');
+  if (!outreach) { bar.classList.add('hidden'); return; }
+
+  const fmt = ts => ts
+    ? new Date(ts).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
+  const parts = [];
+  if (outreach.drafted_at)      parts.push(`Drafted <strong>${fmt(outreach.drafted_at)}</strong>`);
+  if (outreach.sent_at)         parts.push(`Sent <strong>${fmt(outreach.sent_at)}</strong>`);
+  if (outreach.first_opened_at) parts.push(`Opened <strong>${fmt(outreach.first_opened_at)}</strong>`);
+  if (outreach.responded_at)    parts.push(`Responded <strong>${fmt(outreach.responded_at)}</strong>`);
+
+  bar.innerHTML = parts.join('<span style="color:var(--grey-300)"> | </span>');
+  bar.classList.toggle('hidden', parts.length === 0);
+}
+
+document.getElementById('email-modal-close-btn').addEventListener('click', closeEmailPanel);
+document.getElementById('email-modal-cancel-btn').addEventListener('click', closeEmailPanel);
+document.getElementById('email-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('email-modal')) closeEmailPanel();
+});
+
+// Draft email in Outlook
+document.getElementById('email-draft-btn').addEventListener('click', async () => {
+  const company      = allCompanies.find(c => c.id === emailPanel.companyId);
+  const contactEmail = document.getElementById('email-contact-to').value.trim();
+  if (!company || !contactEmail) { showToast('Contact email is required', 'error'); return; }
+  if (company.unsubscribed_at) { showToast('This company has unsubscribed', 'error'); return; }
+
+  const draftBtn = document.getElementById('email-draft-btn');
+  draftBtn.disabled    = true;
+  draftBtn.textContent = 'Drafting…';
+
+  try {
+    // Create or update outreach record for this email outreach
+    let outreachId = emailPanel.outreachId;
+    let token      = emailPanel.token;
+
+    if (!outreachId) {
+      const { data, error } = await db.from('outreach').insert([{
+        company_id:    emailPanel.companyId,
+        channel:       'email',
+        contact_email: contactEmail,
+        created_by:    session.user.id,
+      }]).select('id, token').single();
+
+      if (error) throw new Error('Could not create outreach record: ' + error.message);
+      outreachId = data.id;
+      token      = data.token;
+      emailPanel.outreachId = outreachId;
+      emailPanel.token      = token;
+    } else {
+      await db.from('outreach').update({ contact_email: contactEmail }).eq('id', outreachId);
+    }
+
+    const result = await createDraft({
+      outreach: { token, contact_email: contactEmail, contact_name: null },
+      company,
+      session,
+    });
+
+    // Stamp drafted_at
+    await db.from('outreach').update({ drafted_at: new Date().toISOString() }).eq('id', outreachId);
+
+    if (result.success) {
+      if (result.webLink) window.open(result.webLink, '_blank');
+      showToast('Draft created — check your Outlook Drafts', 'success');
+    } else {
+      window.location.href = result.fallback;
+      showToast('Email opened in your mail client', 'success');
+    }
+
+    await loadCompanies();
+    renderTable();
+    renderStats();
+
+    const updated = allCompanies.find(c => c.id === emailPanel.companyId);
+    renderEmailStatusBar(latestEmailOutreach(updated));
+    document.getElementById('email-mark-sent-btn').classList.remove('hidden');
+  } catch (err) {
+    showToast('Draft failed: ' + err.message, 'error');
+  } finally {
+    draftBtn.disabled    = false;
+    draftBtn.textContent = 'Draft in Outlook';
+  }
+});
+
+// Mark as sent
+document.getElementById('email-mark-sent-btn').addEventListener('click', async () => {
+  if (!emailPanel.outreachId) return;
+
+  const { error } = await db.from('outreach')
+    .update({ sent_at: new Date().toISOString() })
+    .eq('id', emailPanel.outreachId);
+
+  if (error) { showToast('Update failed: ' + error.message, 'error'); return; }
+
+  showToast('Marked as sent', 'success');
+  await loadCompanies();
+  renderTable();
+  renderStats();
+  const updated = allCompanies.find(c => c.id === emailPanel.companyId);
+  renderEmailStatusBar(latestEmailOutreach(updated));
+  document.getElementById('email-mark-sent-btn').classList.add('hidden');
+});
+
+// ================================================================
+// TABLE ROW DELEGATION (email + call + edit + delete + rbs)
+// ================================================================
+
+document.getElementById('companies-tbody').addEventListener('click', async e => {
+  // find-email handled separately above
+  if (e.target.closest('.find-email-btn')) return;
+
+  const emailBtn  = e.target.closest('.email-outreach-btn');
   const callBtn   = e.target.closest('.call-btn');
   const rbsBtn    = e.target.closest('.rbs-toggle-btn');
   const editBtn   = e.target.closest('.edit-btn');
   const deleteBtn = e.target.closest('.delete-btn');
 
+  if (emailBtn)  return openEmailPanel(emailBtn.dataset.id);
   if (callBtn)   return openCallPanel(callBtn.dataset.id);
   if (rbsBtn)    return toggleRbs(rbsBtn.dataset.id, rbsBtn.dataset.status);
   if (editBtn)   return openEditModal(editBtn.dataset.id);
@@ -304,7 +616,6 @@ function openCallPanel(companyId) {
 
   callPanel.companyId  = companyId;
 
-  // Most recent outreach that hasn't been responded to yet
   const existing = company._latest_outreach && !company._latest_outreach.responded_at
     ? company._latest_outreach
     : null;
@@ -312,29 +623,20 @@ function openCallPanel(companyId) {
   callPanel.outreachId = existing?.id   ?? null;
   callPanel.token      = existing?.token ?? null;
 
-  // Modal title
   document.getElementById('call-modal-title').textContent = company.name;
 
-  // Phone
   document.getElementById('call-phone-display').innerHTML = company.phone
     ? `<a href="tel:${esc(company.phone)}" class="call-phone-link">${esc(company.phone)}</a>`
     : `<span class="text-muted text-small">No phone on file — check edit modal</span>`;
 
-  // Unsubscribe warning
-  document.getElementById('call-unsub-warning').classList.toggle(
-    'hidden', !company.unsubscribed_at,
-  );
+  document.getElementById('call-unsub-warning').classList.toggle('hidden', !company.unsubscribed_at);
 
-  // Pre-fill from existing outreach
   document.getElementById('call-contact-name').value  = existing?.contact_name  ?? '';
   document.getElementById('call-contact-phone').value = existing?.contact_phone ?? '';
   document.getElementById('call-contact-email').value = existing?.contact_email ?? '';
   document.getElementById('call-consent-check').checked = !!existing?.consent_obtained_at;
 
-  // Status bar
   renderCallStatusBar(company, existing);
-
-  // Footer button state
   refreshCallFooter(company);
 
   document.getElementById('call-modal').classList.remove('hidden');
@@ -365,22 +667,19 @@ function renderCallStatusBar(company, outreach) {
 }
 
 function refreshCallFooter(company) {
-  const email    = document.getElementById('call-contact-email').value.trim();
-  const consent  = document.getElementById('call-consent-check').checked;
-  const unsub    = !!(company ?? allCompanies.find(c => c.id === callPanel.companyId))?.unsubscribed_at;
+  const email   = document.getElementById('call-contact-email').value.trim();
+  const consent = document.getElementById('call-consent-check').checked;
+  const unsub   = !!(company ?? allCompanies.find(c => c.id === callPanel.companyId))?.unsubscribed_at;
   const draftBtn = document.getElementById('call-draft-btn');
   const sentBtn  = document.getElementById('call-mark-sent-btn');
 
-  // Draft: need consent + email + not unsubscribed
   draftBtn.disabled = unsub || !(consent && email);
 
-  // Mark as sent: visible when drafted but not yet sent
   const o = allCompanies.find(c => c.id === callPanel.companyId)?._latest_outreach;
   const showSent = !!(o?.drafted_at && !o?.sent_at && callPanel.outreachId);
   sentBtn.classList.toggle('hidden', !showSent);
 }
 
-// Live footer refresh as the form changes
 ['call-contact-email', 'call-consent-check'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => refreshCallFooter());
   document.getElementById(id).addEventListener('input',  () => refreshCallFooter());
@@ -391,7 +690,6 @@ document.getElementById('call-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('call-modal')) closeCallPanel();
 });
 
-// ---- Save contact info -------------------------------------
 document.getElementById('call-save-btn').addEventListener('click', saveCallPanel);
 
 async function saveCallPanel() {
@@ -407,11 +705,10 @@ async function saveCallPanel() {
   saveBtn.disabled    = true;
   saveBtn.textContent = 'Saving…';
 
-  // CASL: never clear consent_obtained_at once set
   const existingConsent = company._latest_outreach?.consent_obtained_at ?? null;
   const consentTimestamp = consent
     ? (existingConsent || new Date().toISOString())
-    : existingConsent;  // if unchecked, preserve existing timestamp
+    : existingConsent;
 
   const consentNote = consent && !existingConsent
     ? 'Verbal consent obtained during phone call'
@@ -455,18 +752,13 @@ async function saveCallPanel() {
   renderTable();
   renderStats();
 
-  // Refresh status bar
   const updated = allCompanies.find(c => c.id === callPanel.companyId);
-  const updatedO = callPanel.outreachId
-    ? updated?._latest_outreach
-    : null;
+  const updatedO = callPanel.outreachId ? updated?._latest_outreach : null;
   renderCallStatusBar(updated, updatedO);
   refreshCallFooter(updated);
 }
 
-// ---- Draft email in Outlook --------------------------------
 document.getElementById('call-draft-btn').addEventListener('click', async () => {
-  // Ensure contact info is saved first (gets us a token)
   await saveCallPanel();
   if (!callPanel.token) return;
 
@@ -485,7 +777,6 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
       session,
     });
 
-    // Stamp drafted_at regardless of Graph vs mailto: path
     await db.from('outreach').update({ drafted_at: new Date().toISOString() }).eq('id', callPanel.outreachId);
 
     if (result.success) {
@@ -510,7 +801,6 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
   }
 });
 
-// ---- Mark as sent ------------------------------------------
 document.getElementById('call-mark-sent-btn').addEventListener('click', async () => {
   if (!callPanel.outreachId) return;
 
@@ -530,10 +820,9 @@ document.getElementById('call-mark-sent-btn').addEventListener('click', async ()
 });
 
 // ================================================================
-// EXISTING FEATURES (unchanged behaviour, colspan updated to 9)
+// RBS TOGGLE / ARCHIVE / EDIT MODAL
 // ================================================================
 
-// ---- RBS toggle ---------------------------------------------
 async function toggleRbs(id, currentStatus) {
   const newStatus = currentStatus === 'submitted' ? 'not_submitted' : 'submitted';
   const { error } = await db.from('companies').update({ rbs_status: newStatus }).eq('id', id);
@@ -548,7 +837,6 @@ async function toggleRbs(id, currentStatus) {
   showToast(newStatus === 'submitted' ? 'Marked as submitted to RBS' : 'Marked as not submitted', 'success');
 }
 
-// ---- Archive ------------------------------------------------
 async function archiveLead(id) {
   const company = allCompanies.find(c => c.id === id);
   if (!company) return;
@@ -560,12 +848,12 @@ async function archiveLead(id) {
   if (error) { showToast('Archive failed: ' + error.message, 'error'); return; }
 
   allCompanies = allCompanies.filter(c => c.id !== id);
+  updateForkCounts();
   renderTable();
   renderStats();
   showToast('Lead archived', 'info');
 }
 
-// ---- Edit modal ---------------------------------------------
 function openEditModal(id) {
   const company = id === 'new' ? null : allCompanies.find(c => c.id === id);
   document.getElementById('modal-title').textContent          = company ? 'Edit Lead' : 'Add Lead';
@@ -647,6 +935,7 @@ document.getElementById('modal-save-btn').addEventListener('click', async () => 
   if (error) { showToast('Save failed: ' + error.message, 'error'); return; }
 
   closeModal();
+  updateForkCounts();
   renderTable();
   renderStats();
   showToast(id === 'new' ? 'Lead added' : 'Lead updated', 'success');
@@ -661,6 +950,7 @@ function stampLastUpdated() {
 async function doRefresh() {
   if (!document.getElementById('edit-modal').classList.contains('hidden')) return;
   if (!document.getElementById('call-modal').classList.contains('hidden')) return;
+  if (!document.getElementById('email-modal').classList.contains('hidden')) return;
   await loadCompanies();
   buildProvinceFilter();
   renderStats();

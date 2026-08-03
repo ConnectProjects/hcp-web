@@ -136,6 +136,15 @@
           </select>
         </div>
         <div class="filter-group">
+          <label for="f-fork">Email fork</label>
+          <select id="f-fork">
+            <option value="">All</option>
+            <option value="pending">Pending check</option>
+            <option value="email">Email ✉</option>
+            <option value="phone">Phone 📞</option>
+          </select>
+        </div>
+        <div class="filter-group">
           <label for="f-search">Search</label>
           <input type="search" id="f-search" placeholder="Name or city…" style="min-width:140px">
         </div>
@@ -157,9 +166,11 @@
       <div class="table-wrap">
         <div class="table-toolbar">
           <span class="table-toolbar__count" id="table-count">Loading…</span>
-          <div style="display:flex;align-items:center;gap:10px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span id="last-updated" style="font-size:11.5px;color:var(--grey-400)"></span>
             <button class="btn btn-ghost btn-sm" id="refresh-btn" title="Refresh now">↺</button>
+            <button class="btn btn-secondary btn-sm" id="find-emails-btn" title="Find contact emails for all pending leads">Find emails (<span id="pending-count">…</span>)</button>
+            <button class="btn btn-secondary btn-sm" id="lc-report-btn" title="Draft LC phone report to Cliff">LC Report (<span id="phone-count">…</span>)</button>
             <button class="btn btn-primary btn-sm" id="add-btn">+ Add lead</button>
           </div>
         </div>
@@ -173,13 +184,14 @@
                 <th data-sort="hazard_score">Score</th>
                 <th>NAICS</th>
                 <th>Outreach</th>
+                <th>Email</th>
                 <th data-sort="rbs_status">RBS</th>
                 <th data-sort="created_at">Added</th>
-                <th style="width:130px">Actions</th>
+                <th style="width:150px">Actions</th>
               </tr>
             </thead>
             <tbody id="companies-tbody">
-              <tr class="loading-row"><td colspan="9">Loading…</td></tr>
+              <tr class="loading-row"><td colspan="10">Loading…</td></tr>
             </tbody>
           </table>
         </div>
@@ -332,6 +344,35 @@
       <button class="btn btn-ghost btn-sm" id="call-mark-sent-btn" style="margin-right:auto" title="Confirm email was sent from Outlook">Mark as sent</button>
       <button class="btn btn-secondary" id="call-save-btn">Save contact info</button>
       <button class="btn btn-primary" id="call-draft-btn" disabled>Prepare email</button>
+    </div>
+  </div>
+</div>
+
+<!-- Email Outreach Modal -->
+<div class="modal-backdrop hidden" id="email-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="email-modal-title">Email Outreach</h2>
+      <button class="btn btn-ghost btn-sm" id="email-modal-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="unsub-warning hidden" id="email-unsub-warning">
+        This company has unsubscribed. Email outreach is blocked per CASL.
+      </div>
+      <div class="outreach-status-bar hidden" id="email-status-bar"></div>
+      <div class="form-group">
+        <label for="email-contact-to">Send to</label>
+        <input type="email" id="email-contact-to">
+        <div id="email-contact-source" style="font-size:12px;color:var(--grey-400);margin-top:4px"></div>
+      </div>
+      <p style="font-size:13px;color:var(--grey-500);margin:12px 0 0">
+        Reply-to is automatically set to Cliff Stephens. The draft will appear in your Outlook Drafts — review and send from there.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm hidden" id="email-mark-sent-btn" style="margin-right:auto">Mark as sent</button>
+      <button class="btn btn-secondary" id="email-modal-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="email-draft-btn">Draft in Outlook</button>
     </div>
   </div>
 </div>

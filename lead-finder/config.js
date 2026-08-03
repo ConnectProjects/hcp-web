@@ -9,4 +9,6 @@
 
 export const SUPABASE_URL      = 'https://jiteqaeiftjuswwmgksf.supabase.co';
   export const SUPABASE_ANON_KEY = 'sb_publishable_juTinJrBbuJA2O7nhRWxFA_oNQpB-nr';
-export const LC_NAME = 'Norman Robichaud';
+export const LC_NAME      = 'Norman Robichaud';
+export const CLIFF_EMAIL  = 'Cliff.Stephens@connecthearing.ca';
+export const OUTREACH_REF = 'NR';

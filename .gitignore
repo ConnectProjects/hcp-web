@@ -14,3 +14,4 @@ Thumbs.db
 .vscode/settings.json
 
 lead-finder/supabase/.temp/
+supabase/.temp/
