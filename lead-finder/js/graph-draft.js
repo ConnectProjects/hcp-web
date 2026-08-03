@@ -2,7 +2,7 @@ import {
   initMsal, graphRequest, isSignedIn, signIn, getAccount,
 } from '../../shared/auth/msal-stub.js';
 
-let _clientId, _tenantId, _lcName, _senderEmail, _cliffEmail, _supabaseUrl, _outreachRef, _lcReportKey;
+let _clientId, _tenantId, _lcName, _senderEmail, _cliffEmail, _supabaseUrl, _outreachRef, _lcReportKey, _lcReportPage;
 try {
   const cfg  = await import('../config.js');
   _clientId    = cfg.MSAL_CLIENT_ID;
@@ -12,7 +12,9 @@ try {
   _cliffEmail  = cfg.CLIFF_EMAIL    && !cfg.CLIFF_EMAIL.startsWith('your-')  ? cfg.CLIFF_EMAIL  : 'Cliff.Stephens@connecthearing.ca';
   _supabaseUrl = cfg.SUPABASE_URL   ?? '';
   _outreachRef = cfg.OUTREACH_REF   ?? 'NR';
-  _lcReportKey = cfg.LC_REPORT_KEY  && !cfg.LC_REPORT_KEY.startsWith('your-') ? cfg.LC_REPORT_KEY : null;
+  _lcReportKey  = cfg.LC_REPORT_KEY  && !cfg.LC_REPORT_KEY.startsWith('your-')  ? cfg.LC_REPORT_KEY  : null;
+  _lcReportPage = cfg.LC_REPORT_PAGE && !cfg.LC_REPORT_PAGE.startsWith('https://connectprojects') ? cfg.LC_REPORT_PAGE
+    : 'https://connectprojects.github.io/hcp-web/lead-finder/lc-report.html';
 } catch { /* config missing — mailto: fallback will be used */ }
 
 let _msalReady = false;
@@ -234,8 +236,8 @@ export async function createLcReportDraft(leads, session) {
   const subject     = `Industrial Phone Leads — ${dateStr} | ref:${_outreachRef}`;
   const filename    = `Connect_Hearing_Leads_${fileDateStr}.csv`;
 
-  const reportUrl = (_supabaseUrl && _lcReportKey)
-    ? `${_supabaseUrl}/functions/v1/lc-report?key=${encodeURIComponent(_lcReportKey)}`
+  const reportUrl = (_lcReportPage && _lcReportKey)
+    ? `${_lcReportPage}?key=${encodeURIComponent(_lcReportKey)}`
     : null;
 
   const csv      = buildCsv(leads);

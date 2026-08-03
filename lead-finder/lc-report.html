@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connect Hearing — Phone Leads</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; font-family: Arial, sans-serif; font-size: 14px; color: #1f2937; background: #f4f4f4; }
+  .header { background: #76B214; color: #fff; padding: 20px 32px; }
+  .header h1 { margin: 0; font-size: 20px; }
+  .header p  { margin: 4px 0 0; font-size: 13px; opacity: .8; }
+  .meta { padding: 14px 32px; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .badge { background: #76B214; color: #fff; border-radius: 20px; padding: 3px 13px; font-size: 13px; font-weight: 600; }
+  .date  { color: #6b7280; font-size: 13px; }
+  .hint  { color: #9ca3af; font-size: 12px; margin-left: auto; }
+  .wrap  { padding: 24px 32px; }
+  table  { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  th { background: #76B214; color: #fff; padding: 10px 14px; text-align: left; font-size: 13px; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { background: #5a8a0f; }
+  th .si { opacity: .5; margin-left: 5px; font-size: 10px; }
+  th.asc  .si::after { content: '▲'; opacity: 1; }
+  th.desc .si::after { content: '▼'; opacity: 1; }
+  th .si::after { content: '⇅'; }
+  td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #f9fafb; }
+  tr:hover td { background: #f0fdf4; }
+  a.phone { color: #1f2937; text-decoration: none; font-weight: 500; }
+  a.phone:hover { color: #76B214; }
+  a.web { color: #76B214; font-size: 12px; word-break: break-all; }
+  .empty { color: #d1d5db; }
+  .status { text-align: center; padding: 48px 24px; color: #9ca3af; }
+  .status.error { color: #dc2626; }
+  @media (max-width: 640px) {
+    .header { padding: 16px; }
+    .meta   { padding: 12px 16px; }
+    .wrap   { padding: 12px; }
+    .hint   { display: none; }
+    th, td  { padding: 8px 10px; font-size: 13px; }
+    a.web   { font-size: 11px; }
+  }
+  @media print {
+    body, .wrap { background: #fff; }
+    .header { background: #76B214 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    th { background: #76B214 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    a { color: inherit !important; text-decoration: none !important; }
+    tr:hover td { background: inherit !important; }
+    .hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Connect Hearing — Industrial Division</h1>
+  <p>Phone Leads &mdash; for LC follow-up</p>
+</div>
+
+<div class="meta">
+  <span class="badge" id="badge">Loading&hellip;</span>
+  <span class="date"  id="date"></span>
+  <span class="hint">Click a column header to sort &nbsp;&middot;&nbsp; Tap a phone number to call</span>
+</div>
+
+<div class="wrap">
+  <div id="content" class="status">Loading leads&hellip;</div>
+</div>
+
+<script>
+  const API = 'https://jiteqaeiftjuswwmgksf.supabase.co/functions/v1/lc-report';
+  const key = new URLSearchParams(location.search).get('key');
+
+  function esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function renderTable(leads) {
+    const count = leads.length;
+    document.getElementById('badge').textContent = `${count} lead${count !== 1 ? 's' : ''}`;
+    document.getElementById('date').textContent  = 'Generated ' + new Date().toLocaleDateString('en-CA', {
+      year: 'numeric', month: 'long', day: 'numeric',
+    });
+
+    if (count === 0) {
+      document.getElementById('content').innerHTML = '<p>No phone leads found.</p>';
+      return;
+    }
+
+    const rows = leads.map(c => {
+      const loc  = [c.city, c.province].filter(Boolean).join(', ') || '—';
+      const ph   = c.phone
+        ? `<a href="tel:${esc(c.phone)}" class="phone">${esc(c.phone)}</a>`
+        : '<span class="empty">—</span>';
+      const site = c.website
+        ? `<a href="${esc(c.website)}" target="_blank" rel="noopener" class="web">${esc(c.website.replace(/^https?:\/\//, ''))}</a>`
+        : '<span class="empty">—</span>';
+      return `<tr><td>${esc(c.name)}</td><td>${esc(loc)}</td><td>${ph}</td><td>${site}</td></tr>`;
+    }).join('');
+
+    document.getElementById('content').innerHTML = `
+      <table id="leads">
+        <thead><tr>
+          <th data-col="0">Company <span class="si"></span></th>
+          <th data-col="1">Location <span class="si"></span></th>
+          <th data-col="2">Phone <span class="si"></span></th>
+          <th data-col="3">Website <span class="si"></span></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    let sc = -1, asc = true;
+    document.querySelectorAll('th[data-col]').forEach(th =>
+      th.addEventListener('click', () => {
+        const col = +th.dataset.col;
+        if (sc === col) asc = !asc; else { sc = col; asc = true; }
+        document.querySelectorAll('th[data-col]').forEach(t => t.classList.remove('asc','desc'));
+        th.classList.add(asc ? 'asc' : 'desc');
+        const tbody = document.querySelector('#leads tbody');
+        Array.from(tbody.rows)
+          .sort((a, b) => {
+            const av = a.cells[col].textContent.trim();
+            const bv = b.cells[col].textContent.trim();
+            return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+          })
+          .forEach(r => tbody.appendChild(r));
+      })
+    );
+  }
+
+  async function load() {
+    const el = document.getElementById('content');
+    if (!key) {
+      el.className = 'status error';
+      el.textContent = 'Missing access key — use the link from your email.';
+      document.getElementById('badge').textContent = 'Error';
+      return;
+    }
+    try {
+      const res  = await fetch(`${API}?key=${encodeURIComponent(key)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        el.className = 'status error';
+        el.textContent = `Error ${res.status}: ${data.error ?? 'Unknown error'}`;
+        document.getElementById('badge').textContent = 'Error';
+        return;
+      }
+      renderTable(data);
+    } catch (err) {
+      el.className = 'status error';
+      el.textContent = 'Could not load leads: ' + err.message;
+      document.getElementById('badge').textContent = 'Error';
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
