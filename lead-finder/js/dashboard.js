@@ -420,10 +420,21 @@ document.getElementById('lc-report-btn').addEventListener('click', async () => {
     const result = await createLcReportDraft(phoneLeads, session);
     if (result.success) {
       if (result.webLink) window.open(result.webLink, '_blank');
-      showToast('LC report drafted — check your Outlook Drafts', 'success');
+      showToast('LC report drafted with CSV attachment — check your Outlook Drafts', 'success');
     } else {
+      // Download CSV first, then open mailto
+      if (result.csvBlob) {
+        const url = URL.createObjectURL(result.csvBlob);
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = result.csvFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
       window.location.href = result.fallback;
-      showToast('Report opened in your mail client', 'success');
+      showToast('Email opened in mail client — CSV downloaded separately', 'success');
     }
   } catch (err) {
     showToast('Report failed: ' + err.message, 'error');
