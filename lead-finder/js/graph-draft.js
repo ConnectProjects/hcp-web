@@ -2,13 +2,14 @@ import {
   initMsal, graphRequest, isSignedIn, signIn, getAccount,
 } from '../../shared/auth/msal-stub.js';
 
-let _clientId, _tenantId, _lcName, _cliffEmail, _supabaseUrl, _outreachRef;
+let _clientId, _tenantId, _lcName, _senderEmail, _cliffEmail, _supabaseUrl, _outreachRef;
 try {
   const cfg  = await import('../config.js');
-  _clientId   = cfg.MSAL_CLIENT_ID;
-  _tenantId   = cfg.MSAL_TENANT_ID;
-  _lcName     = cfg.LC_NAME    && !cfg.LC_NAME.startsWith('Your ')    ? cfg.LC_NAME    : null;
-  _cliffEmail = cfg.CLIFF_EMAIL && !cfg.CLIFF_EMAIL.startsWith('your-') ? cfg.CLIFF_EMAIL : 'Cliff.Stephens@connecthearing.ca';
+  _clientId    = cfg.MSAL_CLIENT_ID;
+  _tenantId    = cfg.MSAL_TENANT_ID;
+  _lcName      = cfg.LC_NAME      && !cfg.LC_NAME.startsWith('Your ')    ? cfg.LC_NAME      : null;
+  _senderEmail = cfg.SENDER_EMAIL && !cfg.SENDER_EMAIL.startsWith('your-') ? cfg.SENDER_EMAIL : null;
+  _cliffEmail  = cfg.CLIFF_EMAIL  && !cfg.CLIFF_EMAIL.startsWith('your-') ? cfg.CLIFF_EMAIL  : 'Cliff.Stephens@connecthearing.ca';
   _supabaseUrl = cfg.SUPABASE_URL ?? '';
   _outreachRef = cfg.OUTREACH_REF ?? 'NR';
 } catch { /* config missing — mailto: fallback will be used */ }
@@ -57,7 +58,7 @@ export async function createDraft({ outreach, company, session }) {
   const msalAvailable = tryInitMsal();
   const account  = msalAvailable && isSignedIn() ? getAccount() : null;
   const senderName  = account?.name ?? _lcName ?? 'Norman Robichaud';
-  const senderEmail = session?.user?.email ?? '';
+  const senderEmail = _senderEmail ?? session?.user?.email ?? '';
 
   const templateHtml = await loadTemplate().catch(() => null);
   const html = templateHtml ? merge(templateHtml, {
@@ -107,31 +108,28 @@ export async function createDraft({ outreach, company, session }) {
   const plainBody = [
     `Hi ${outreach.contact_name || 'there'},`,
     '',
-    `My name is ${senderName} — I work with Connect Hearing's Industrial Division,`,
-    'which helps BC and Alberta businesses meet their workplace hearing conservation obligations.',
+    `My name is ${senderName} — I'm a WorkSafeBC certified Industrial Audiometric Technician (IAT) with Connect Hearing's Industrial Division. Connect Hearing is a recognized occupational hearing and fit test provider under WorkSafeBC, serving employers across BC and Alberta.`,
     '',
-    'WorkSafeBC and Alberta OHS Part 16 both place the legal obligation to arrange regular',
-    'hearing tests on the employer — not the worker — whenever employees are regularly exposed',
-    'to hazardous noise. Many businesses in your sector aren\'t aware this requirement applies.',
+    `I'm reaching out to ${company.name} because companies in your sector frequently have workers exposed to elevated noise levels. Under WorkSafeBC OHS Regulation Part 7, employers are legally required to implement a hearing conservation program — including audiometric testing — when workers are regularly exposed to hazardous noise. That obligation falls on the employer, not the worker, and many businesses don't realize it applies to them until they receive a WorkSafeBC order.`,
     '',
-    `I\'m reaching out to ${company.name} because your industry is one where workers are often`,
-    'exposed to elevated noise levels. If this might be relevant to your workplace, please reply',
-    'to this email.',
+    'Non-compliance can result in WorkSafeBC orders, financial penalties, and increased exposure to WCB hearing loss claims. A hearing conservation program protects your workers and demonstrates the due diligence that reduces that liability.',
     '',
-    'Cliff Stephens, our Logistical Coordinator, will follow up to learn about your situation',
-    'and — if it makes sense — help arrange testing at a time that works for your team.',
+    'Connect Hearing makes compliance straightforward. We come to your worksite, conduct the required testing, and provide the documentation you need — with no disruption to your operations.',
+    '',
+    'If this applies to your workplace, please reply to this email. Cliff Stephens, our Logistical Coordinator, will follow up to learn more about your situation and, if appropriate, arrange testing at a time that suits your team. There is no obligation from an initial conversation.',
+    '',
     `You can also reach Cliff directly at ${_cliffEmail}.`,
     '',
-    senderName,
-    senderEmail,
+    `${senderName}, IAT`,
+    'Industrial Audiometric Technician',
     'Connect Hearing — Industrial Division',
+    senderEmail,
     '4420 28 Street, Vernon, BC V1T 7P5 | 1-800-663-2884',
     '',
     '---',
-    'You are receiving this email because your contact information was publicly listed and',
-    'your business operates in a sector where hearing regulations may apply (CASL implied consent).',
+    `You are receiving this email because ${company.name} operates in a sector where workplace hearing regulations may apply, and your contact information was publicly listed (CASL implied B2B consent).`,
     unsubscribeUrl ? `To unsubscribe: ${unsubscribeUrl}` : '',
-  ].filter(line => line !== null).join('\n');
+  ].filter(Boolean).join('\n');
 
   const fallback = `mailto:${encodeURIComponent(outreach.contact_email)}`
     + `?subject=${encodeURIComponent(subject)}`
@@ -149,7 +147,7 @@ export async function createDraft({ outreach, company, session }) {
  */
 export async function createLcReportDraft(leads, session) {
   const senderName  = _lcName ?? 'Norman Robichaud';
-  const senderEmail = session?.user?.email ?? '';
+  const senderEmail = _senderEmail ?? session?.user?.email ?? '';
   const dateStr     = new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' });
   const subject     = `Industrial Phone Leads — ${dateStr} | ref:${_outreachRef}`;
 

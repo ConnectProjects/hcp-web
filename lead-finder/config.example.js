@@ -13,6 +13,7 @@ export const GOOGLE_PLACES_API_KEY = 'AIza...your-places-api-key...';
 
 // Outreach identity
 export const LC_NAME      = 'Your Name';                              // Sender display name
+export const SENDER_EMAIL = 'your.name@connecthearing.ca';            // Sender email shown in signature (overrides Supabase login email)
 export const CLIFF_EMAIL  = 'Cliff.Stephens@connecthearing.ca';       // Reply-To / LC contact
 export const OUTREACH_REF = 'NR';                                     // Suffix added to subject: | ref:NR
 
