@@ -24,3 +24,9 @@ export const OUTREACH_REF = 'NR';                                     // Suffix 
 // Neither value is a secret — both are safe to commit.
 export const MSAL_CLIENT_ID = 'your-azure-app-client-id';
 export const MSAL_TENANT_ID = 'your-azure-tenant-id'; // or 'common'
+
+// LC Report — shared secret for the lc-report Edge Function.
+// Must ALSO be set as a Supabase secret:
+//   npx supabase secrets set LC_REPORT_KEY=<your-secret> (run from lead-finder/)
+// Keep this value private — it's the only thing protecting the report URL.
+export const LC_REPORT_KEY = 'your-lc-report-secret-key';
