@@ -751,10 +751,12 @@ export function renderDataTools(container, state, navigate) {
           const totalTests = testLocs.reduce((s, r) => s + r.n, 0)
           const badTests   = testLocs.filter(r => !r.active).reduce((s, r) => s + r.n, 0)
 
+          const missing = testedCount - totalTests
           let issue = ''
           if      (status === 'not in DB')                        issue = '⚠ Never scanned'
           else if (status === 'imported' && totalTests === 0)     issue = '⚠ No tests in DB'
           else if (badTests > 0)                                  issue = `⚠ ${badTests} test(s) in inactive location`
+          else if (status === 'imported' && missing > 0)         issue = `⚠ ${missing} test(s) missing from DB`
           else if (status === 'submitted')                        issue = '⏳ Pending import'
 
           rows.push({ name, packetId, companyName, locName, visitDate, testedCount, status, totalTests, badTests, issue })
