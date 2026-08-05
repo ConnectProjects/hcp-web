@@ -354,6 +354,7 @@ export function renderDataTools(container, state, navigate) {
           });
           logAction(state, 'MERGE_EMPLOYEES', `Merged ${deleteIds.length} duplicate(s) of "${keepEmp?.last_name}, ${keepEmp?.first_name}" — ${totalTests} test(s) and ${totalBaselines} baseline(s) reassigned`)
           btn.closest('.form-card').innerHTML = `<p style="color:green">✓ Merged successfully — ${deleteIds.length} duplicate(s) removed, ${totalTests} test(s) reassigned.</p>`;
+          if (state.syncFolder) JsonDatabase.pushMaster(state.syncFolder, query).catch(() => {});
         } catch (err) {
           alert('Merge failed: ' + err.message);
         }

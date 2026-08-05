@@ -1,5 +1,5 @@
 import { getAllPackets, savePacket, packetExists, deletePacket } from '../db/idb.js'
-import { getSyncFolder, pickSyncFolder, listJsonFiles, writeJsonFile } from '@shared/fs/sync-folder.js'
+import { getSyncFolder, pickSyncFolder, listJsonFiles, writeJsonFile, readJsonFile } from '@shared/fs/sync-folder.js'
 import { PACKET_STATUS }                            from '@shared/packet/schema.js'
 
 /**
@@ -18,6 +18,11 @@ export async function pullPacketsFromFolder(folder, user) {
     const packet = JSON.parse(await file.text())
 
     if (await packetExists(packet.packet_id)) continue
+
+    try {
+      const st = await readJsonFile(folder, 'status', `${packet.packet_id}.json`)
+      if (st?.status === 'cancelled' || st?.status === 'removed_by_tech') continue
+    } catch {}
 
     packet.status = PACKET_STATUS.SYNCED
     await savePacket(packet)
@@ -116,6 +121,7 @@ function packetCard(packet, today) {
       </div>
       <div class="packet-card__body">
         <div class="packet-company">${packet.company?.name ?? 'Unknown'}</div>
+        ${packet.location?.name ? `<div class="packet-location">${packet.location.name}</div>` : ''}
         <div class="packet-meta">
           ${packet.company?.province ?? ''}&nbsp;·&nbsp;${statusBadge}
           ${packet.company?.sticky_notes ? '&nbsp;·&nbsp;<span class="sticky-flag">📌</span>' : ''}
@@ -210,6 +216,11 @@ async function doSync(container, state, navigate) {
         skipped++
         continue
       }
+
+      try {
+        const st = await readJsonFile(folder, 'status', `${packet.packet_id}.json`)
+        if (st?.status === 'cancelled' || st?.status === 'removed_by_tech') { skipped++; continue }
+      } catch {}
 
       showBanner(banner, 'info', `Loading ${name} (${loaded + 1}/${files.length - skipped})…`)
       packet.status = PACKET_STATUS.SYNCED

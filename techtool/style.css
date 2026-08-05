@@ -520,6 +520,7 @@ textarea { resize: vertical; }
   color: var(--grey-900);
   white-space: nowrap;
 }
+.packet-location   { font-size: 13px; color: var(--grey-600); margin-top: 1px; }
 .packet-meta       { font-size: 13px; color: var(--grey-500); margin-top: 3px; }
 .sticky-flag       { font-size: 12px; }
 .packet-card__arrow { font-size: 20px; color: var(--grey-300); }
