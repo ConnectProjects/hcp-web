@@ -192,6 +192,41 @@ export async function writePacket(techFolder, filename, packetObj) {
   await _store.writeFile(['techs', techFolder, 'outbox', filename], bytes)
 }
 
+// ── TechTool packet I/O ───────────────────────────────────────────────────────
+// From TechTool's perspective:
+//   MasterDB writes packets to techs/{folder}/outbox/ → TechTool reads & tests
+//   TechTool writes completed packets to techs/{folder}/inbox/ → MasterDB imports
+
+/** TechTool: list packets queued for this tech (MasterDB wrote them to outbox). */
+export const listTechPackets = (techFolder) => {
+  _assertOpen(); return _store.list(['techs', techFolder, 'outbox'])
+}
+
+/** TechTool: read a queued packet from the tech's outbox. */
+export async function readTechPacket(techFolder, filename) {
+  _assertOpen()
+  const bytes = await _store.readFile(['techs', techFolder, 'outbox', filename])
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
+/** TechTool: save in-progress packet back (overwrites the outbox copy). */
+export async function saveTechPacket(techFolder, filename, packetObj) {
+  _assertOpen()
+  const bytes = new TextEncoder().encode(JSON.stringify(packetObj, null, 2))
+  await _store.writeFile(['techs', techFolder, 'outbox', filename], bytes)
+}
+
+/** TechTool: submit completed packet — writes to inbox then removes from outbox. */
+export async function submitTechPacket(techFolder, filename, packetObj) {
+  _assertOpen()
+  const bytes = new TextEncoder().encode(JSON.stringify(packetObj, null, 2))
+  await _store.writeFile(['techs', techFolder, 'outbox', filename], bytes)
+  await _store.move(
+    ['techs', techFolder, 'outbox', filename],
+    ['techs', techFolder, 'inbox',  filename]
+  )
+}
+
 /** Move an imported packet from inbox → archive. */
 export const archivePacket = (techFolder, filename) => {
   _assertOpen()

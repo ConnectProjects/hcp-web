@@ -145,16 +145,25 @@ export function mount(container, { session }) {
 
   async function seedUsers() {
     try {
-      let added = 0
+      let added = 0, updated = 0
       for (const u of SEED_USERS) {
         const exists = scalar('SELECT COUNT(*) FROM users WHERE name = ?', [u.name])
-        if (exists) continue
-        const uid = crypto.randomUUID()
-        run(
-          `INSERT INTO users (user_id, name, initials, role, folder_name, active)
-           VALUES (?, ?, ?, ?, ?, 1)`,
-          [uid, u.name, u.initials, u.role, u.folder_name]
-        )
+        if (exists) {
+          // Always sync role, initials, folder_name — fixes stale roles from earlier builds
+          run(
+            `UPDATE users SET role = ?, initials = ?, folder_name = ? WHERE name = ?`,
+            [u.role, u.initials, u.folder_name, u.name]
+          )
+          updated++
+        } else {
+          const uid = crypto.randomUUID()
+          run(
+            `INSERT INTO users (user_id, name, initials, role, folder_name, active)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+            [uid, u.name, u.initials, u.role, u.folder_name]
+          )
+          added++
+        }
         // Aud-techs also go into techs table for packet/import workflow
         if (u.role === 'aud_tech' && u.folder_name) {
           const techExists = scalar('SELECT COUNT(*) FROM techs WHERE name = ?', [u.name])
@@ -165,12 +174,16 @@ export function mount(container, { session }) {
                VALUES (?, ?, ?, 'aud_tech', ?, 1)`,
               [tid, u.name, u.initials, u.folder_name]
             )
+          } else {
+            run(
+              `UPDATE techs SET role = 'aud_tech', initials = ?, folder_name = ? WHERE name = ?`,
+              [u.initials, u.folder_name, u.name]
+            )
           }
         }
-        added++
       }
       await save(session.writerName)
-      _seedMsg = { ok: true, message: `${added} new user${added !== 1 ? 's' : ''} added (${SEED_USERS.length - added} already existed).` }
+      _seedMsg = { ok: true, message: `Seed complete: ${added} added, ${updated} updated.` }
     } catch (e) {
       _seedMsg = { ok: false, message: `Seed failed: ${e.message}` }
     }

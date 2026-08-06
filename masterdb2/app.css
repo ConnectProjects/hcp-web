@@ -298,6 +298,7 @@ ul { list-style: none; }
   flex-wrap: wrap;
 }
 .screen-header-row h1 { font-size: 1.25rem; font-weight: 600; flex: 1; white-space: nowrap; }
+.screen-subtitle { font-size: 0.875rem; color: var(--clr-subtle); align-self: center; }
 .screen-header-row .search-input {
   flex: 0 1 280px;
 }
@@ -418,6 +419,39 @@ ul { list-style: none; }
   cursor: pointer;
 }
 .form-select:focus { border-color: var(--clr-primary); box-shadow: 0 0 0 3px rgba(0,99,204,0.1); }
+
+/* ── TechTool packet cards ─────────────────────────────────────────────────── */
+.packet-card {
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.75rem;
+  background: var(--clr-white);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.packet-card:hover { border-color: var(--clr-primary); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.packet-card-error { cursor: default; }
+.packet-card-error:hover { border-color: var(--clr-border); box-shadow: none; }
+.packet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+.packet-company { font-size: 1rem; font-weight: 600; }
+.packet-loc  { font-size: 0.8125rem; color: var(--clr-subtle); margin-top: 0.125rem; }
+.packet-date { font-size: 0.8125rem; color: var(--clr-subtle); white-space: nowrap; padding-top: 0.125rem; }
+.packet-note {
+  font-size: 0.8125rem;
+  background: #fffbe6;
+  border: 1px solid #f0d870;
+  border-radius: 4px;
+  padding: 0.375rem 0.625rem;
+  margin-bottom: 0.625rem;
+}
+.packet-footer { display: flex; align-items: center; gap: 0.625rem; }
 
 /* ── Import screen specifics ───────────────────────────────────────────────── */
 .import-counts {
