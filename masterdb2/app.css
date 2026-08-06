@@ -1,7 +1,7 @@
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
 :root {
-  --clr-primary:          #0063cc;
-  --clr-primary-hover:    #0052aa;
+  --clr-primary:          #76B214;  /* Connect Hearing brand green */
+  --clr-primary-hover:    #5d8f10;
   --clr-sidebar:          #1e2a3a;
   --clr-sidebar-hover:    rgba(255,255,255,0.06);
   --clr-sidebar-active:   rgba(255,255,255,0.12);
