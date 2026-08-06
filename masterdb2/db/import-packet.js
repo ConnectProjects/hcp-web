@@ -390,7 +390,7 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
           sts_flag:                 cl.sts_calculated ? 1 : 0,
           counsel_text:             test.counsel_text ?? null,
           tech_notes:               test.notes        ?? null,   // packet field is 'notes'
-          questionnaire:            test.questionnaire ?? null,
+          questionnaire:            test.questionnaire != null ? JSON.stringify(test.questionnaire) : null,
           packet_id:                packet.packet_id,
           referral_given_to_worker: test.referral_given_to_worker ? 1 : 0,
           triggering_freq_hz:       cl.triggering_freq_hz,
