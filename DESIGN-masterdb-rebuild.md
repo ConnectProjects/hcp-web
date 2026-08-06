@@ -39,9 +39,41 @@ duplicate/BAK screen files).
 ### The core change
 Every 2026 incident traced to one root cause: three machines each holding a
 divergent local copy, merged after the fact. MasterDB v2 keeps **one canonical
-`masterdb.sqlite` file in the shared OneDrive folder** and works on it directly
-over the Microsoft Graph API. No local copies, no merge, nothing to adopt or
-reconcile.
+`masterdb.sqlite` file in the shared OneDrive folder**. No local copies, no
+merge, nothing to adopt or reconcile.
+
+### Storage backends (rev 3 — 2026-08-06)
+The Graph API route requires an Azure app registration, which Sonova locks
+behind IT (portal blade disabled; Conditional Access blocks device-code flows,
+error 53003). Norm has been advised to avoid IT for now and sell the rebuild
+with a working proof of concept first. Therefore storage is a **swappable
+interface** (`open / save / claimLock / releaseLock / copy / move / list`)
+with two backends:
+
+- **`fsa-store` (build now):** File System Access API against the locally
+  synced OneDrive folder — the same access mode the current app uses, so no
+  approvals needed. Concurrency without server eTags:
+  1. `db/write.lock.json` claimed before any write session (heartbeat,
+     stale after 5 min) — advisory, rides OneDrive sync;
+  2. a `meta` table inside the sqlite file carrying a monotonically increasing
+     `save_seq` + `last_writer` + `saved_at`: before overwriting, re-read the
+     on-disk file's `save_seq`; if it advanced past what we loaded → conflict →
+     refuse the save and prompt reload (app-level optimistic concurrency);
+  3. conflict-copy watchdog: warn loudly if `masterdb-<anything>.sqlite`
+     conflict copies appear in `db/`.
+  Weaker than Graph's atomic If-Match (a small read-check-write race window
+  remains), but with 1–2 office users plus the lock it is sound in practice —
+  and a conflict at worst produces one visible conflict copy of ONE file,
+  never a silent merge.
+- **`graph-store` (later, unlocks with the IT app registration):** the §2
+  session model below — download/upload over Graph with true If-Match/412
+  protection. Screens, import, reports never know which backend is under them.
+
+The PoC pitch to IT/management later: "here is the working system; an app
+registration upgrades its concurrency safety from app-enforced to
+server-enforced." The §2 session description below is written for graph-store;
+fsa-store implements the same session shape (open → in-memory sql.js → explicit
+save) with the FSA read/write primitives.
 
 ### How a session works
 1. **Open:** MSAL login (already in the stack) → download `db/masterdb.sqlite`
@@ -227,8 +259,10 @@ dev/test database, once at launch against the freshest data.
 
 ## 10. Implementation plan
 
-- **Phase 1a — Graph spike** (§2 risk): prove the six Graph verbs against the
-  shared folder from a browser token. Nothing else starts until this passes.
+- **Phase 1a — Graph spike: DONE 2026-08-06, finding: blocked on IT** (no
+  self-service app registration; Conditional Access 53003). Spike page kept in
+  `spike-graph/` — it becomes the acceptance test the day IT grants the
+  registration. Build proceeds on `fsa-store`.
 - **Phase 1b — migration script + harness** (§9) on a canonical copy.
 - **Phase 2 — data layer + import core:** `masterdb/db/` v2 (graph-store module:
   open/save/lock/412 handling; workers.js person model; ports of
@@ -258,3 +292,5 @@ periodically.
 | 2026-08-05 | Worker matching by multiple identifiers (DOB, names, SIN last-4); cross-company never auto-merged |
 | 2026-08-05 | 628-dup-test cleanup confirmed already done (0 dup groups in canonical) |
 | 2026-08-05 | Trip = date range (1–2 weeks), not a first-class record; multi-packet-per-site-per-day supported |
+| 2026-08-06 | Graph spike finding: app registration is IT-gated (portal disabled + CA 53003); no self-service path |
+| 2026-08-06 | Norm advised to avoid IT for now → **build on `fsa-store` backend as proof of concept**; storage is a swappable interface, `graph-store` slots in when IT grants the registration |
