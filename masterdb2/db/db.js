@@ -36,7 +36,7 @@ let _seq   = 0      // save_seq at last open() or save()
  *             via a <script> tag, or import and pass it directly).
  * wasmPath  : URL to sql-wasm.wasm, relative to the serving document.
  */
-export async function loadSql(initSqlJs, wasmPath = '../masterdb/vendor/sql-wasm.wasm') {
+export async function loadSql(initSqlJs, wasmPath = '../vendor/sql-wasm.wasm') {
   if (_SQL) return
   _SQL = await initSqlJs({ locateFile: () => wasmPath })
 }
