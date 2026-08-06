@@ -4,29 +4,38 @@
  */
 
 import { createPacket }                      from '../../shared/packet/schema.js'
-import { query, run, save, writePacket }     from '../db/db.js'
+import { query, run, scalar, save, writePacket } from '../db/db.js'
 import { listByLocation, getActiveBaseline } from '../db/workers.js'
+
+const PROVINCES = [
+  ['AB','Alberta'],['BC','British Columbia'],['MB','Manitoba'],['NB','New Brunswick'],
+  ['NL','Newfoundland and Labrador'],['NS','Nova Scotia'],['NT','Northwest Territories'],
+  ['NU','Nunavut'],['ON','Ontario'],['PE','Prince Edward Island'],
+  ['QC','Quebec'],['SK','Saskatchewan'],['YT','Yukon'],
+]
 
 export function mount(container, { navigate, locationId, companyId, session }) {
   if (!locationId) { navigate('companies'); return }
 
-  const loc = query(
-    `SELECT l.*, c.name AS company_name, c.company_id
-     FROM locations l JOIN companies c ON c.company_id = l.company_id
-     WHERE l.location_id = ?`, [locationId]
-  )[0] ?? null
-
-  if (!loc) {
-    container.innerHTML = `<div class="error-card"><h2>Not found</h2><p>Location ${locationId} does not exist.</p></div>`
-    return
-  }
-
-  const techs  = query(`SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
-  let genStatus = null   // { ok, message } after generate attempt
+  const techs   = query(`SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
+  let genStatus = null
+  let _mode     = null   // null | 'edit-loc' | 'new-worker'
+  let _locStatus = null
 
   render()
 
   function render() {
+    const loc = query(
+      `SELECT l.*, c.name AS company_name, c.company_id
+       FROM locations l JOIN companies c ON c.company_id = l.company_id
+       WHERE l.location_id = ?`, [locationId]
+    )[0] ?? null
+
+    if (!loc) {
+      container.innerHTML = `<div class="error-card"><h2>Not found</h2><p>Location ${locationId} does not exist.</p></div>`
+      return
+    }
+
     const roster = listByLocation(locationId, { includeInactive: false })
 
     const packets = query(
@@ -75,22 +84,29 @@ export function mount(container, { navigate, locationId, companyId, session }) {
       <div class="screen-header-row">
         <button class="back-link" id="back-btn">&larr; ${esc(loc.company_name)}</button>
         <h1>${esc(loc.name)}</h1>
+        <button class="btn btn-secondary btn-sm" id="edit-loc-btn">
+          ${_mode === 'edit-loc' ? 'Cancel Edit' : 'Edit'}
+        </button>
       </div>
       <div class="screen-body">
 
-        <div class="info-card">
-          <dl>
-            ${row('Company',   loc.company_name)}
-            ${row('City',      loc.city)}
-            ${row('Province',  loc.province)}
-            ${row('Address',   loc.address)}
-            ${row('Contact',   loc.contact_name)}
-            ${row('Phone',     loc.phone)}
-            ${row('Email',     loc.email)}
-            ${row('CU Code',   loc.cu_code)}
-            ${row('UID',       loc.uid)}
-          </dl>
-        </div>
+        ${_locStatus ? `<div class="${_locStatus.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:1rem">${esc(_locStatus.message)}</div>` : ''}
+
+        ${_mode === 'edit-loc' ? locEditForm(loc) : `
+          <div class="info-card">
+            <dl>
+              ${row('Company',   loc.company_name)}
+              ${row('City',      loc.city)}
+              ${row('Province',  loc.province)}
+              ${row('Address',   loc.address)}
+              ${row('Contact',   loc.contact_name)}
+              ${row('Phone',     loc.contact_phone)}
+              ${row('Email',     loc.contact_email)}
+              ${row('CU Code',   loc.cu_code)}
+              ${row('UID',       loc.uid)}
+            </dl>
+          </div>
+        `}
 
         <div class="section-head" style="margin-top:0.5rem">
           <h2>Generate Packet</h2>
@@ -123,7 +139,11 @@ export function mount(container, { navigate, locationId, companyId, session }) {
 
         <div class="section-head">
           <h2>Active Workers (${roster.length})</h2>
+          <button class="btn btn-secondary btn-sm" id="add-worker-btn">
+            ${_mode === 'new-worker' ? 'Cancel' : '+ Add Worker'}
+          </button>
         </div>
+        ${_mode === 'new-worker' ? workerForm() : ''}
         <div class="table-card">
           <div class="table-wrap">
             <table class="data-table">
@@ -157,12 +177,88 @@ export function mount(container, { navigate, locationId, companyId, session }) {
     container.querySelector('#back-btn').addEventListener('click', () =>
       navigate('company', { companyId: companyId ?? loc.company_id })
     )
+    container.querySelector('#edit-loc-btn').addEventListener('click', () => {
+      _mode = _mode === 'edit-loc' ? null : 'edit-loc'
+      _locStatus = null; render()
+    })
+    container.querySelector('#add-worker-btn').addEventListener('click', () => {
+      _mode = _mode === 'new-worker' ? null : 'new-worker'
+      _locStatus = null; render()
+    })
+    container.querySelector('#loc-save')?.addEventListener('click', () => saveLoc(loc))
+    container.querySelector('#loc-cancel')?.addEventListener('click', () => { _mode = null; render() })
+    container.querySelector('#worker-save')?.addEventListener('click', () => saveWorker(loc))
+    container.querySelector('#worker-cancel')?.addEventListener('click', () => { _mode = null; render() })
     container.querySelectorAll('#roster-tbody tr.clickable').forEach(tr =>
       tr.addEventListener('click', () =>
         navigate('worker', { employeeId: Number(tr.dataset.id), fromLocation: { locationId, companyId: loc.company_id } })
       )
     )
     container.querySelector('#gen-btn')?.addEventListener('click', () => generate(roster, loc))
+  }
+
+  async function saveLoc(loc) {
+    const errEl    = container.querySelector('#loc-err')
+    const name     = container.querySelector('#loc-name')?.value.trim()
+    const province = container.querySelector('#loc-province')?.value
+    if (!name)     { if (errEl) errEl.textContent = 'Name is required.'; return }
+    if (!province) { if (errEl) errEl.textContent = 'Province is required.'; return }
+
+    try {
+      run(
+        `UPDATE locations SET name=?, province=?, city=?, address=?, postal_code=?,
+         contact_name=?, contact_phone=?, contact_email=?, cu_code=?,
+         updated_at=datetime('now') WHERE location_id=?`,
+        [name, province,
+         container.querySelector('#loc-city')?.value.trim()    || null,
+         container.querySelector('#loc-addr')?.value.trim()    || null,
+         container.querySelector('#loc-postal')?.value.trim()  || null,
+         container.querySelector('#loc-cname')?.value.trim()   || null,
+         container.querySelector('#loc-phone')?.value.trim()   || null,
+         container.querySelector('#loc-email')?.value.trim()   || null,
+         container.querySelector('#loc-cu')?.value.trim()      || null,
+         locationId]
+      )
+      await save(session?.writerName ?? 'admin')
+      _mode = null
+      _locStatus = { ok: true, message: `Location "${name}" saved.` }
+      render()
+    } catch (e) {
+      if (errEl) errEl.textContent = `Save failed: ${e.message}`
+    }
+  }
+
+  async function saveWorker(loc) {
+    const errEl = container.querySelector('#worker-err')
+    const first = container.querySelector('#wf-first')?.value.trim()
+    const last  = container.querySelector('#wf-last')?.value.trim()
+    if (!first || !last) { if (errEl) errEl.textContent = 'First and last name are required.'; return }
+
+    try {
+      run(
+        `INSERT INTO employees (current_location_id, first_name, middle_name, last_name,
+         dob, job_title, hire_date, phone, email, sin_last_4, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+        [locationId, first,
+         container.querySelector('#wf-middle')?.value.trim()  || null,
+         last,
+         container.querySelector('#wf-dob')?.value           || null,
+         container.querySelector('#wf-title')?.value.trim()  || null,
+         container.querySelector('#wf-hire')?.value          || null,
+         container.querySelector('#wf-phone')?.value.trim()  || null,
+         container.querySelector('#wf-email')?.value.trim()  || null,
+         container.querySelector('#wf-sin')?.value.trim()    || null,
+        ]
+      )
+      const newId = scalar('SELECT last_insert_rowid()')
+      await save(session?.writerName ?? 'admin')
+      _mode = null
+      _locStatus = { ok: true, message: `Worker "${last}, ${first}" added.` }
+      render()
+      navigate('worker', { employeeId: newId, fromLocation: { locationId, companyId: loc.company_id } })
+    } catch (e) {
+      if (errEl) errEl.textContent = `Save failed: ${e.message}`
+    }
   }
 
   async function generate(roster, loc) {
@@ -235,6 +331,113 @@ export function mount(container, { navigate, locationId, companyId, session }) {
 
     render()
   }
+}
+
+function locEditForm(loc) {
+  const provOpts = PROVINCES.map(([code, name]) =>
+    `<option value="${code}" ${loc.province === code ? 'selected' : ''}>${code} — ${name}</option>`
+  ).join('')
+
+  return `
+    <div class="info-card" style="margin-bottom:1rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.625rem;margin-bottom:0.75rem">
+        <div style="grid-column:1/-1">
+          <label class="field-label">Location Name *</label>
+          <input class="search-input" id="loc-name" value="${esc(loc.name)}">
+        </div>
+        <div>
+          <label class="field-label">Province *</label>
+          <select class="form-select" id="loc-province" style="width:100%">
+            <option value="">Select…</option>${provOpts}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">City</label>
+          <input class="search-input" id="loc-city" value="${esc(loc.city ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Address</label>
+          <input class="search-input" id="loc-addr" value="${esc(loc.address ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Postal Code</label>
+          <input class="search-input" id="loc-postal" value="${esc(loc.postal_code ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Contact Name</label>
+          <input class="search-input" id="loc-cname" value="${esc(loc.contact_name ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Contact Phone</label>
+          <input class="search-input" id="loc-phone" value="${esc(loc.contact_phone ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Contact Email</label>
+          <input class="search-input" id="loc-email" value="${esc(loc.contact_email ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">CU Code</label>
+          <input class="search-input" id="loc-cu" value="${esc(loc.cu_code ?? '')}">
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="btn btn-primary" id="loc-save">Save Changes</button>
+        <button class="btn btn-secondary" id="loc-cancel">Cancel</button>
+        <span id="loc-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
+      </div>
+    </div>
+  `
+}
+
+function workerForm() {
+  return `
+    <div class="info-card" style="margin-bottom:1rem">
+      <h3 style="margin-bottom:0.75rem;font-size:0.9375rem">New Worker</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.625rem;margin-bottom:0.75rem">
+        <div>
+          <label class="field-label">First Name *</label>
+          <input class="search-input" id="wf-first" placeholder="John">
+        </div>
+        <div>
+          <label class="field-label">Last Name *</label>
+          <input class="search-input" id="wf-last" placeholder="Smith">
+        </div>
+        <div>
+          <label class="field-label">Middle Name</label>
+          <input class="search-input" id="wf-middle" placeholder="Optional">
+        </div>
+        <div>
+          <label class="field-label">Date of Birth</label>
+          <input type="date" class="form-select" id="wf-dob" style="width:100%">
+        </div>
+        <div>
+          <label class="field-label">Job Title</label>
+          <input class="search-input" id="wf-title" placeholder="Machine Operator">
+        </div>
+        <div>
+          <label class="field-label">Hire Date</label>
+          <input type="date" class="form-select" id="wf-hire" style="width:100%">
+        </div>
+        <div>
+          <label class="field-label">Phone</label>
+          <input class="search-input" id="wf-phone" placeholder="306-555-0100">
+        </div>
+        <div>
+          <label class="field-label">Email</label>
+          <input class="search-input" id="wf-email" placeholder="worker@company.com">
+        </div>
+        <div>
+          <label class="field-label">SIN (last 4 digits)</label>
+          <input class="search-input" id="wf-sin" placeholder="1234" maxlength="4">
+        </div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="btn btn-primary" id="worker-save">Add Worker</button>
+        <button class="btn btn-secondary" id="worker-cancel">Cancel</button>
+        <span id="worker-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
+      </div>
+    </div>
+  `
 }
 
 function statusBadge(status) {

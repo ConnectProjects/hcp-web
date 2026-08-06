@@ -33,7 +33,7 @@ export function mount(container, { navigate, session }) {
   let lockBanner = ''
   try {
     const lock = readLock()
-    if (lock && !lock.stale && lock.owner !== session.writerName) {
+    if (lock && !lock.stale && lock.owner && lock.owner !== session.writerName) {
       lockBanner = `<div class="warning-banner" style="margin-bottom:1rem">
         <strong>Write lock held by ${esc(lock.owner)}</strong>
         — MasterDB is read-only until they sign out.

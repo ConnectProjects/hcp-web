@@ -7,6 +7,23 @@
 
 import { query, run, scalar, save, listBackups, checkConflictCopies } from '../db/db.js'
 
+// ── Seed: known staff ─────────────────────────────────────────────────────────
+const SEED_USERS = [
+  { name: 'Cal Scanland',     initials: 'CS',  role: 'aud_tech',    folder_name: 'Cal'    },
+  { name: 'Darren Martin',    initials: 'DM',  role: 'aud_tech',    folder_name: 'Darren' },
+  { name: 'Trevor Dufresne',  initials: 'TD',  role: 'aud_tech',    folder_name: 'Trevor' },
+  { name: 'Mike Otto',        initials: 'MO',  role: 'aud_tech',    folder_name: 'Mike'   },
+  { name: 'Andre St. Pierre', initials: 'AP',  role: 'aud_tech',    folder_name: 'Andre'  },
+  { name: 'Tanya Kotsyuba',   initials: 'TK',  role: 'lc',          folder_name: null      },
+  { name: 'Paul Schreve',     initials: 'PS',  role: 'lc',          folder_name: null      },
+  { name: 'David Heron',      initials: 'DH',  role: 'lc',          folder_name: null      },
+  { name: 'Cliff Stevens',    initials: 'CS2', role: 'lc',          folder_name: null      },
+  { name: 'Heather Wiebe',    initials: 'HW',  role: 'admin',       folder_name: null      },
+  { name: 'Judy Whitley',     initials: 'JW',  role: 'admin',       folder_name: null      },
+  { name: 'Jan Brothen',      initials: 'JB',  role: 'super_admin', folder_name: 'Jan'    },
+  { name: 'Norman Robichaud', initials: 'NR',  role: 'super_admin', folder_name: 'Norman' },
+]
+
 export function mount(container, { session }) {
   // State
   let _editingId  = null    // tech_id being edited, or 'new', or null
@@ -14,6 +31,8 @@ export function mount(container, { session }) {
   let _backups    = []
   let _conflicts  = []
   let _asyncDone  = false
+
+  let _seedMsg = null
 
   render()
 
@@ -34,10 +53,12 @@ export function mount(container, { session }) {
       <div class="screen-header-row"><h1>Settings</h1></div>
       <div class="screen-body">
         <div id="s-db"></div>
+        <div id="s-seed"></div>
         <div id="s-techs"></div>
       </div>
     `
     renderDbSection()
+    renderSeed()
     renderTechs()
   }
 
@@ -100,7 +121,169 @@ export function mount(container, { session }) {
     `
   }
 
-  // ── Techs section ─────────────────────────────────────────────────────────
+  // ── Seed section ──────────────────────────────────────────────────────────
+
+  function renderSeed() {
+    const el = container.querySelector('#s-seed')
+    if (!el) return
+    el.innerHTML = `
+      <div class="section-head"><h2>Seed Data</h2></div>
+      ${_seedMsg ? `<div class="${_seedMsg.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:0.75rem">${esc(_seedMsg.message)}</div>` : ''}
+      <div class="info-card" style="margin-bottom:2rem">
+        <p style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:1rem">
+          These buttons are safe to run multiple times — they skip records that already exist.
+        </p>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          <button class="btn btn-secondary" id="seed-users-btn">Seed Staff Users</button>
+          <button class="btn btn-secondary" id="seed-test-btn">Seed Test Company</button>
+        </div>
+      </div>
+    `
+    el.querySelector('#seed-users-btn').addEventListener('click', seedUsers)
+    el.querySelector('#seed-test-btn').addEventListener('click', seedTestCompany)
+  }
+
+  async function seedUsers() {
+    try {
+      let added = 0
+      for (const u of SEED_USERS) {
+        const exists = scalar('SELECT COUNT(*) FROM users WHERE name = ?', [u.name])
+        if (exists) continue
+        const uid = crypto.randomUUID()
+        run(
+          `INSERT INTO users (user_id, name, initials, role, folder_name, active)
+           VALUES (?, ?, ?, ?, ?, 1)`,
+          [uid, u.name, u.initials, u.role, u.folder_name]
+        )
+        // Aud-techs also go into techs table for packet/import workflow
+        if (u.role === 'aud_tech' && u.folder_name) {
+          const techExists = scalar('SELECT COUNT(*) FROM techs WHERE name = ?', [u.name])
+          if (!techExists) {
+            const tid = crypto.randomUUID()
+            run(
+              `INSERT INTO techs (tech_id, name, initials, role, folder_name, active)
+               VALUES (?, ?, ?, 'aud_tech', ?, 1)`,
+              [tid, u.name, u.initials, u.folder_name]
+            )
+          }
+        }
+        added++
+      }
+      await save(session.writerName)
+      _seedMsg = { ok: true, message: `${added} new user${added !== 1 ? 's' : ''} added (${SEED_USERS.length - added} already existed).` }
+    } catch (e) {
+      _seedMsg = { ok: false, message: `Seed failed: ${e.message}` }
+    }
+    renderSeed()
+  }
+
+  async function seedTestCompany() {
+    try {
+      // Idempotency check
+      const exists = scalar("SELECT COUNT(*) FROM companies WHERE name = 'ACME Manufacturing Ltd.'")
+      if (exists) {
+        _seedMsg = { ok: true, message: 'Test company already exists.' }
+        renderSeed(); return
+      }
+
+      // Company
+      run(`INSERT INTO companies (name, city, address, contact_name, contact_phone, active)
+           VALUES ('ACME Manufacturing Ltd.', 'Saskatoon', '100 Industrial Ave', 'Bob Manager', '306-555-0100', 1)`)
+      const coId = scalar('SELECT last_insert_rowid()')
+
+      // Location
+      run(`INSERT INTO locations (company_id, name, province, city, address, postal_code, cu_code, active)
+           VALUES (?, 'ACME - Main Plant', 'SK', 'Saskatoon', '100 Industrial Ave', 'S7K 1A1', 'SK-9999', 1)`,
+        [coId])
+      const locId = scalar('SELECT last_insert_rowid()')
+
+      // Workers
+      const workers = [
+        ['John',   null,    'Smith',    '1975-03-15', 'Machine Operator', '2010-06-01'],
+        ['Jane',   null,    'Doe',      '1980-06-22', 'Line Supervisor',  '2012-04-15'],
+        ['Robert', null,    'Johnson',  '1968-11-08', 'Maintenance Tech', '2005-01-20'],
+        ['Sarah',  null,    'Williams', '1990-04-30', 'Quality Control',  '2018-09-01'],
+        ['David',  'James', 'Thompson', '1985-09-12', 'Welder',          '2023-03-01'],
+      ]
+      const empIds = []
+      for (const [first, mid, last, dob, title, hire] of workers) {
+        run(`INSERT INTO employees (current_location_id, first_name, middle_name, last_name, dob, job_title, hire_date, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'active')`,
+          [locId, first, mid, last, dob, title, hire])
+        empIds.push(scalar('SELECT last_insert_rowid()'))
+      }
+
+      // Baselines and tests (Smith — normal)
+      run(`INSERT INTO baselines (employee_id, location_id, test_date, archived,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,?,0, 10,10,10,10,10,15,15, 10,10,10,10,15,15,20)`,
+        [empIds[0], locId, '2020-03-10'])
+      run(`INSERT INTO tests (employee_id,location_id,test_date,test_type,province,classification,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,'2022-03-15','Periodic','SK','Normal',
+           15,15,15,15,15,20,20, 15,15,15,15,20,20,25)`,
+        [empIds[0], locId])
+      run(`INSERT INTO tests (employee_id,location_id,test_date,test_type,province,classification,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,'2024-03-12','Periodic','SK','Normal',
+           15,20,20,20,20,20,25, 20,20,20,20,25,25,30)`,
+        [empIds[0], locId])
+
+      // Doe — STS on last test
+      run(`INSERT INTO baselines (employee_id,location_id,test_date,archived,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,?,0, 15,15,15,15,15,15,15, 15,15,15,15,15,15,15)`,
+        [empIds[1], locId, '2019-05-20'])
+      run(`INSERT INTO tests (employee_id,location_id,test_date,test_type,province,classification,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,'2022-05-18','Periodic','SK','Normal',
+           15,20,20,20,25,25,25, 20,20,25,25,30,30,35)`,
+        [empIds[1], locId])
+      run(`INSERT INTO tests (employee_id,location_id,test_date,test_type,province,classification,
+           sts_flag,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,'2024-05-14','Periodic','SK','STS',1,
+           25,25,30,30,35,35,40, 25,30,35,35,40,40,45)`,
+        [empIds[1], locId])
+
+      // Johnson — referral
+      run(`INSERT INTO baselines (employee_id,location_id,test_date,archived,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,?,0, 25,30,35,40,45,50,55, 30,35,40,45,50,55,60)`,
+        [empIds[2], locId, '2018-02-14'])
+      run(`INSERT INTO tests (employee_id,location_id,test_date,test_type,province,classification,
+           sts_flag,referral_given_to_worker,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,'2024-02-20','Periodic','SK','Refer',1,1,
+           35,40,45,55,60,65,70, 35,45,50,60,65,70,75)`,
+        [empIds[2], locId])
+
+      // Williams — baseline only (2024, normal hearing)
+      run(`INSERT INTO baselines (employee_id,location_id,test_date,archived,
+           left_500,left_1k,left_2k,left_3k,left_4k,left_6k,left_8k,
+           right_500,right_1k,right_2k,right_3k,right_4k,right_6k,right_8k)
+           VALUES (?,?,?,0, 10,10,10,10,10,10,10, 10,10,10,15,15,15,15)`,
+        [empIds[3], locId, '2024-09-05'])
+
+      // Thompson — new hire, no tests yet (no insert needed)
+
+      await save(session.writerName)
+      _seedMsg = { ok: true, message: `Test company "ACME Manufacturing Ltd." created with 5 workers and sample test history.` }
+    } catch (e) {
+      _seedMsg = { ok: false, message: `Seed failed: ${e.message}` }
+    }
+    renderSeed()
+  }
+
+  // ── Techs section ──────────────────────────────────────────────────────────
 
   function renderTechs() {
     const el = container.querySelector('#s-techs')

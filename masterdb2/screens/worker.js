@@ -6,77 +6,186 @@
  * archived baselines.
  */
 
+import { query, run, save } from '../db/db.js'
 import { getById, getTests, getBaselines, getHpdAssessments } from '../db/workers.js'
 
 const FREQS = ['500','1k','2k','3k','4k','6k','8k']
 
-export function mount(container, { navigate, employeeId, fromLocation }) {
+export function mount(container, { navigate, employeeId, fromLocation, session }) {
   if (!employeeId) { navigate('workers'); return }
 
-  const emp = getById(employeeId)
-  if (!emp) {
-    container.innerHTML = `<div class="error-card"><h2>Not found</h2><p>Worker ${employeeId} does not exist or was deleted.</p></div>`
-    return
+  let _editing = false
+  let _status  = null
+
+  render()
+
+  function render() {
+    const emp = getById(employeeId)
+    if (!emp) {
+      container.innerHTML = `<div class="error-card"><h2>Not found</h2><p>Worker ${employeeId} does not exist or was deleted.</p></div>`
+      return
+    }
+
+    const tests     = getTests(employeeId)
+    const baselines = getBaselines(employeeId)
+    const activebl  = baselines.find(b => b.archived === 0) ?? null
+
+    const backLabel  = fromLocation ? 'Location' : 'Workers'
+    const backAction = fromLocation
+      ? () => navigate('location', fromLocation)
+      : () => navigate('workers')
+
+    const locDisplay = [emp.location_name, emp.location_province].filter(Boolean).join(', ')
+    const sinDisplay = emp.sin_last_4 ? `***-***-${emp.sin_last_4}` : ''
+
+    container.innerHTML = `
+      <div class="screen-header-row">
+        <button class="back-link" id="back-btn">&larr; ${backLabel}</button>
+        <h1>${esc(emp.last_name)}, ${esc(emp.first_name)}${emp.middle_name ? ' ' + esc(emp.middle_name) : ''}</h1>
+        <span class="badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}">${esc(emp.status ?? '')}</span>
+        <button class="btn btn-secondary btn-sm" id="edit-btn">
+          ${_editing ? 'Cancel Edit' : 'Edit'}
+        </button>
+        ${tests.length ? '<button class="btn btn-secondary btn-sm" id="csv-btn">Download CSV</button>' : ''}
+      </div>
+      <div class="screen-body">
+
+        ${_status ? `<div class="${_status.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:1rem">${esc(_status.message)}</div>` : ''}
+
+        ${_editing ? workerEditForm(emp) : `
+          <div class="info-card">
+            <dl>
+              ${row('Date of Birth', emp.dob ? fmtDate(emp.dob) : null)}
+              ${row('SIN (last 4)',  sinDisplay)}
+              ${row('Phone',        emp.phone)}
+              ${row('Email',        emp.email)}
+              ${row('Job Title',    emp.job_title)}
+              ${row('Hire Date',    emp.hire_date ? fmtDate(emp.hire_date) : null)}
+              ${row('Location',     locDisplay)}
+              ${row('Company',      emp.company_name)}
+              ${row('UID',          emp.uid)}
+            </dl>
+          </div>
+        `}
+
+        ${baselineSection(activebl)}
+
+        <div class="section-head" style="margin-top:0.5rem">
+          <h2>Test History (${tests.length})</h2>
+        </div>
+        ${testTable(tests)}
+
+        ${archivedBaselines(baselines)}
+
+      </div>
+    `
+
+    container.querySelector('#back-btn').addEventListener('click', backAction)
+    container.querySelector('#edit-btn').addEventListener('click', () => {
+      _editing = !_editing; _status = null; render()
+    })
+    container.querySelector('#emp-save')?.addEventListener('click', () => saveWorker(emp))
+    container.querySelector('#emp-cancel')?.addEventListener('click', () => { _editing = false; render() })
+    container.querySelectorAll('tr.test-row').forEach(tr =>
+      tr.addEventListener('click', () =>
+        navigate('test', { testId: Number(tr.dataset.testId), employeeId })
+      )
+    )
+    container.querySelector('#csv-btn')?.addEventListener('click', () =>
+      downloadCsv(emp, tests)
+    )
   }
 
-  const tests     = getTests(employeeId)
-  const baselines = getBaselines(employeeId)
-  const activebl  = baselines.find(b => b.archived === 0) ?? null
+  async function saveWorker(emp) {
+    const errEl = container.querySelector('#emp-err')
+    const first = container.querySelector('#ef-first')?.value.trim()
+    const last  = container.querySelector('#ef-last')?.value.trim()
+    if (!first || !last) { if (errEl) errEl.textContent = 'First and last name are required.'; return }
 
-  const backLabel  = fromLocation ? 'Location' : 'Workers'
-  const backAction = fromLocation
-    ? () => navigate('location', fromLocation)
-    : () => navigate('workers')
+    try {
+      run(
+        `UPDATE employees SET first_name=?, middle_name=?, last_name=?, dob=?, job_title=?,
+         hire_date=?, phone=?, email=?, sin_last_4=?, status=?, updated_at=datetime('now')
+         WHERE employee_id=?`,
+        [first,
+         container.querySelector('#ef-middle')?.value.trim()  || null,
+         last,
+         container.querySelector('#ef-dob')?.value           || null,
+         container.querySelector('#ef-title')?.value.trim()  || null,
+         container.querySelector('#ef-hire')?.value          || null,
+         container.querySelector('#ef-phone')?.value.trim()  || null,
+         container.querySelector('#ef-email')?.value.trim()  || null,
+         container.querySelector('#ef-sin')?.value.trim()    || null,
+         container.querySelector('#ef-status')?.value        || 'active',
+         employeeId]
+      )
+      await save(session?.writerName ?? 'admin')
+      _editing = false
+      _status = { ok: true, message: `"${last}, ${first}" updated.` }
+      render()
+    } catch (e) {
+      if (errEl) errEl.textContent = `Save failed: ${e.message}`
+    }
+  }
+}
 
-  const locDisplay = [emp.location_name, emp.location_province].filter(Boolean).join(', ')
-  const sinDisplay = emp.sin_last_4 ? `***-***-${emp.sin_last_4}` : ''
+// ── Edit form ─────────────────────────────────────────────────────────────────
 
-  container.innerHTML = `
-    <div class="screen-header-row">
-      <button class="back-link" id="back-btn">&larr; ${backLabel}</button>
-      <h1>${esc(emp.last_name)}, ${esc(emp.first_name)}${emp.middle_name ? ' ' + esc(emp.middle_name) : ''}</h1>
-      <span class="badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}">${esc(emp.status ?? '')}</span>
-      ${tests.length ? '<button class="btn btn-secondary" id="csv-btn" style="margin-left:auto">Download CSV</button>' : ''}
-    </div>
-    <div class="screen-body">
-
-      <div class="info-card">
-        <dl>
-          ${row('Date of Birth', emp.dob ? fmtDate(emp.dob) : null)}
-          ${row('SIN (last 4)',  sinDisplay)}
-          ${row('Phone',        emp.phone)}
-          ${row('Email',        emp.email)}
-          ${row('Job Title',    emp.job_title)}
-          ${row('Hire Date',    emp.hire_date ? fmtDate(emp.hire_date) : null)}
-          ${row('Location',     locDisplay)}
-          ${row('Company',      emp.company_name)}
-          ${row('UID',          emp.uid)}
-        </dl>
+function workerEditForm(emp) {
+  return `
+    <div class="info-card" style="margin-bottom:1.5rem">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.625rem;margin-bottom:0.75rem">
+        <div>
+          <label class="field-label">First Name *</label>
+          <input class="search-input" id="ef-first" value="${esc(emp.first_name)}">
+        </div>
+        <div>
+          <label class="field-label">Last Name *</label>
+          <input class="search-input" id="ef-last" value="${esc(emp.last_name)}">
+        </div>
+        <div>
+          <label class="field-label">Middle Name</label>
+          <input class="search-input" id="ef-middle" value="${esc(emp.middle_name ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Date of Birth</label>
+          <input type="date" class="form-select" id="ef-dob" value="${esc(emp.dob ?? '')}" style="width:100%">
+        </div>
+        <div>
+          <label class="field-label">Job Title</label>
+          <input class="search-input" id="ef-title" value="${esc(emp.job_title ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Hire Date</label>
+          <input type="date" class="form-select" id="ef-hire" value="${esc(emp.hire_date ?? '')}" style="width:100%">
+        </div>
+        <div>
+          <label class="field-label">Phone</label>
+          <input class="search-input" id="ef-phone" value="${esc(emp.phone ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">Email</label>
+          <input class="search-input" id="ef-email" value="${esc(emp.email ?? '')}">
+        </div>
+        <div>
+          <label class="field-label">SIN (last 4)</label>
+          <input class="search-input" id="ef-sin" value="${esc(emp.sin_last_4 ?? '')}" maxlength="4">
+        </div>
+        <div>
+          <label class="field-label">Status</label>
+          <select class="form-select" id="ef-status" style="width:100%">
+            <option value="active"   ${emp.status === 'active'   ? 'selected' : ''}>Active</option>
+            <option value="inactive" ${emp.status === 'inactive' ? 'selected' : ''}>Inactive</option>
+          </select>
+        </div>
       </div>
-
-      ${baselineSection(activebl)}
-
-      <div class="section-head" style="margin-top:0.5rem">
-        <h2>Test History (${tests.length})</h2>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="btn btn-primary" id="emp-save">Save Changes</button>
+        <button class="btn btn-secondary" id="emp-cancel">Cancel</button>
+        <span id="emp-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
       </div>
-      ${testTable(tests)}
-
-      ${archivedBaselines(baselines)}
-
     </div>
   `
-
-  container.querySelector('#back-btn').addEventListener('click', backAction)
-
-  container.querySelectorAll('tr.test-row').forEach(tr =>
-    tr.addEventListener('click', () =>
-      navigate('test', { testId: Number(tr.dataset.testId), employeeId })
-    )
-  )
-
-  container.querySelector('#csv-btn')?.addEventListener('click', () =>
-    downloadCsv(emp, tests)
-  )
 }
 
 // ── Section builders ──────────────────────────────────────────────────────────

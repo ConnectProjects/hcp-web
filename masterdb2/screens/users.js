@@ -2,16 +2,16 @@
  * masterdb2/screens/users.js — MasterDB user management
  *
  * Users are the people who appear on the login tile grid.
- * Roles: super_admin, admin, coordinator, tech
+ * Roles: super_admin, admin, lc, aud_tech
  */
 
 import { query, run, save } from '../db/db.js'
 
 const ROLES = [
-  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'super_admin', label: 'Super-Admin' },
   { value: 'admin',       label: 'Admin'        },
-  { value: 'coordinator', label: 'Coordinator'  },
-  { value: 'tech',        label: 'Technician'   },
+  { value: 'lc',          label: 'LC'           },
+  { value: 'aud_tech',    label: 'Aud-Tech'     },
 ]
 
 export function mount(container, { session }) {
@@ -136,7 +136,7 @@ export function mount(container, { session }) {
 
     const name     = nameEl?.value.trim()
     const initials = initialsEl?.value.trim() || null
-    const role     = roleEl?.value || 'tech'
+    const role     = roleEl?.value || 'aud_tech'
     const active   = activeEl?.checked ? 1 : 0
 
     if (!name) { if (errEl) errEl.textContent = 'Name is required.'; return }
