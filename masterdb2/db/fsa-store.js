@@ -327,6 +327,16 @@ export class FsaStore {
     return entries
   }
 
+  /** Read a file and return its raw bytes (Uint8Array). */
+  async readFile(pathSegments) {
+    return this.#readBytes(pathSegments)
+  }
+
+  /** Write raw bytes to a file, creating intermediate directories as needed. */
+  async writeFile(pathSegments, data) {
+    await this.#writeBytes(pathSegments, data)
+  }
+
   /**
    * Watchdog for OneDrive conflict copies.
    * OneDrive creates conflict copies named like "masterdb-Normanpc.sqlite" or
