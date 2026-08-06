@@ -549,6 +549,7 @@ ul { list-style: none; }
   padding: 0 1.25rem;
   height: 4.5rem;               /* matches screen-header-row visual height */
   background: var(--clr-white);
+  border-bottom: 1px solid var(--clr-border);
 }
 .brand-favicon {
   width: 32px;
