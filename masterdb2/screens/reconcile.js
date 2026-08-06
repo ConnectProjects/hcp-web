@@ -7,7 +7,7 @@
  * the DB differs from what the packet file says.
  */
 
-import { scalar, listRootArchive, readRootArchivePacket } from '../db/db.js'
+import { scalar, query, listRootArchive, readRootArchivePacket } from '../db/db.js'
 
 const THR_KEYS = [
   'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
@@ -84,31 +84,43 @@ export function mount(container, { session }) {
         continue
       }
 
-      // Count completed tests with threshold data
-      let expected = 0
+      // Count completed tests with threshold data, per worker
+      const workerExpected = []
       for (const emp of packet.employees ?? []) {
+        let n = 0
         for (const t of emp.completed_tests ?? []) {
-          if (t && hasData(t.thresholds)) expected++
+          if (t && hasData(t.thresholds)) n++
         }
+        if (n > 0) workerExpected.push({ name: `${emp.last_name}, ${emp.first_name}`, count: n })
       }
+      const expected = workerExpected.reduce((s, w) => s + w.count, 0)
 
-      // Count matching rows in the DB
-      const found = scalar(
-        `SELECT COUNT(*) FROM tests WHERE packet_id = ? AND deleted_at IS NULL`,
+      // Count matching rows in the DB, per worker
+      const dbRows = query(
+        `SELECT e.last_name, e.first_name, COUNT(*) AS n
+         FROM tests t
+         JOIN employees e ON e.employee_id = t.employee_id
+         WHERE t.packet_id = ? AND t.deleted_at IS NULL
+         GROUP BY t.employee_id
+         ORDER BY e.last_name`,
         [packet.packet_id]
-      ) ?? 0
+      )
+      const found = dbRows.reduce((s, r) => s + r.n, 0)
 
       totalExpected += expected
       totalFound    += found
 
       results.push({
-        filename:  f.name,
-        packetId:  packet.packet_id,
-        company:   packet.company?.name ?? '?',
-        visitDate: packet.visit?.visit_date ?? '?',
-        tech:      packet.tech?.tech_initials ?? '?',
+        filename:     f.name,
+        packetId:     packet.packet_id,
+        company:      packet.company?.name ?? '?',
+        location:     packet.location?.name ?? '—',
+        visitDate:    packet.visit?.visit_date ?? '?',
+        tech:         packet.tech?.tech_initials ?? '?',
         expected,
         found,
+        workerExpected,
+        dbRows,
       })
     }
 
@@ -131,14 +143,14 @@ export function mount(container, { session }) {
         + (extra.length    ? ` · ${extra.length} packet(s) have extra DB rows` : '')
         + (errored.length  ? ` · ${errored.length} read error(s)` : '')
 
-    const rows = results.map(r => {
+    const rows = results.flatMap(r => {
       if (r.error) {
-        return `<tr>
-          <td colspan="5" style="color:var(--clr-subtle);font-size:0.8125rem">${esc(r.filename)}</td>
-          <td colspan="2" style="color:var(--clr-danger)">${esc(r.error)}</td>
-        </tr>`
+        return [`<tr>
+          <td colspan="6" style="color:var(--clr-subtle);font-size:0.8125rem">${esc(r.filename)}</td>
+          <td style="color:var(--clr-danger)">${esc(r.error)}</td>
+        </tr>`]
       }
-      const diff   = r.found - r.expected
+      const diff = r.found - r.expected
       let statusHtml
       if (diff === 0) {
         statusHtml = `<span class="badge badge-green">✓ Match</span>`
@@ -147,14 +159,38 @@ export function mount(container, { session }) {
       } else {
         statusHtml = `<span class="badge badge-yellow">+${diff} extra</span>`
       }
-      return `<tr${diff !== 0 ? ' style="background:var(--clr-warning-bg)"' : ''}>
+
+      const mainRow = `<tr${diff !== 0 ? ' style="background:var(--clr-warning-bg)"' : ''}>
         <td>${esc(r.company)}</td>
+        <td style="font-size:0.8125rem;color:var(--clr-subtle)">${esc(r.location)}</td>
         <td>${esc(r.visitDate)}</td>
         <td style="font-size:0.75rem;color:var(--clr-subtle)">${esc(r.tech)}</td>
         <td style="text-align:right">${r.expected}</td>
         <td style="text-align:right">${r.found}</td>
         <td>${statusHtml}</td>
       </tr>`
+
+      if (diff === 0) return [mainRow]
+
+      // Drill-down: merge packet workers + DB workers
+      const allNames = new Set([
+        ...r.workerExpected.map(w => w.name),
+        ...r.dbRows.map(w => `${w.last_name}, ${w.first_name}`),
+      ])
+      const detailRows = [...allNames].map(name => {
+        const inPkt = r.workerExpected.find(w => w.name === name)?.count ?? 0
+        const inDb  = r.dbRows.find(w => `${w.last_name}, ${w.first_name}` === name)?.n ?? 0
+        const wDiff = inDb - inPkt
+        const wStyle = wDiff !== 0 ? 'color:var(--clr-danger);font-weight:600' : 'color:var(--clr-subtle)'
+        return `<tr style="background:var(--clr-surface);font-size:0.8125rem">
+          <td style="padding-left:2rem;color:var(--clr-subtle)" colspan="4">${esc(name)}</td>
+          <td style="text-align:right;color:var(--clr-subtle)">${inPkt || '—'}</td>
+          <td style="text-align:right;${wStyle}">${inDb || '—'}</td>
+          <td style="${wStyle}">${wDiff > 0 ? `+${wDiff} extra` : wDiff < 0 ? `missing ${Math.abs(wDiff)}` : ''}</td>
+        </tr>`
+      })
+
+      return [mainRow, ...detailRows]
     }).join('')
 
     container.innerHTML = `
@@ -170,6 +206,7 @@ export function mount(container, { session }) {
               <thead>
                 <tr>
                   <th>Company</th>
+                  <th>Location</th>
                   <th>Visit date</th>
                   <th>Tech</th>
                   <th style="text-align:right">In packet</th>
@@ -180,7 +217,7 @@ export function mount(container, { session }) {
               <tbody>${rows}</tbody>
               <tfoot>
                 <tr style="font-weight:600;border-top:2px solid var(--clr-border)">
-                  <td colspan="3">Total</td>
+                  <td colspan="4">Total</td>
                   <td style="text-align:right">${totalExpected}</td>
                   <td style="text-align:right">${totalFound}</td>
                   <td>${allGood ? '<span class="badge badge-green">✓</span>' : ''}</td>
