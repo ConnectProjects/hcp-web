@@ -23,8 +23,8 @@ export const session = {
   openResult:  null,   // { saveSeq, lastWriter, savedAt, conflicts } from tryConnect/picker
 }
 
-// ── Sidebar nav definition ────────────────────────────────────────────────────
-const NAV = [
+// ── Sidebar nav definitions ───────────────────────────────────────────────────
+const MASTERDB_NAV = [
   { name: 'dashboard', label: 'Dashboard'  },
   { name: 'companies', label: 'Companies'  },
   { name: 'workers',   label: 'Workers'    },
@@ -34,6 +34,17 @@ const NAV = [
   { name: 'users',     label: 'Users'      },
   { name: 'settings',  label: 'Settings'   },
 ]
+
+const TECHTOOL_NAV = [
+  { name: 'tt-inbox',   label: 'Inbox'    },
+  { name: 'tt-test',    label: 'Test'     },
+  { name: 'tt-history', label: 'History'  },
+  { name: 'tt-settings',label: 'Settings' },
+]
+
+function _activeNav() {
+  return session.user?.role === 'aud_tech' ? TECHTOOL_NAV : MASTERDB_NAV
+}
 
 // ── Router ────────────────────────────────────────────────────────────────────
 let _currentScreen = null
@@ -52,7 +63,10 @@ export async function navigate(name, params = {}) {
   _setSidebar(!isLogin, name)
 
   try {
-    const mod    = await import(`./screens/${name}.js`)
+    const path   = name.startsWith('tt-')
+      ? `../techtool2/screens/${name}.js`
+      : `./screens/${name}.js`
+    const mod    = await import(path)
     const result = mod.mount(container, { navigate, session, ...params })
     if (result?.unmount) _unmount = result.unmount
   } catch (e) {
@@ -75,8 +89,8 @@ function _isModuleNotFound(e) {
 }
 
 function _stub(name) {
-  const label = NAV.find(n => n.name === name)?.label ?? name
-  return `<div class="stub"><h2>${_esc(label)}</h2><p>This screen is coming in Phase 3.</p></div>`
+  const label = _activeNav().find(n => n.name === name)?.label ?? name
+  return `<div class="stub"><h2>${_esc(label)}</h2><p>This screen is coming soon.</p></div>`
 }
 
 function _esc(s) {
@@ -99,7 +113,13 @@ function _renderSidebar(active) {
   const footer = document.getElementById('sidebar-footer')
   if (!nav) return
 
-  nav.innerHTML = NAV.map(({ name, label }) =>
+  const isTech   = session.user?.role === 'aud_tech'
+  const logoMark = document.querySelector('.logo-mark')
+  const logoSub  = document.querySelector('.logo-sub')
+  if (logoMark) logoMark.textContent = isTech ? 'TT'  : 'MDB'
+  if (logoSub)  logoSub.textContent  = isTech ? 'v2'  : 'v2'
+
+  nav.innerHTML = _activeNav().map(({ name, label }) =>
     `<a class="nav-link${name === active ? ' is-active' : ''}" data-screen="${name}" href="#">${_esc(label)}</a>`
   ).join('')
 

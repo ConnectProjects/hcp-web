@@ -82,7 +82,7 @@ export function mount(container, { navigate, session }) {
     // holds it, the dashboard will show the lock banner from readLock())
     try { await claimLock(session.writerName) } catch { /* StoreLockError handled in dashboard */ }
 
-    navigate('dashboard')
+    navigate(user.role === 'aud_tech' ? 'tt-inbox' : 'dashboard')
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -190,9 +190,9 @@ export function mount(container, { navigate, session }) {
 
     const headerHTML = `
       <div class="login-header">
-        <div class="login-logo">MDB</div>
-        <h1 class="login-title">MasterDB</h1>
-        <p class="login-subtitle">Who&apos;s using MasterDB today?</p>
+        <div class="login-logo">HCP</div>
+        <h1 class="login-title">Connect Hearing</h1>
+        <p class="login-subtitle">Who&apos;s using this today?</p>
       </div>
     `
 
@@ -206,23 +206,28 @@ export function mount(container, { navigate, session }) {
         </div>
       `
     } else {
-      const tiles = users.map(u => `
-        <button class="user-tile" data-uid="${esc(u.user_id)}">
-          <div class="user-avatar">${esc(initials(u))}</div>
-          <div class="user-tile-name">${esc(u.name)}</div>
-          <div class="user-tile-role">${esc(roleLabel(u.role))}</div>
-        </button>
-      `).join('')
-      bodyHTML = `<div class="login-body"><div class="user-grid">${tiles}</div></div>`
+      const rows = users.map(u => {
+        const isTech   = u.role === 'aud_tech'
+        const appLabel = isTech ? 'TechTool' : 'MasterDB'
+        const appClass = isTech ? 'app-techtool' : 'app-masterdb'
+        return `
+          <div class="user-list-row" data-uid="${esc(u.user_id)}">
+            <div class="user-list-name">${esc(u.name)}</div>
+            <div class="user-list-role">${esc(roleLabel(u.role))}</div>
+            <div class="user-list-app ${appClass}">${appLabel}</div>
+          </div>
+        `
+      }).join('')
+      bodyHTML = `<div class="login-body"><div class="user-list">${rows}</div></div>`
     }
 
     el.innerHTML = headerHTML + bodyHTML
     root.appendChild(el)
 
-    // Wire up tiles
-    el.querySelectorAll('.user-tile').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const uid  = btn.dataset.uid
+    // Wire up rows
+    el.querySelectorAll('.user-list-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const uid  = row.dataset.uid
         const user = users.find(u => String(u.user_id) === uid)
         if (user) onSelectUser(user)
       })
