@@ -7,8 +7,8 @@
  * own internal state. No unmount cleanup needed (no timers / subscriptions).
  */
 
-import { query, listInbox, readPacket }          from '../db/db.js'
-import { previewImport, commitImport }            from '../db/import-packet.js'
+import { query, listInbox, readPacket }                from '../db/db.js'
+import { previewImport, commitImport, autoImportClean } from '../db/import-packet.js'
 
 export function mount(container, { navigate, session }) {
   // ── Module state ──────────────────────────────────────────────────────────
@@ -68,9 +68,16 @@ export function mount(container, { navigate, session }) {
           <option value="">Select a technician…</option>
           ${opts}
         </select>
+        <button class="btn btn-primary btn-sm" id="auto-all-btn" style="margin-left:auto">
+          Auto-import all →
+        </button>
       </div>
       <div class="screen-body" id="inbox-area">
-        <p style="color:var(--clr-subtle)">Choose a tech above to see their inbox.</p>
+        <p style="color:var(--clr-subtle)">
+          Choose a tech to review their inbox, or click <strong>Auto-import all</strong>
+          to automatically import every clean packet from every tech's inbox.
+          Packets needing manual attention are left behind.
+        </p>
       </div>
     `
 
@@ -80,6 +87,8 @@ export function mount(container, { navigate, session }) {
       if (!_tech) return
       await loadInbox()
     })
+
+    container.querySelector('#auto-all-btn').addEventListener('click', runAutoAll)
   }
 
   async function loadInbox() {
@@ -360,14 +369,105 @@ export function mount(container, { navigate, session }) {
       })
       renderResult()
     } catch (e) {
+      const msg = e?.message || e?.toString() || 'Unknown error'
       area.innerHTML = `
         <button class="back-link" id="back-preview">&larr; Back to preview</button>
         <div class="error-banner" style="margin:1rem 0">
-          <strong>Import failed:</strong> ${esc(e.message)}
+          <strong>Import failed:</strong> ${esc(msg)}
         </div>
       `
       area.querySelector('#back-preview').addEventListener('click', renderPreview)
     }
+  }
+
+  async function runAutoAll() {
+    const area = container.querySelector('#inbox-area')
+    area.innerHTML = `<div class="spinner"></div><p class="status-text">Scanning all inboxes…</p>`
+
+    let outcome
+    try {
+      outcome = await autoImportClean(_techs, session.writerName)
+    } catch (e) {
+      const msg = e?.message || e?.toString() || 'Unknown error'
+      area.innerHTML = `<div class="error-banner"><strong>Auto-import failed:</strong> ${esc(msg)}</div>`
+      return
+    }
+
+    const { results } = outcome
+    const imported = results.filter(r => r.ok)
+    const skipped  = results.filter(r => r.skipped)
+    const failed   = results.filter(r => !r.ok && !r.skipped)
+
+    const importedRows = imported.map(r =>
+      `<tr>
+        <td>${esc(r.tech)}</td>
+        <td style="font-size:0.8125rem;color:var(--clr-subtle)">${esc(r.filename)}</td>
+        <td style="text-align:right">${r.imported}</td>
+        <td style="text-align:right">${r.newPersons}</td>
+        <td style="text-align:right;color:var(--clr-subtle)">${r.duplicates}</td>
+      </tr>`
+    ).join('')
+
+    const skippedRows = skipped.map(r =>
+      `<tr>
+        <td>${esc(r.tech)}</td>
+        <td style="font-size:0.8125rem">${esc(r.filename)}</td>
+        <td colspan="3" style="color:var(--clr-subtle);font-size:0.8125rem">${esc(r.reason)}</td>
+      </tr>`
+    ).join('')
+
+    const failedRows = failed.map(r =>
+      `<tr>
+        <td>${esc(r.tech)}</td>
+        <td style="font-size:0.8125rem">${esc(r.filename)}</td>
+        <td colspan="3" style="color:var(--clr-danger);font-size:0.8125rem">${esc(r.reason)}</td>
+      </tr>`
+    ).join('')
+
+    const thead = `<thead><tr><th>Tech</th><th>File</th><th style="text-align:right">Tests</th><th style="text-align:right">New</th><th style="text-align:right">Dups</th></tr></thead>`
+
+    area.innerHTML = `
+      ${imported.length
+        ? `<div class="success-banner" style="margin-bottom:1rem">
+             <strong>${imported.length} packet${imported.length !== 1 ? 's' : ''} imported</strong>
+             — ${imported.reduce((s, r) => s + r.imported, 0)} tests,
+             ${imported.reduce((s, r) => s + r.newPersons, 0)} new workers
+           </div>
+           <div class="table-card" style="margin-bottom:1rem">
+             <div class="table-wrap">
+               <table class="data-table">${thead}<tbody>${importedRows}</tbody></table>
+             </div>
+           </div>`
+        : `<div class="warning-banner" style="margin-bottom:1rem">No clean packets found to auto-import. Use manual review below.</div>`}
+
+      ${skipped.length
+        ? `<div class="section-head"><h3>Needs review (${skipped.length})</h3></div>
+           <div class="table-card" style="margin-bottom:1rem">
+             <div class="table-wrap">
+               <table class="data-table">${thead}<tbody>${skippedRows}</tbody></table>
+             </div>
+           </div>`
+        : ''}
+
+      ${failed.length
+        ? `<div class="section-head"><h3 style="color:var(--clr-danger)">Errors (${failed.length})</h3></div>
+           <div class="table-card" style="margin-bottom:1rem">
+             <div class="table-wrap">
+               <table class="data-table">${thead}<tbody>${failedRows}</tbody></table>
+             </div>
+           </div>`
+        : ''}
+
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+        ${skipped.length || failed.length
+          ? `<button class="btn btn-secondary" id="review-btn">Review remaining manually</button>`
+          : ''}
+        <button class="btn btn-secondary" id="done-btn">Done</button>
+      </div>
+    `
+
+    area.querySelector('#review-btn')?.addEventListener('click', renderTechSelect)
+    area.querySelector('#done-btn')?.addEventListener('click', () => navigate('dashboard'))
   }
 
   function renderResult() {

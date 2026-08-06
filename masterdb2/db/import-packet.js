@@ -20,7 +20,7 @@
  *   - reconcileImport (shared/validation) is the final fail-loud gate before COMMIT
  */
 
-import { query, scalar, run, transaction, snapshotForImport, archivePacket } from './db.js'
+import { query, scalar, run, transaction, snapshotForImport, archivePacket, save, listInbox, readPacket } from './db.js'
 import { getById, getByUid, getActiveBaseline, create as createPerson, matchCandidates } from './workers.js'
 import { classify }                     from '../../shared/classification/engine.js'
 import { validatePacket }               from '../../shared/packet/schema.js'
@@ -439,8 +439,86 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
     })
   })
 
-  // Only reached if transaction committed cleanly
+  // Only reached if transaction committed cleanly — persist to disk before archiving
+  await save(writerName)
   await archivePacket(techFolder, filename)
 
   return { imported, duplicates, empty: emptyTests, newPersons, backupFile }
+}
+
+// ── Auto-import ───────────────────────────────────────────────────────────────
+
+/**
+ * Import all "clean" packets from all active techs with a folder configured.
+ * A packet is clean when: company resolves, location resolves, and no worker
+ * needs manual confirmation (all matches are exact_uid, exact_id, strong, or new).
+ *
+ * Ambiguous packets (weak match, unknown location, unknown company) are left in
+ * the inbox untouched and returned as skipped entries for the LC to review.
+ *
+ * techs:      array of tech rows from the DB ({ tech_id, name, folder_name })
+ * writerName: passed through to save() for the concurrency counter
+ *
+ * Returns { results: [{ tech, filename, ok, imported?, duplicates?, skipped?, reason? }] }
+ */
+export async function autoImportClean(techs, writerName) {
+  const results = []
+
+  for (const tech of techs) {
+    let files = []
+    try { files = await listInbox(tech.folder_name) } catch { continue }
+
+    const jsons = files.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
+
+    for (const f of jsons) {
+      let packet
+      try { packet = await readPacket(tech.folder_name, f.name) } catch (e) {
+        results.push({ tech: tech.name, filename: f.name, ok: false, reason: `Read failed: ${e?.message || e}` })
+        continue
+      }
+
+      let preview
+      try { preview = previewImport(packet) } catch (e) {
+        results.push({ tech: tech.name, filename: f.name, ok: false, reason: `Preview failed: ${e?.message || e}` })
+        continue
+      }
+
+      // Skip if anything needs LC judgment
+      if (!preview.company.id) {
+        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `Company not found: ${preview.company.name}` })
+        continue
+      }
+      if (preview.location.status !== 'resolved') {
+        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `Location not resolved: ${preview.location.packetLocationName ?? '?'}` })
+        continue
+      }
+      if (preview.counts.unconfirmed > 0) {
+        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `${preview.counts.unconfirmed} worker(s) need manual match confirmation` })
+        continue
+      }
+
+      // Build decisions from preview auto-proposals
+      const employees = {}
+      for (const { packetEmp, match } of preview.employees) {
+        const key = String(packetEmp.employee_id)
+        if (match.type === 'new') {
+          employees[key] = { action: 'create_new' }
+        } else if (match.employee) {
+          employees[key] = { action: 'use_existing', employeeId: match.employee.employee_id }
+        }
+      }
+
+      try {
+        const r = await commitImport(packet, { employees }, writerName, {
+          techFolder: tech.folder_name,
+          filename:   f.name,
+        })
+        results.push({ tech: tech.name, filename: f.name, ok: true, ...r })
+      } catch (e) {
+        results.push({ tech: tech.name, filename: f.name, ok: false, reason: e?.message || e?.toString() || 'Unknown error' })
+      }
+    }
+  }
+
+  return { results }
 }
