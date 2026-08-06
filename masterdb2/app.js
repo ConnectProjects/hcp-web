@@ -86,8 +86,10 @@ function _esc(s) {
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function _setSidebar(visible, active) {
   const sidebar = document.getElementById('sidebar')
+  const brand   = document.getElementById('brand-corner')
   const app     = document.getElementById('app')
   sidebar.hidden = !visible
+  if (brand) brand.hidden = !visible
   app.classList.toggle('has-sidebar', visible)
   if (visible) _renderSidebar(active)
 }

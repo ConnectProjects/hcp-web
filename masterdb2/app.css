@@ -77,12 +77,7 @@ ul { list-style: none; }
   color: var(--clr-sidebar-text);
   font-weight: 500;
 }
-.sidebar-favicon {
-  width: 20px; height: 20px;
-  margin-left: auto;
-  opacity: 0.85;
-  image-rendering: crisp-edges;
-}
+/* favicon moved to brand-corner — see below */
 
 .sidebar-nav {
   flex: 1;
@@ -542,9 +537,31 @@ ul { list-style: none; }
   border-color: transparent;
 }
 
+/* ── Brand corner — favicon anchored to top-right, visually part of top bar ── */
+.brand-corner {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
+  height: 4.5rem;               /* matches screen-header-row visual height */
+  background: var(--clr-white);
+  border-bottom: 1px solid var(--clr-border);
+  border-left: 1px solid var(--clr-border);
+  border-bottom-left-radius: 6px;
+}
+.brand-favicon {
+  width: 32px;
+  height: 32px;
+  display: block;
+  image-rendering: crisp-edges;
+}
+
 /* ── Print ─────────────────────────────────────────────────────────────────── */
 @media print {
-  .sidebar, .screen-header-row button, .btn, #back-btn { display: none !important; }
+  .sidebar, .brand-corner, .screen-header-row button, .btn, #back-btn { display: none !important; }
   .app.has-sidebar .screen { margin-left: 0 !important; }
   .screen-body { padding: 0 !important; }
 }
