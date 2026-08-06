@@ -15,13 +15,18 @@ const ROLES = [
 ]
 
 export function mount(container, { session }) {
-  let _editingId = null   // user_id, 'new', or null
-  let _statusMsg = ''
+  let _editingId    = null   // user_id, 'new', or null
+  let _showInactive = false
+  let _statusMsg    = ''
+  let _confirmDel   = false  // show inline confirm for "delete all inactive"
 
   render()
 
   function render() {
-    const users = query(`SELECT * FROM users ORDER BY name`)
+    const active   = query(`SELECT * FROM users WHERE active = 1 ORDER BY name`)
+    const inactive = query(`SELECT * FROM users WHERE active = 0 ORDER BY name`)
+
+    const allUsers = _showInactive ? [...active, ...inactive] : active
 
     const statusHTML = _statusMsg
       ? `<div class="success-banner" style="margin-bottom:0.75rem">${esc(_statusMsg)}</div>`
@@ -36,12 +41,15 @@ export function mount(container, { session }) {
            <button class="btn btn-secondary" id="add-user-btn">+ Add User</button>
          </div>`
 
-    const userRows = users.map(u => {
+    const userRows = allUsers.map(u => {
       if (u.user_id === _editingId) {
         return `<tr><td colspan="5" style="padding:0.75rem;background:var(--clr-surface)">${userForm(u)}</td></tr>`
       }
+      const deletBtn = !u.active
+        ? `<button class="btn btn-danger btn-sm" data-del="${esc(u.user_id)}" style="margin-left:0.25rem">Delete</button>`
+        : ''
       return `
-        <tr>
+        <tr${!u.active ? ' style="opacity:0.6"' : ''}>
           <td>
             <div style="display:flex;align-items:center;gap:0.625rem">
               <div class="user-initials" style="width:1.75rem;height:1.75rem;font-size:0.75rem;flex-shrink:0">
@@ -53,13 +61,33 @@ export function mount(container, { session }) {
           <td>${esc(u.initials ?? '—')}</td>
           <td>${roleLabel(u.role)}</td>
           <td>${u.active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
-          <td>
-            <button class="btn btn-secondary" style="padding:0.25rem 0.625rem;font-size:0.8rem"
-                    data-edit="${esc(u.user_id)}">Edit</button>
+          <td style="white-space:nowrap">
+            <button class="btn btn-secondary btn-sm" data-edit="${esc(u.user_id)}">Edit</button>
+            ${deletBtn}
           </td>
         </tr>
       `
     }).join('') || `<tr><td colspan="5" class="table-empty">No users found.</td></tr>`
+
+    let inactiveFooter = ''
+    if (inactive.length > 0) {
+      if (_confirmDel) {
+        inactiveFooter = `
+          <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem;font-size:0.875rem">
+            <span>Delete all ${inactive.length} inactive user${inactive.length !== 1 ? 's' : ''}?</span>
+            <button class="btn btn-danger btn-sm" id="confirm-del-all">Yes, delete them</button>
+            <button class="btn btn-secondary btn-sm" id="cancel-del-all">Cancel</button>
+          </div>`
+      } else {
+        inactiveFooter = `
+          <div style="margin-top:1rem;font-size:0.8125rem;color:var(--clr-subtle);display:flex;align-items:center;gap:1rem">
+            <button class="btn btn-secondary btn-sm" id="toggle-inactive-btn">
+              ${_showInactive ? 'Hide' : 'Show'} ${inactive.length} inactive
+            </button>
+            ${_showInactive ? `<button class="btn btn-danger btn-sm" id="del-all-inactive-btn">Delete all inactive</button>` : ''}
+          </div>`
+      }
+    }
 
     container.innerHTML = `
       <div class="screen-header-row"><h1>Users</h1></div>
@@ -76,10 +104,7 @@ export function mount(container, { session }) {
             </table>
           </div>
         </div>
-        <p style="margin-top:1rem;font-size:0.8125rem;color:var(--clr-subtle)">
-          Users appear on the login tile grid. Inactive users are hidden at login.
-          PIN and authentication settings will be added in a future release.
-        </p>
+        ${inactiveFooter}
       </div>
     `
 
@@ -89,8 +114,21 @@ export function mount(container, { session }) {
     container.querySelectorAll('[data-edit]').forEach(btn =>
       btn.addEventListener('click', () => { _editingId = btn.dataset.edit; _statusMsg = ''; render() })
     )
+    container.querySelectorAll('[data-del]').forEach(btn =>
+      btn.addEventListener('click', () => deleteUser(btn.dataset.del))
+    )
     container.querySelector('#u-cancel')?.addEventListener('click', () => { _editingId = null; render() })
-    container.querySelector('#u-save')?.addEventListener('click', () => saveUser(users))
+    container.querySelector('#u-save')?.addEventListener('click', () => saveUser(allUsers))
+    container.querySelector('#toggle-inactive-btn')?.addEventListener('click', () => {
+      _showInactive = !_showInactive; _confirmDel = false; render()
+    })
+    container.querySelector('#del-all-inactive-btn')?.addEventListener('click', () => {
+      _confirmDel = true; render()
+    })
+    container.querySelector('#confirm-del-all')?.addEventListener('click', deleteAllInactive)
+    container.querySelector('#cancel-del-all')?.addEventListener('click', () => {
+      _confirmDel = false; render()
+    })
   }
 
   function userForm(u) {
@@ -125,6 +163,34 @@ export function mount(container, { session }) {
         <span id="u-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
       </div>
     `
+  }
+
+  async function deleteUser(userId) {
+    try {
+      run(`DELETE FROM users WHERE user_id = ?`, [userId])
+      await save(session.writerName)
+      _statusMsg = 'User deleted.'
+      render()
+    } catch (e) {
+      _statusMsg = `Delete failed: ${e.message}`
+      render()
+    }
+  }
+
+  async function deleteAllInactive() {
+    try {
+      const { count } = query(`SELECT COUNT(*) AS count FROM users WHERE active = 0`)[0]
+      run(`DELETE FROM users WHERE active = 0`)
+      await save(session.writerName)
+      _showInactive = false
+      _confirmDel   = false
+      _statusMsg    = `${count} inactive user${count !== 1 ? 's' : ''} deleted.`
+      render()
+    } catch (e) {
+      _confirmDel = false
+      _statusMsg  = `Delete failed: ${e.message}`
+      render()
+    }
   }
 
   async function saveUser(existingUsers) {
