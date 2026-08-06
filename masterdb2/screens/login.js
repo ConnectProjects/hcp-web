@@ -17,7 +17,7 @@
  * No imports from app.js — receives navigate + session via params.
  */
 
-import { loadSql, tryConnect, connectWithPicker, query, claimLock } from '../db/db.js'
+import { loadSql, tryConnect, connectWithPicker, query, claimLock, StoreFileNotFoundError } from '../db/db.js'
 
 const WASM = new URL('../../masterdb/vendor/sql-wasm.wasm', import.meta.url).href
 
@@ -45,7 +45,11 @@ export function mount(container, { navigate, session }) {
         showUserSelect()
       }
     } catch (e) {
-      render('error', { message: e.message })
+      if (e instanceof StoreFileNotFoundError) {
+        render('db-not-found')
+      } else {
+        render('error', { message: e.message })
+      }
     }
   }
 
@@ -61,7 +65,9 @@ export function mount(container, { navigate, session }) {
       }
     } catch (e) {
       if (e.name === 'AbortError') {
-        render('needs-folder')  // user cancelled the picker — just go back
+        render('needs-folder')
+      } else if (e instanceof StoreFileNotFoundError) {
+        render('db-not-found')
       } else {
         render('error', { message: e.message })
       }
@@ -132,6 +138,26 @@ export function mount(container, { navigate, session }) {
           <button class="btn btn-primary btn-block" id="continue-btn">Continue Anyway</button>
         `)
         el.querySelector('#continue-btn').addEventListener('click', showUserSelect)
+        break
+      }
+
+      case 'db-not-found': {
+        const el = card('', `
+          <div class="warning-banner">
+            <strong>masterdb.sqlite not found in that folder.</strong>
+            <p>The app expects the database at <code>db/masterdb.sqlite</code>
+               inside the root folder you choose.</p>
+          </div>
+          <ol style="font-size:0.875rem;padding-left:1.25rem;display:flex;flex-direction:column;gap:0.5rem">
+            <li>Open the folder you selected in Windows Explorer</li>
+            <li>Create a subfolder named <strong>db</strong> if it doesn&apos;t exist</li>
+            <li>Copy <code>local-tests\\rebuild\\out\\masterdb.sqlite</code>
+                from the repo into that <strong>db</strong> subfolder</li>
+            <li>Click <em>Try Again</em> and re-select the same folder</li>
+          </ol>
+          <button class="btn btn-primary btn-block" id="pick-again-btn">Try Again</button>
+        `)
+        el.querySelector('#pick-again-btn').addEventListener('click', onPickFolder)
         break
       }
 
