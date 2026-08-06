@@ -80,11 +80,10 @@ export async function navigate(name, params = {}) {
 
 function _isModuleNotFound(e) {
   const m = e?.message ?? ''
-  return e instanceof TypeError ||
-         m.includes('Failed to fetch') ||
+  return m.includes('Failed to fetch') ||
          m.includes('Cannot find module') ||
-         m.includes('404') ||
-         m.includes('error loading')
+         m.includes('error loading dynamically imported module') ||
+         m.includes('404')
 }
 
 function _stub(name) {
