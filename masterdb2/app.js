@@ -37,7 +37,6 @@ const MASTERDB_NAV = [
 
 const TECHTOOL_NAV = [
   { name: 'tt-schedule', label: 'Schedule' },
-  { name: 'tt-history',  label: 'History'  },
   { name: 'tt-settings', label: 'Settings' },
 ]
 

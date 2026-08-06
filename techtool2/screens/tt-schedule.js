@@ -194,7 +194,10 @@ export function mount(container, { navigate, session }) {
       <div class="screen-header-row">
         <h1>Schedule</h1>
         <span class="screen-subtitle">${esc(session.user?.name ?? '')}</span>
-        <div style="margin-left:auto">${loadingBadge}</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:0.75rem">
+          ${loadingBadge}
+          <button class="btn btn-primary btn-sm" id="new-visit-btn">+ New Visit</button>
+        </div>
       </div>
       <div class="screen-body" style="padding-bottom:0">
 
@@ -229,6 +232,7 @@ export function mount(container, { navigate, session }) {
       year = now.getFullYear(); month = now.getMonth(); detail = null; render()
     })
     container.querySelector('#refresh-btn')?.addEventListener('click', loadFiles)
+    container.querySelector('#new-visit-btn')?.addEventListener('click', () => navigate('tt-new-visit'))
 
     // Chip clicks
     container.querySelectorAll('.cal-chip[data-ev]').forEach(chip => {
