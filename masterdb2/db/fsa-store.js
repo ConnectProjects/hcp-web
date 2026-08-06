@@ -144,7 +144,13 @@ export class FsaStore {
 
   async #deleteEntry(pathSegments) {
     const dir = await this.#navigate(pathSegments.slice(0, -1))
-    await dir.removeEntry(pathSegments.at(-1))
+    try {
+      await dir.removeEntry(pathSegments.at(-1))
+    } catch (e) {
+      // Edge throws DOMException with an empty .message — add context
+      if (!e.message) throw new Error(`Cannot delete ${pathSegments.join('/')}: ${e.name || 'unknown error'}`)
+      throw e
+    }
   }
 
   async #readJson(pathSegments) {

@@ -441,9 +441,17 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
 
   // Only reached if transaction committed cleanly — persist to disk before archiving
   await save(writerName)
-  await archivePacket(techFolder, filename)
 
-  return { imported, duplicates, empty: emptyTests, newPersons, backupFile }
+  // Archive is best-effort: data is saved; a stale inbox copy is harmless
+  let archiveWarning = null
+  try {
+    await archivePacket(techFolder, filename)
+  } catch (e) {
+    archiveWarning = e.message || String(e)
+    console.warn('archivePacket failed (data was saved):', archiveWarning)
+  }
+
+  return { imported, duplicates, empty: emptyTests, newPersons, backupFile, archiveWarning }
 }
 
 // ── Auto-import ───────────────────────────────────────────────────────────────

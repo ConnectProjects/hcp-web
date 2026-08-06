@@ -482,6 +482,7 @@ export function mount(container, { navigate, session }) {
         &mdash; ${r.duplicates} duplicate${r.duplicates !== 1 ? 's' : ''} skipped.
       </div>
       ${r.backupFile ? `<p style="font-size:0.8rem;color:var(--clr-subtle);margin-bottom:1rem">Pre-import snapshot: ${esc(r.backupFile)}</p>` : ''}
+      ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">Packet stays in inbox (archive step failed: ${esc(r.archiveWarning)}). Data was saved — safe to delete the inbox file manually.</div>` : ''}
       <div style="display:flex;gap:0.75rem">
         <button class="btn btn-primary"   id="another-btn">Import Another</button>
         <button class="btn btn-secondary" id="companies-btn">Go to Companies</button>
