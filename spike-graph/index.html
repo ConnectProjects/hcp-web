@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Phase 1a — Graph API Spike</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; background: #f7f8fa; color: #1c2733; }
+  h1 { font-size: 1.4rem; } h2 { font-size: 1.05rem; margin-top: 1.6rem; }
+  fieldset { border: 1px solid #cdd5df; border-radius: 8px; margin-bottom: 1rem; background: #fff; }
+  label { display: block; margin: .5rem 0 .15rem; font-size: .85rem; font-weight: 600; }
+  input[type=text] { width: 100%; max-width: 480px; padding: .45rem; border: 1px solid #cdd5df; border-radius: 6px; font-family: monospace; }
+  button { padding: .55rem 1.1rem; margin: .3rem .4rem .3rem 0; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #9db3d8; cursor: not-allowed; }
+  button.secondary { background: #64748b; }
+  button.danger { background: #b91c1c; }
+  #log { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 1rem; font-family: monospace; font-size: .8rem; white-space: pre-wrap; min-height: 8rem; max-height: 55vh; overflow-y: auto; }
+  .pass { color: #4ade80; } .fail { color: #f87171; } .info { color: #93c5fd; } .warn { color: #facc15; }
+  #summary { font-family: monospace; font-size: .85rem; background: #fff; border: 1px solid #cdd5df; border-radius: 8px; padding: .8rem 1rem; margin-top: 1rem; }
+  .note { font-size: .8rem; color: #55677c; }
+</style>
+</head>
+<body>
+<h1>Phase 1a — Microsoft Graph spike (MasterDB v2)</h1>
+<p class="note">Proves the six file operations MasterDB v2 depends on, against the shared
+OneDrive folder, from a browser sign-in. All writes are confined to
+<code>db/spike-test/</code>; nothing touches production files. See README.md for the
+one-time Azure app registration steps.</p>
+
+<fieldset>
+  <legend>Configuration (saved in this browser)</legend>
+  <label for="clientId">Azure app Client ID</label>
+  <input type="text" id="clientId" placeholder="00000000-0000-0000-0000-000000000000">
+  <label for="tenantId">Tenant ID (or "organizations")</label>
+  <input type="text" id="tenantId" placeholder="organizations">
+  <label for="folderName">Shared folder name</label>
+  <input type="text" id="folderName" value="Brothen, Jan's files - TechTool">
+</fieldset>
+
+<div>
+  <button id="btn-signin">1. Sign in</button>
+  <button id="btn-locate" disabled>2. Locate shared folder</button>
+  <button id="btn-run" disabled>3. Run all verb tests</button>
+  <button id="btn-cleanup" class="danger" disabled>4. Cleanup (delete spike-test)</button>
+  <button id="btn-copy" class="secondary">Copy results</button>
+</div>
+
+<h2>Log</h2>
+<div id="log"></div>
+<div id="summary" hidden></div>
+
+<script src="../masterdb/vendor/msal-browser.min.js"></script>
+<script type="module" src="spike.js"></script>
+</body>
+</html>

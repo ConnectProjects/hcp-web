@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MasterDB</title>
+  <link rel="stylesheet" href="app.css">
+  <!--
+    sql.js UMD build — exposes window.initSqlJs globally.
+    Must load before app.js so the login screen can call it.
+    graph-store path will also need msal-browser.min.js here (add when IT grants registration).
+  -->
+  <script src="../masterdb/vendor/sql-wasm.js"></script>
+</head>
+<body>
+  <div id="app" class="app">
+    <aside id="sidebar" class="sidebar" hidden>
+      <div class="sidebar-logo">
+        <span class="logo-mark">MDB</span>
+        <span class="logo-sub">v2</span>
+      </div>
+      <nav id="sidebar-nav" class="sidebar-nav"></nav>
+      <div id="sidebar-footer" class="sidebar-footer"></div>
+    </aside>
+    <main id="screen" class="screen"></main>
+    <div id="brand-corner" class="brand-corner" hidden>
+      <img src="../favicon.ico" alt="" class="brand-favicon">
+    </div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
