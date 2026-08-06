@@ -453,6 +453,24 @@ ul { list-style: none; }
 }
 .packet-footer { display: flex; align-items: center; gap: 0.625rem; }
 
+/* ── TechTool threshold entry ──────────────────────────────────────────────── */
+.thr-table th, .thr-table td { text-align: center; padding: 0.25rem 0.2rem; }
+.thr-table td:first-child     { text-align: left; padding-left: 0; white-space: nowrap; }
+.thr-input {
+  width: 3.25rem;
+  padding: 0.3rem 0.25rem;
+  text-align: center;
+  border: 1px solid var(--clr-border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  background: var(--clr-white);
+}
+.thr-input:focus { outline: 2px solid var(--clr-primary); border-color: transparent; }
+.thr-input::-webkit-inner-spin-button,
+.thr-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.thr-input[type=number] { -moz-appearance: textfield; }
+
 /* ── Import screen specifics ───────────────────────────────────────────────── */
 .import-counts {
   display: flex; gap: 1.5rem; flex-wrap: wrap;
