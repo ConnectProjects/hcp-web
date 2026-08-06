@@ -27,6 +27,7 @@
 
 /* ── Reset ─────────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }  /* prevent display:flex/grid overriding the hidden attribute */
 html { font-size: 15px; }
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;

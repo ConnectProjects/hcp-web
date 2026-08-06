@@ -256,5 +256,5 @@ function initials(user) {
 }
 
 function roleLabel(role) {
-  return { super_admin: 'Super Admin', admin: 'Admin', coordinator: 'Coordinator', tech: 'Technician' }[role] ?? role ?? ''
+  return { super_admin: 'Super-Admin', admin: 'Admin', lc: 'LC', aud_tech: 'Aud-Tech' }[role] ?? role ?? ''
 }
