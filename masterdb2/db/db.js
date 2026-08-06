@@ -236,6 +236,16 @@ export const archivePacket = (techFolder, filename) => {
   )
 }
 
+/** List packets in the root archive/ folder (legacy packets from the old system). */
+export const listRootArchive = () => { _assertOpen(); return _store.list(['archive']) }
+
+/** Read a packet from the root archive/ folder. */
+export async function readRootArchivePacket(filename) {
+  _assertOpen()
+  const bytes = await _store.readFile(['archive', filename])
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 /** List backup snapshots in db/backups/. Returns [{ name, size, lastModified }]. */
 export const listBackups = () => { _assertOpen(); return _store.list(['db', 'backups']) }
 
