@@ -1,294 +1,260 @@
-# DESIGN — MasterDB Rebuild (v2 core)
+# DESIGN — MasterDB v2 Rebuild
 
-*Drafted 2026-08-05 from the brainstorm notes of the same date. Companion docs:
-`DESIGN-uuid-sync-rework.md`, `INCIDENT-2026-07-29-yorkton.md`, `REMEDIATION-2026-07-full.md`.*
+*Rev 2 — 2026-08-05. Rev 1 (same day) assumed the local-first OPFS + file-sync
+architecture; superseded after Norm's decision to make MasterDB **online-only
+over the Microsoft Graph API**. Rollout of the uid-sync fix is COMPLETE, so all
+phases here are rebuild work. Companion history: `DESIGN-uuid-sync-rework.md`,
+`INCIDENT-2026-07-29-yorkton.md`.*
 
-## 1. Scope & non-goals
+## 1. Scope & hard constraints
 
 Rebuild MasterDB around the core loop:
 
-> generate packet → TechTool tests in field → import packet → report for billing
+> schedule visit → generate packet → TechTool tests offline → import packet → trip report for billing
 
-**Out of scope / unchanged:**
-- **TechTool** — largely right as-is; not touched except where the packet format gains fields (additive, backward-compatible).
-- **The sync layer** — `shared/fs/` (json-database, merge-uid, adopt-uid, single-writer, sync-folder) was just rebuilt, hardened through the Yorkton incident, and verified on real data (126/126 local regression + live fleet). The rebuild sits ON TOP of it; we do not reopen it.
-- **Packet transport** — OneDrive `techs/<name>/`, `inbox/`, `archive/`, and the `db/` subfolder isolation (SW v10) stay exactly as deployed.
-- **Classification engine** (`shared/classification/engine.js`) and province rules — data-driven, working; untouched.
+**Hard constraints (Norm, 2026-08-05):**
+1. **No installable software** — IT forbids installs. Everything is web tech
+   (js/css/html/json) running in the browser.
+2. **Served from GitHub** (Pages, static hosting) — no server-side code of our own.
+3. **TechTool must operate offline** → the packet system stays.
+4. **MasterDB does NOT need offline** → freed to be online-only.
+5. Worker health data lives in the Sonova tenant (OneDrive) — no third-party
+   database (hosted-DB option considered and set aside pending any future
+   IT/privacy sign-off).
 
-**What actually gets rebuilt:** the MasterDB app layer — `masterdb/screens/` and `masterdb/db/` — plus one schema change (person-level worker identity) with its data migration.
+**Out of scope:** TechTool — unchanged except additive packet-format fields
+(§4); old TechTool versions ignore unknown fields, so techs are unaffected.
+Classification engine and province rules — untouched.
 
-**What gets deleted** (firefighting artifacts, per the brainstorm):
-`db-browser.js`, `data-tools.js` (46 KB of one-off fixes), `legacy-import.js`,
-`rejected-packets.js`, `packets.js` (status folds into Schedule/Dashboard),
-`companies-screen-BAK.js`, `employees-screen.js`/`employees.js` duplication,
-`logs.js` (audit log viewer folds into Settings), `province-rules.js` (read-only
-view folds into Settings).
+**Retired for MasterDB v2** (stays in git history; the old app keeps running on
+`main` until launch): OPFS local database, the file-sync/merge machinery
+(`json-database.js`, `merge-uid.js`, `adopt-uid.js`), import-owner flag and
+lock-file coordination, the launcher/clean-profile hardening (existed only to
+protect against dirty OPFS), and all firefighting screens (db-browser,
+data-tools, legacy-import, rejected-packets, packets, logs, province-rules,
+duplicate/BAK screen files).
 
-## 2. The one real schema change: person-level worker identity
+## 2. Architecture: one database, accessed live
 
-### Today's model (the root of the dupes)
-`employees.location_id` makes identity *per-location*, and `import-packet.js:113-117`
-matches workers by `(location_id, first_name, last_name)`. Consequences: a worker
-who appears at two branches exists twice (canonical carries **2,141 name+dob
-employee collisions**), and a name match at the wrong location silently absorbs a
-different person (Selsek/Garding).
+### The core change
+Every 2026 incident traced to one root cause: three machines each holding a
+divergent local copy, merged after the fact. MasterDB v2 keeps **one canonical
+`masterdb.sqlite` file in the shared OneDrive folder** and works on it directly
+over the Microsoft Graph API. No local copies, no merge, nothing to adopt or
+reconcile.
 
-### Rebuild model
-- **`employees` is a person.** Identity fields: `uid`, names, `dob`, optional
-  `sin_last_4`/`phone`/`email`. Plus `current_location_id` — a *pointer* used only
-  to build rosters ("who works here now"), never part of identity.
-- **`tests.location_id` stamps where the test happened** (already true). Person
-  history = all tests by `employee_id`; site history = all tests by `location_id`.
-  Both queryable, no data model change needed for tests.
-- Worker changes branches → update `current_location_id`; full history follows
-  automatically because it hangs off the person.
+### How a session works
+1. **Open:** MSAL login (already in the stack) → download `db/masterdb.sqlite`
+   via Graph (~20 MB, seconds on office broadband) → load into sql.js in memory.
+   Record the file's **eTag**.
+2. **Work:** all reads/queries run against the in-memory DB — the app feels
+   instant; the network is only touched on open, save, and packet I/O.
+3. **Save:** upload the DB back with `If-Match: <eTag>`. Graph rejects the
+   upload with **412** if anyone else saved first — the corruption mode that the
+   old file-sync physically could not detect. On 412: refetch, reapply (or
+   surface to the user), never overwrite blind.
+4. **Write lock (belt and braces):** before entering any editing/import action,
+   claim `db/write.lock.json` (create-if-not-exists via `If-None-Match: *`,
+   heartbeat timestamp, stale after 5 min). Other machines get read-only mode
+   with a "locked by Heather since 10:12" banner. With 1–2 office users this is
+   invisible in practice; eTags backstop it if the lock ever fails.
+5. **Saves are explicit and transactional**: an import saves once, at commit,
+   after `reconcileImport` passes. Screen edits save on action (debounced), not
+   keystroke.
 
-**Decision (recommended): drop the `employment` periods table.** It exists in the
-schema today but nothing populates it. `current_location_id` + per-test location
-stamps answer every query the business actually has (roster, person history, site
-history, billing by site). Employment start/end periods are speculative complexity —
-exactly the kind the rebuild is removing. Easy to add later if a regulator ever
-asks "where was this person employed on date X" (and even then, the test stamps
-mostly answer it).
+### Consequences that simplify everything downstream
+- **Integer ids are now globally unambiguous** — there is only one counter.
+  The uid translation layer existed solely because each machine minted its own
+  ids. We **keep** the `uid` columns (populated, harmless, useful as stable
+  external references in packets) but retire all merge/adopt machinery.
+- **True whole-DB atomicity**: one file = one eTag = an import either lands
+  entirely in the uploaded file or not at all.
+- **Backups come nearly free**: OneDrive keeps version history on every save of
+  `masterdb.sqlite` (§8), on top of explicit pre-import snapshots.
+- **No more fleet coordination**: any machine, any browser profile, always sees
+  the current data or a 412. The FirstRun/launcher apparatus is unnecessary
+  (keep the desktop shortcut for convenience only).
 
-### Schema 3.0 (delta from deployed 2.3)
+### Technical risk #1 (spike first — Phase 1a)
+Confirm from a browser MSAL token we can address the **shared** folder
+(`Brothen, Jan's files - TechTool` is another user's share) via Graph:
+resolve driveId/itemId (likely via `/me/drive/sharedWithMe` or the remoteItem
+facet), then exercise download / upload-with-If-Match / 412 / create-with-
+If-None-Match / server-side copy / move (for packet archive). Everything in §2
+rests on these six verbs. Half a day; do it before any other build work.
+
+### Packet transport under v2
+Unchanged for techs: TechTool reads its `techs/<name>/` folder from the locally
+synced OneDrive, fully offline, as today. MasterDB v2 simply does its side of
+the file I/O via Graph instead of the File System Access API: write packet →
+`techs/<name>/`, list/read `inbox/`, move imported packets → `archive/`.
+
+## 3. Schema 3.0
+
+Delta from deployed 2.3 (everything not listed carries over: companies,
+locations with province, tests, baselines, hpd_assessments, schedules, packets,
+users, settings, provinces/classification_rules/counsel_templates, system_log):
 
 ```sql
--- employees: identity at person level
---   DROP  location_id            (replaced by current_location_id, non-identity)
---   ADD   current_location_id INTEGER REFERENCES locations(location_id)
+-- employees: identity at PERSON level (the key change)
+--   DROP  location_id              (identity never lives at a location again)
+--   ADD   current_location_id INTEGER REFERENCES locations(location_id)  -- roster pointer only
 --   ADD   middle_name TEXT, sin_last_4 TEXT, phone TEXT, email TEXT
---   KEEP  uid, deleted_at, created_at/updated_at, uid trigger (schema 2.3 machinery)
+--   KEEP  uid (stable external ref), deleted_at (soft delete for health data)
 
--- employment: DROP TABLE (see decision above)
+-- employment: DROP TABLE  (decided 2026-08-05 — nothing populates it; test
+--   location stamps answer "where was this person" historically)
 
--- hpd_assessments: reconcile the pk fork found during the uid work
---   (deployed pk = assessment_id, schema.js says hpd_id). Standardize on
---   assessment_id — what the live data has — and fix schema.js to match.
+-- hpd_assessments: standardize pk on assessment_id (what live data has);
+--   fix schema.js to match (closes the fork found during the uid work)
 
--- backups bookkeeping (new, local-only, NOT a merge/sync table):
+-- backup_log (local bookkeeping of pre-import snapshots, §8):
 CREATE TABLE IF NOT EXISTS backup_log (
   backup_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  filename    TEXT NOT NULL,          -- in OPFS /backups/
-  reason      TEXT NOT NULL,          -- 'pre-import:<packet_id>' | 'manual' | 'daily'
-  db_bytes    INTEGER,
+  filename    TEXT NOT NULL,
+  reason      TEXT NOT NULL,          -- 'pre-import:<packet_id>' | 'manual'
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
 
-Everything else (companies, locations with province, tests, baselines, schedules,
-packets, users, settings, provinces/classification_rules/counsel_templates,
-system_log) carries over from 2.3 unchanged — including `uid`, `deleted_at`, and
-the `<t>_set_uid` triggers the sync layer depends on.
+Person history = tests by `employee_id`; site history = tests by `location_id`;
+roster = employees where `current_location_id` = X and active. A worker changing
+branches is one pointer update; history follows automatically.
 
-### The migration is the hard part (Phase 1, gates everything)
+## 4. Packet format (schema 1.1, additive)
 
-Moving to person-level identity means **merging the duplicate person records**.
-This is real data surgery on canonical (~6.8k employees) and must follow the
-pattern that worked for the July remediation:
+- Roster employees carry `uid` **and** `employee_id` (ids are unambiguous now).
+- `location.location_uid` alongside the existing `location_id`.
+- `schema_version: '1.1'`.
+- On-site-added workers: TechTool already captures dob / sin_last_4 / phone /
+  email in `addNewEmployee` — these now matter for matching (§5), so
+  generate-packet's tech instructions should encourage filling them.
 
-1. Script it (Node + sql.js against a **copy** of `remediated-final.sqlite` /
-   current canonical), in git-ignored `local-tests/` like `remediate_apply.py` and
-   the uid harnesses.
-2. Merge rule: group candidate duplicates by `(normalized first+last, dob)` across
-   locations **within the same company**; survivor = record with the richest
-   history; repoint `tests.employee_id`, `baselines.employee_id`; set survivor
-   `current_location_id` to the location of their most recent test; tombstone the
-   losers (`deleted_at`, uid preserved so sync propagates the merge).
-3. **Cross-company same-name people are NOT merged automatically** — different
-   Kal Tire vs Herbers "John Smith" may be the same human or not; flag a review
-   list, default keep-separate.
-4. Fold in the deferred **628 historical exact-duplicate test rows** cleanup
-   (same worker/date/type/audiogram) — same freeze, same script, one republish.
-5. Verify like the uid work: row-count reconciliation per table, no dup uids,
-   every test still reachable, Yorkton fixture green, idempotent re-run.
-6. Apply on the owner via the proven offline-import path (Continue offline →
-   Settings → Import Backup → connect), republish canonical to `db/`.
+## 5. Import flow
 
-## 3. Packet format (additive changes only)
+Keeps the proven skeleton — pure `importPacket()` core, one transaction,
+`reconcileImport` fail-loud, full rollback on any mismatch — with these changes:
 
-`shared/packet/schema.js` stays; three additions, all backward-compatible
-(TechTool ignores unknown fields):
+1. **Location resolved by id/uid or REFUSED.** The silent "Main Location"
+   auto-create fallback is removed. Unknown location → staff explicitly picks or
+   creates one in the preview, logged as an override.
+2. **Worker matching, person-level, multi-identifier** (decided 2026-08-05):
+   - Packet `employee_id`/`uid` present (roster worker) → exact match. Done.
+     This covers everyone MasterDB itself put in the packet.
+   - On-site-added workers → candidate scoring across the whole company:
+     DOB + first + last = strong match; SIN last-4 corroborates or breaks ties;
+     name-only = weak (needs staff confirm). The import preview shows every
+     proposed match (`exact` / `strong` / `needs confirmation` / `NEW person`)
+     before anything is written.
+   - Matched worker whose `current_location_id` differs from the packet
+     location → flagged in preview ("tested at Yorkton, roster says Calgary —
+     transfer?"); default stamps the test and leaves the pointer.
+3. **Pre-import snapshot** (§8) must succeed before the transaction starts.
+4. Classify-at-import against the person's active baseline (shipped logic
+   carries over); first-test-for-person auto-baselines.
+5. Save-to-OneDrive happens once, after commit — a failed import never uploads.
 
-1. **`location.location_uid`** (and `employee.uid` per roster employee) — the
-   packet already carries `location_id`, but integer ids are local per instance;
-   uids are the fleet-stable identity. Import matches on uid first, integer id as
-   fallback for old packets.
-2. **`schema_version: '1.1'`** so import can branch on capability.
-3. Roster employees carry `uid` — this is what makes import matching exact for
-   every worker MasterDB already knows (see §5).
+## 6. The five pillars — screens (11 total; today: 25 files)
 
-Generate-packet flow itself is unchanged — the brainstorm calls it working, and
-`generate-packet.js` + `createPacket()` already do company → location → roster +
-baseline + last-2 prior tests + snapshotted rules.
+- **Login** — MSAL + role check. No launcher gate needed (§2).
+- **Dashboard** — upcoming visits with packet status chips; inbox awaiting
+  import; recently imported; who holds the write lock.
+- **Companies list → Company detail → Location detail** — locations, contacts,
+  notes, HPD inventory, roster, visit history, **Transfer worker** action.
+  No inline data-repair presets (db-browser lesson).
+- **Worker search** (global, by name/dob — person-level) → **Worker detail**
+  (identity incl. sin_last_4, current location, full cross-location test
+  history, baselines, audiogram) → **Test detail** (audiogram, classification,
+  counsel, HPD, referral).
+- **Schedule** — create/edit visits (company → location → tech → date), week
+  view; packet generation and cancel live on the visit row; supports several
+  packets for one site/date ("1 of 2, 2 of 2" — filename/packet_id already
+  distinguish by tech+date; add an optional sequence suffix).
+- **Import** — inbox list → preview (location resolution, per-worker match
+  table, dup/empty warnings) → import → result banner with reconciled counts;
+  failed packets stay listed with reasons.
+- **Reports** — §7.
+- **Users** — roles: super_admin (all), admin (billing/reports), coordinator
+  (schedule/packets); tech records (one type). Route-level gates (today
+  `users.role` exists but nothing enforces it).
+- **Settings** — Graph connection status, backup list + manual snapshot/restore,
+  audit log viewer, read-only province rules, version info.
 
-## 4. The five pillars — screen-by-screen
+## 7. Reports
 
-Eleven screens total (today: 25 screen files). Login, launcher gate
-(`isSanctionedLaunch`), offline-login, and version indicator carry over from the
-v8–v12 hardening untouched.
+- **Trip report (new — the billing driver).** A trip is a **date range**
+  (typically 1–2 weeks; may span multiple companies/locations, or one site with
+  multiple packets per day). Input: date range (optionally filter by tech).
+  Output: every location with tests in range → site name/province, test count,
+  classification breakdown, STS/referral counts, roster of workers tested,
+  tech + testing duration per packet; grand totals. Print + XLSX.
+- **Ported as-is:** company report, STS report, worker history report,
+  tech-productivity report.
 
-### 4.1 Dashboard
-The core loop at a glance, nothing else:
-- **Upcoming visits** (next 14 days, from schedules) with packet status chips:
-  `no packet` / `pending` / `synced` / `in progress` / `submitted`.
-- **Awaiting import** — inbox packets (import-owner machine only; others see
-  "owner: <machine>" instead of import buttons).
-- **Recently imported** (last 10, with test counts and link to the trip report).
-- Sync status + version + import-owner indicator (exists today, keep).
+## 8. Backups
 
-### 4.2 Companies & Locations
-- **Companies list** → **Company detail** (locations list, contacts, notes)
-  → **Location detail** (roster = employees with `current_location_id` here,
-  visit history, HPD inventory, schedule shortcut).
-- Location detail gets a **"Transfer worker"** action: move a person's
-  `current_location_id` to another branch — the one new piece of UI the identity
-  model needs. Shows the person's history staying intact across the move.
-- No inline data-repair tools. If data is wrong, it's fixed by editing the record,
-  not by a preset button (lesson from the db-browser "Fix SK-suffix" incident).
+- **OneDrive version history** — automatic version of `masterdb.sqlite` on
+  every save; restorable from OneDrive UI or Graph. This is the always-on net.
+- **Pre-import snapshot (mandatory):** Graph **server-side copy** of
+  `db/masterdb.sqlite` → `db/backups/masterdb-<stamp>-pre-<packet_id>.sqlite`
+  (no download/upload round-trip), logged in `backup_log`. Import blocked if
+  the copy fails.
+- **Retention:** prune `db/backups/` on launch — keep pre-import 90 days,
+  always keep newest 10.
+- **Restore:** Settings lists snapshots; restore = server-side copy back over
+  `db/masterdb.sqlite` (itself versioned, so even a restore is undoable).
 
-### 4.3 Workers (person-level)
-- **Worker search** — global, by name/dob, across all companies (replaces the
-  per-location employees screens). Results show company/current location.
-- **Worker detail** — identity fields, current location, full test history
-  (each row stamped with its location), active + archived baselines, audiogram
-  component. → **Test detail** (audiogram, classification, counsel, HPD,
-  referral status — carries over from today's `test-detail.js`).
+## 9. One-time migration (canonical → v2)
 
-### 4.4 Schedule & Packet generation
-- **Schedule screen** — create/edit visits: company → location → tech → date.
-  List view by week. Completing the loop: a visit row shows its packet status and
-  is where you **Generate packet** (current `generate-packet.js` flow, invoked
-  from the visit) and later see "imported ✓".
-- Packet cancel (before pickup) lives here too. No separate packets screen.
+Produces the single `db/masterdb.sqlite` from today's canonical wire JSONs.
+Must be **re-runnable**: it runs at least twice — once now to create a realistic
+dev/test database, once at launch against the freshest data.
 
-### 4.5 Import
-One screen replacing `incoming.js` + `import-confirm.js` + `rejected-packets.js`:
-- Inbox list → select packet → **preview**: resolved location (by uid — see §5),
-  worker-by-worker match preview (`matched by uid` / `matched by name+dob` /
-  `NEW worker`), test count, dup/empty warnings.
-- **Import** button runs: auto-backup (§7) → single transaction →
-  `reconcileImport` fail-loud → archive packet. Result banner shows the
-  reconciled counts ("6 of 6 tests imported to Kal Tire #731 Yorkton, SK").
-- Rejected/failed packets stay listed here with the reason, nothing silent.
+1. Script + harness in git-ignored `local-tests/` (Node + sql.js), same
+   discipline as the uid rework and July remediation. Never against live files.
+2. Steps: load wire JSONs → build schema 3.0 → **person-identity dedup**: group
+   by multi-identifier (normalized name + DOB, sin_last_4 corroborating) within
+   company; survivor keeps richest history; repoint tests/baselines; set
+   `current_location_id` from most recent test; tombstone losers. Cross-company
+   candidates → review list only, never auto-merged (decided 2026-08-05).
+3. Verification gate: per-table row reconciliation, every test reachable from
+   exactly one person, no dup uids, Yorkton fixture green, idempotent re-run.
+   (Exact-duplicate tests already clean — verified 2026-08-05: 6,605 live rows,
+   0 dup groups.)
+4. Output uploaded as `db/masterdb.sqlite`. The old `db/*.json` files stay
+   untouched until launch (§10) — the v12 fleet keeps using them; v2 dev reads
+   only the new file.
 
-### 4.6 Reports
-- **Trip report (new, the billing driver):** date range in → for every location
-  with tests in range: site name/province, test count, classification breakdown,
-  STS/referral count, roster of workers tested, tech + testing duration (from
-  `packets.testing_duration`). Grand totals. Print + XLSX export (xlsx vendor lib
-  already present).
-- **Carried over from `reports.js`:** company report, STS report, worker history
-  report, tech-productivity report — they work; port, don't redesign.
+## 10. Implementation plan
 
-### 4.7 Users & Settings
-- **Users** — roles: `super_admin` (everything), `admin` (billing + reports),
-  `coordinator` (schedule + packets), plus tech records (one type, feeds the
-  `techs/<folder>` assignment). Route-level gate: each screen declares a minimum
-  role; nav hides what you can't open. (Today `users.role` exists but nothing
-  enforces it.)
-- **Settings** — sync folder connect, import-owner toggle, backup list + manual
-  backup/restore (existing Import Backup path), audit log viewer, read-only
-  province rules viewer, version info.
+- **Phase 1a — Graph spike** (§2 risk): prove the six Graph verbs against the
+  shared folder from a browser token. Nothing else starts until this passes.
+- **Phase 1b — migration script + harness** (§9) on a canonical copy.
+- **Phase 2 — data layer + import core:** `masterdb/db/` v2 (graph-store module:
+  open/save/lock/412 handling; workers.js person model; ports of
+  companies/locations/tests/baselines), `importPacket` v2 (§5), packet 1.1
+  additions, pre-import snapshot. Extend local harnesses: match-by-id/uid,
+  refuse-unknown-location, multi-identifier confirm path, 412 conflict, rollback.
+- **Phase 3 — screens** (§6), porting audiogram component, print CSS, xlsx.
+- **Phase 4 — reports** (§7), trip report first.
+- **Phase 5 — launch:** re-run migration on fresh canonical → upload
+  `db/masterdb.sqlite` → merge `masterdb-rebuild` to `main` (Pages deploys) →
+  brief freeze while the fleet switches (no per-machine migration needed — v2
+  has no local state, machines just open the new app) → archive the legacy
+  `db/*.json` + root JSONs to `db/legacy-<date>/` → old app retired.
 
-## 5. Import flow (pillar 4, the incident-proofing)
+All work stays on branch `masterdb-rebuild`; `main` keeps serving the current
+build until Phase 5. Hotfixes continue on `main`; merge `main` into the branch
+periodically.
 
-Keeps the proven skeleton — DI `importPacket()` core, caller-wrapped transaction,
-`reconcileImport` fail-loud — with three behavior changes:
+## 11. Decision log
 
-1. **Location by uid, refuse on ambiguity.** Packet carries `location_uid`;
-   import resolves it or **refuses** (staff explicitly picks, as override, logged).
-   The silent `"<Company> Main Location"` auto-create fallback
-   (`import-packet.js:98-106`) is **removed** — it's how packets landed on wrong
-   sites. New location creation is an explicit confirm step in the preview, never
-   implicit.
-2. **Worker match by identity, not location+name:**
-   - `employee.uid` present (roster worker) → exact match, done. Covers every
-     worker MasterDB put in the packet.
-   - No uid (added on-site) → match `(name, dob)` **within the company**; the
-     preview shows the proposed match and staff confirms. No match → create
-     person with `current_location_id` = packet location.
-   - A matched worker whose `current_location_id` differs from the packet
-     location gets flagged in the preview ("worked at Calgary, tested at
-     Yorkton — transfer?") — staff choice, default: stamp the test, leave the
-     pointer.
-3. **Atomicity unchanged**: one transaction per packet, `reconcileImport` throws
-   → full rollback. Classify-at-import against the person's active baseline
-   (already shipped) carries over; "first test at location" baseline logic becomes
-   "first test for the person" (person-level identity).
-
-## 6. Multi-instance posture
-
-Unchanged from the hardened deployment: uid-keyed non-destructive merge over the
-OneDrive `db/` subfolder, adopt-on-first-sync, Web Locks + import-owner flag +
-`import.lock.json` (one machine imports; currently Norm's personal laptop,
-handing to Heather post-rollout). The rebuild changes nothing here — the new
-`backup_log` table is deliberately **not** a merge table (backups are per-machine).
-
-## 7. Automatic backups (the brainstorm's additional requirement)
-
-- **Pre-import (mandatory):** before every import transaction, copy the OPFS
-  sqlite file bytes to OPFS `backups/masterdb-<ISO-stamp>-pre-<packet_id>.sqlite`
-  and log to `backup_log`. Import proceeds only if the snapshot succeeded.
-  DB is ~20 MB → sub-second copy, negligible cost.
-- **Daily (first launch of the day):** same mechanism, reason `daily`.
-- **Retention:** keep all pre-import backups 90 days, dailies 30 days, always
-  keep the 10 most recent regardless of age; prune on launch.
-- **Restore:** Settings lists `backup_log` with one-click restore via the
-  existing Import Backup (wholesale OPFS replace) path — already proven during
-  the remediation.
-- Backups stay in OPFS (on-machine, satisfies the no-server constraint). Optional
-  later: mirror the latest daily to a local folder via showDirectoryPicker for
-  off-browser-profile safety. NOT to the shared OneDrive `db/` folder (backups
-  from three machines would bloat and confuse canonical).
-
-## 8. Implementation plan
-
-**Phase 0 — finish what's in flight (prereq, not rebuild work)**
-Complete uid-rollout Phase 4: bring the work laptop and Heather's machine onto
-the current build via FirstRun.bat, verify no duplication, delete leftover root
-canonical files. The rebuild deploys to a *consistent* fleet or the mixed-version
-lessons repeat. (This is now just "run the launcher" per the rollout doc.)
-
-**Phase 1 — schema 3.0 + identity migration (the gate)**
-Branch `masterdb-rebuild`. Write the migration + dedup script and its harness in
-`local-tests/` against a copy of canonical (per §2). Exit criteria: all
-verification checks green, review list for cross-company candidates produced,
-Yorkton fixture still green. *No UI work starts until this passes on real data.*
-
-**Phase 2 — db layer + import core**
-New `masterdb/db/` modules for the person model (workers.js replacing
-employees.js, companies/locations/tests/baselines ported), import-packet.js v2
-(§5) with the packet 1.1 additions in `shared/packet/schema.js`, auto-backup
-module. Extend the existing local harnesses: uid-match import, refuse-unknown-
-location, on-site-worker confirm path, backup-before-import, rollback.
-
-**Phase 3 — screens**
-Build the 11 screens (§4) fresh in `masterdb/screens/`, deleting the retired
-ones. Port audiogram component, print CSS, xlsx export. Role gates. Same stack:
-vanilla ES modules, no build step.
-
-**Phase 4 — reports**
-Trip report first (billing is the payoff), then port the four existing reports.
-
-**Phase 5 — rollout (same playbook as uid-sync, now routine)**
-Bump `APP_VERSION` + `sw.js` cache. Freeze (others closed — brief, we've done
-it), apply migration on the owner via offline-import, republish canonical to
-`db/`, bring the other two machines up one at a time via FirstRun.bat, verify
-counts, hand import-owner to Heather. TechTool needs no coordinated change
-(packet 1.1 is additive), so field techs are unaffected mid-rollout.
-
-**Sequencing note:** Phases 2–4 are pure code on a branch and can proceed while
-Phase 0/1 verification runs; only Phase 5 needs the freeze.
-
-## 9. Open decisions (flagged for Norm)
-
-1. **`employment` periods table** — recommendation: drop (§2). Confirm the
-   business never needs employment start/end dates independent of test history.
-2. **Cross-company duplicate people** — recommendation: never auto-merge; review
-   list only. Confirm.
-3. **628 historical dup tests** — recommendation: fold into the Phase 1
-   migration (one freeze instead of two). Confirm.
-4. **Trip report grouping** — assumed a "trip" is purely a date range (per the
-   notes). If trips should be first-class records (named, assigned to a tech),
-   that's a small `trips` table + schedule linkage — say so before Phase 4.
+| Date | Decision |
+|------|----------|
+| 2026-08-05 | Rebuild MasterDB around minimal 5-pillar core; TechTool stays |
+| 2026-08-05 | All rebuild work on branch `masterdb-rebuild`; `main` = live until launch |
+| 2026-08-05 | **Architecture: online-only over Graph API; single `masterdb.sqlite` in OneDrive** (hosted DB set aside — health-data compliance; local-first+sync retired) |
+| 2026-08-05 | Drop `employment` table |
+| 2026-08-05 | Worker matching by multiple identifiers (DOB, names, SIN last-4); cross-company never auto-merged |
+| 2026-08-05 | 628-dup-test cleanup confirmed already done (0 dup groups in canonical) |
+| 2026-08-05 | Trip = date range (1–2 weeks), not a first-class record; multi-packet-per-site-per-day supported |
