@@ -61,7 +61,7 @@ export function mount(container, { session }) {
           <td>${u.active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
           <td style="white-space:nowrap">
             <button class="btn btn-secondary btn-sm" data-edit="${esc(u.user_id)}">Edit</button>
-            ${!isSelf ? `<button class="btn btn-danger btn-sm" data-del="${esc(u.user_id)}" style="margin-left:0.25rem">Delete</button>` : ''}
+            ${!u.active && !isSelf ? `<button class="btn btn-danger btn-sm" data-del="${esc(u.user_id)}" style="margin-left:0.25rem">Delete</button>` : ''}
           </td>
         </tr>
       `
