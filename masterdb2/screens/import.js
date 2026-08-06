@@ -46,42 +46,43 @@ export function mount(container, { navigate, session }) {
   }
 
   function renderTechSelect() {
-    if (!_techs.length) {
-      container.innerHTML = `
-        <div class="screen-header-row"><h1>Import</h1></div>
-        <div class="screen-body">
-          <div class="warning-banner">No active technicians with a folder name configured.
-            Add techs in Settings, then retry.</div>
-        </div>
-      `
-      return
-    }
-
     const opts = _techs.map(t =>
       `<option value="${esc(t.folder_name)}">${esc(t.name)}</option>`
     ).join('')
 
+    const noTechsWarning = !_techs.length
+      ? `<div class="warning-banner" style="margin-bottom:1rem">
+           No active technicians with a folder name configured.
+           Add techs in Settings before using manual review.
+         </div>`
+      : ''
+
+    const techSel = _techs.length
+      ? `<select class="form-select" id="tech-sel">
+           <option value="">Select a technician…</option>
+           ${opts}
+         </select>`
+      : ''
+
     container.innerHTML = `
       <div class="screen-header-row">
         <h1>Import</h1>
-        <select class="form-select" id="tech-sel">
-          <option value="">Select a technician…</option>
-          ${opts}
-        </select>
+        ${techSel}
       </div>
       <div class="screen-body">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
           <p style="margin:0;color:var(--clr-subtle)">
-            Auto-import processes all techs&apos; inboxes at once and commits every
-            clean packet. Packets needing manual attention are left behind.
+            Auto-import scans all techs&apos; inboxes and commits every clean packet.
+            Packets needing manual attention are left behind.
           </p>
           <button class="btn btn-primary" id="auto-all-btn">Auto-import all →</button>
         </div>
+        ${noTechsWarning}
         <div id="inbox-area"></div>
       </div>
     `
 
-    container.querySelector('#tech-sel').addEventListener('change', async e => {
+    container.querySelector('#tech-sel')?.addEventListener('change', async e => {
       const folder = e.target.value
       _tech = _techs.find(t => t.folder_name === folder) ?? null
       if (!_tech) return
