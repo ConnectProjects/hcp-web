@@ -750,5 +750,31 @@ ul { list-style: none; }
 @media print {
   .sidebar, .brand-corner, .screen-header-row button, .btn, #back-btn { display: none !important; }
   .app.has-sidebar .screen { margin-left: 0 !important; }
-  .screen-body { padding: 0 !important; }
+
+  .screen-header-row {
+    padding: 0.25rem 0 !important;
+    border-bottom: none !important;
+  }
+  .screen-header-row h1 { font-size: 1rem !important; }
+
+  .screen-body {
+    padding: 0 !important;
+    gap: 0.75rem !important;   /* override inline grid gap */
+  }
+
+  .section-head { margin-bottom: 0.25rem !important; }
+  .section-head h2 { font-size: 0.875rem !important; }
+
+  .info-card {
+    padding: 0.4rem 0.6rem !important;
+    margin-bottom: 0.5rem !important;
+    border-radius: 0 !important;
+  }
+  .info-card dl {
+    gap: 0.15rem 0.75rem !important;
+    font-size: 0.8rem !important;
+  }
+
+  /* Remove the margin-top on section-heads inside the grid columns */
+  .screen-body [style*="margin-top:1rem"] { margin-top: 0.4rem !important; }
 }
