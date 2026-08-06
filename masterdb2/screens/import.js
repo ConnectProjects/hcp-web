@@ -68,16 +68,16 @@ export function mount(container, { navigate, session }) {
           <option value="">Select a technician…</option>
           ${opts}
         </select>
-        <button class="btn btn-primary btn-sm" id="auto-all-btn" style="margin-left:auto">
-          Auto-import all →
-        </button>
       </div>
-      <div class="screen-body" id="inbox-area">
-        <p style="color:var(--clr-subtle)">
-          Choose a tech to review their inbox, or click <strong>Auto-import all</strong>
-          to automatically import every clean packet from every tech's inbox.
-          Packets needing manual attention are left behind.
-        </p>
+      <div class="screen-body">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
+          <p style="margin:0;color:var(--clr-subtle)">
+            Auto-import processes all techs&apos; inboxes at once and commits every
+            clean packet. Packets needing manual attention are left behind.
+          </p>
+          <button class="btn btn-primary" id="auto-all-btn">Auto-import all →</button>
+        </div>
+        <div id="inbox-area"></div>
       </div>
     `
 
