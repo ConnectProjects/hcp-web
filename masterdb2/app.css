@@ -404,6 +404,9 @@ ul { list-style: none; }
 .badge-blue   { background: #dbeafe; color: #1e40af; }
 .badge-gray   { background: var(--clr-surface); color: var(--clr-subtle); }
 
+/* ── Form labels ────────────────────────────────────────────────────────────── */
+.field-label { display: block; font-size: 0.75rem; color: var(--clr-subtle); margin-bottom: 0.25rem; }
+
 /* ── Select / form inputs ──────────────────────────────────────────────────── */
 .form-select {
   padding: 0.5rem 0.75rem;
