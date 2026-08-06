@@ -106,7 +106,7 @@ export function mount(container, { session }) {
     const el = container.querySelector('#s-techs')
     if (!el) return
 
-    const techs = query(`SELECT * FROM techs WHERE deleted_at IS NULL ORDER BY name`)
+    const techs = query(`SELECT * FROM techs ORDER BY name`)
 
     const statusHTML = _statusMsg
       ? `<div class="success-banner" style="margin-bottom:0.75rem">${esc(_statusMsg)}</div>`
@@ -259,8 +259,7 @@ export function mount(container, { session }) {
         _statusMsg = `Technician "${fields.name}" added.`
       } else {
         run(
-          `UPDATE techs SET name=?, initials=?, folder_name=?, iat_number=?, email=?, active=?,
-           updated_at=datetime('now') WHERE tech_id=?`,
+          `UPDATE techs SET name=?, initials=?, folder_name=?, iat_number=?, email=?, active=? WHERE tech_id=?`,
           [fields.name, fields.initials, fields.folder_name, fields.iat_number,
            fields.email, fields.active, _editingId]
         )

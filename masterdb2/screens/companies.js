@@ -23,7 +23,7 @@ export function mount(container, { navigate }) {
     let rows
     try {
       rows = query(
-        `SELECT c.company_id, c.name, c.city, c.province,
+        `SELECT c.company_id, c.name, c.city,
                 COUNT(DISTINCT l.location_id) AS location_count,
                 COUNT(DISTINCT CASE WHEN e.status='active' AND e.deleted_at IS NULL
                                THEN e.employee_id END) AS worker_count,
@@ -34,7 +34,7 @@ export function mount(container, { navigate }) {
          LEFT JOIN tests    t ON t.location_id = l.location_id AND t.deleted_at IS NULL
          WHERE c.active = 1
            AND (LOWER(c.name) LIKE LOWER(?) OR LOWER(c.city) LIKE LOWER(?))
-         GROUP BY c.company_id, c.name, c.city, c.province
+         GROUP BY c.company_id, c.name, c.city
          ORDER BY c.name`,
         [like, like]
       )
@@ -51,7 +51,7 @@ export function mount(container, { navigate }) {
     const rowsHTML = rows.map(r => `
       <tr class="clickable" data-id="${r.company_id}">
         <td><strong>${esc(r.name)}</strong></td>
-        <td>${esc(r.city ?? '')}${r.province ? `, ${esc(r.province)}` : ''}</td>
+        <td>${esc(r.city ?? '')}</td>
         <td style="text-align:right">${r.location_count}</td>
         <td style="text-align:right">${r.worker_count}</td>
         <td>${r.last_test_date ? fmtDate(r.last_test_date) : '<span style="color:var(--clr-subtle)">—</span>'}</td>

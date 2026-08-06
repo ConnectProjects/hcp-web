@@ -23,13 +23,10 @@ export function mount(container, { navigate, employeeId, fromLocation }) {
   const baselines = getBaselines(employeeId)
   const activebl  = baselines.find(b => b.archived === 0) ?? null
 
-  // Back destination
   const backLabel  = fromLocation ? 'Location' : 'Workers'
   const backAction = fromLocation
     ? () => navigate('location', fromLocation)
     : () => navigate('workers')
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   const locDisplay = [emp.location_name, emp.location_province].filter(Boolean).join(', ')
   const sinDisplay = emp.sin_last_4 ? `***-***-${emp.sin_last_4}` : ''
@@ -39,6 +36,7 @@ export function mount(container, { navigate, employeeId, fromLocation }) {
       <button class="back-link" id="back-btn">&larr; ${backLabel}</button>
       <h1>${esc(emp.last_name)}, ${esc(emp.first_name)}${emp.middle_name ? ' ' + esc(emp.middle_name) : ''}</h1>
       <span class="badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}">${esc(emp.status ?? '')}</span>
+      ${tests.length ? '<button class="btn btn-secondary" id="csv-btn" style="margin-left:auto">Download CSV</button>' : ''}
     </div>
     <div class="screen-body">
 
@@ -70,17 +68,15 @@ export function mount(container, { navigate, employeeId, fromLocation }) {
 
   container.querySelector('#back-btn').addEventListener('click', backAction)
 
-  // Expand / collapse test detail rows on click
-  container.querySelectorAll('tr.test-row').forEach(tr => {
-    tr.addEventListener('click', () => {
-      const detail = container.querySelector(`tr[data-detail-for="${tr.dataset.testId}"]`)
-      if (detail) {
-        const isHidden = detail.classList.contains('detail-hidden')
-        detail.classList.toggle('detail-hidden', !isHidden)
-        tr.classList.toggle('detail-open', isHidden)
-      }
-    })
-  })
+  container.querySelectorAll('tr.test-row').forEach(tr =>
+    tr.addEventListener('click', () =>
+      navigate('test', { testId: Number(tr.dataset.testId), employeeId })
+    )
+  )
+
+  container.querySelector('#csv-btn')?.addEventListener('click', () =>
+    downloadCsv(emp, tests)
+  )
 }
 
 // ── Section builders ──────────────────────────────────────────────────────────
@@ -110,55 +106,34 @@ function testTable(tests) {
     return `<div class="table-card"><div class="table-empty">No tests on record.</div></div>`
   }
 
-  const rowPairs = tests.map(t => {
-    const hpd         = getHpdAssessments(t.test_id)
-    const hasThresh   = FREQS.some(f => t[`left_${f}`] != null || t[`right_${f}`] != null)
-    const flags       = buildFlags(t)
-    const classBadge  = classificationBadge(t.classification)
-
-    return `
-      <tr class="test-row clickable" data-test-id="${t.test_id}">
-        <td>${fmtDate(t.test_date)}</td>
-        <td>${esc(t.test_type ?? '—')}</td>
-        <td>${esc(t.province ?? '—')}</td>
-        <td>${classBadge}</td>
-        <td>${flags}</td>
-        <td style="color:var(--clr-subtle);font-size:0.8125rem">${esc(t.location_name ?? '')}</td>
-      </tr>
-      <tr class="detail-hidden" data-detail-for="${t.test_id}">
-        <td colspan="6" style="padding:0.75rem 1rem;background:var(--clr-surface);border-bottom:1px solid var(--clr-border)">
-          ${hasThresh ? thrGrid(t) : '<p style="color:var(--clr-subtle);font-size:0.875rem">No threshold data.</p>'}
-          ${t.tech_notes ? `<p style="margin-top:0.5rem;font-size:0.8125rem"><strong>Notes:</strong> ${esc(t.tech_notes)}</p>` : ''}
-          ${t.counsel_text ? `<p style="margin-top:0.375rem;font-size:0.8125rem"><strong>Counselling:</strong> ${esc(t.counsel_text)}</p>` : ''}
-          ${hpdRows(hpd)}
-        </td>
-      </tr>
-    `
-  }).join('')
+  const rows = tests.map(t => `
+    <tr class="test-row clickable" data-test-id="${t.test_id}">
+      <td>${fmtDate(t.test_date)}</td>
+      <td>${esc(t.test_type ?? '—')}</td>
+      <td>${esc(t.province ?? '—')}</td>
+      <td>${classificationBadge(t.classification)}</td>
+      <td>${buildFlags(t)}</td>
+      <td style="color:var(--clr-subtle);font-size:0.8125rem">${esc(t.location_name ?? '')}</td>
+    </tr>
+  `).join('')
 
   return `
     <div class="table-card" style="margin-bottom:1.5rem">
       <div class="table-wrap">
-        <table class="data-table" id="test-table">
+        <table class="data-table">
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th>Prov</th>
-              <th>Classification</th>
-              <th>Flags</th>
-              <th>Location</th>
+              <th>Date</th><th>Type</th><th>Prov</th>
+              <th>Classification</th><th>Flags</th><th>Location</th>
             </tr>
           </thead>
-          <tbody>${rowPairs}</tbody>
+          <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
-    <style>
-      tr.detail-hidden { display: none; }
-      tr.test-row.detail-open td:first-child::before { content: '▾ '; }
-      tr.test-row td:first-child::before { content: '▸ '; color: var(--clr-subtle); }
-    </style>
+    <p style="font-size:0.75rem;color:var(--clr-subtle);margin-top:-1rem;margin-bottom:1rem">
+      Click a row to view full test details and audiogram.
+    </p>
   `
 }
 
@@ -199,12 +174,39 @@ function thrGrid(r) {
   `
 }
 
-function hpdRows(hpdList) {
-  if (!hpdList.length) return ''
-  return `<div style="margin-top:0.625rem;font-size:0.8125rem">
-    <strong>HPD:</strong>
-    ${hpdList.map(h => `${esc(h.hpd_make_model ?? '?')} NRR ${h.rated_nrr ?? '?'} / ${h.derated_nrr ?? '?'} dB — ${esc(h.adequacy ?? '')}`).join('; ')}
-  </div>`
+function downloadCsv(emp, tests) {
+  const headers = [
+    'Date','Type','Province','Classification','STS','Referral',
+    'L_500','L_1k','L_2k','L_3k','L_4k','L_6k','L_8k',
+    'R_500','R_1k','R_2k','R_3k','R_4k','R_6k','R_8k',
+    'Tech Notes','Location'
+  ]
+  const csvRows = [headers.join(',')]
+
+  for (const t of tests) {
+    const cells = [
+      t.test_date ?? '',
+      t.test_type ?? '',
+      t.province ?? '',
+      t.classification ?? '',
+      t.sts_flag ? 'Yes' : '',
+      t.referral_given_to_worker ? 'Yes' : '',
+      ...FREQS.map(f => t[`left_${f}`] ?? ''),
+      ...FREQS.map(f => t[`right_${f}`] ?? ''),
+      t.tech_notes ?? '',
+      t.location_name ?? ''
+    ]
+    csvRows.push(cells.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+  }
+
+  const name = `${emp.last_name}_${emp.first_name}`.replace(/\s+/g,'_')
+  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' })
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `${name}_tests.csv`
+  })
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 
 function buildFlags(t) {

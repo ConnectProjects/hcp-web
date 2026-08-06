@@ -21,7 +21,7 @@ export function mount(container, { session }) {
   render()
 
   function render() {
-    const users = query(`SELECT * FROM users WHERE deleted_at IS NULL ORDER BY name`)
+    const users = query(`SELECT * FROM users ORDER BY name`)
 
     const statusHTML = _statusMsg
       ? `<div class="success-banner" style="margin-bottom:0.75rem">${esc(_statusMsg)}</div>`

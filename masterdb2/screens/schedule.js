@@ -1,247 +1,279 @@
 /**
- * masterdb2/screens/schedule.js — packet generation
+ * masterdb2/screens/schedule.js — Google Calendar-style month view
  *
- * Builds a v2 packet for a location visit, writes it to the tech's outbox,
- * records it in the packets table, and saves the DB.
- *
- * Province comes from the selected location (not the company — v2 schema
- * stores province per-location, not per-company).
+ * Shows scheduled packets as color-coded chips on the calendar.
+ * Tech filter toggles visibility by tech. Click a chip for detail + reschedule.
+ * Packet generation lives in location.js.
  */
 
-import { createPacket }                           from '../../shared/packet/schema.js'
-import { query, run, save, writePacket }          from '../db/db.js'
-import { listByLocation, getActiveBaseline }      from '../db/workers.js'
+import { query, run, save } from '../db/db.js'
+
+const TECH_COLORS = [
+  '#4285F4','#EA4335','#34A853','#FBBC04',
+  '#FF6D00','#46BDC6','#7C4DFF','#E52592',
+]
 
 export function mount(container, { navigate, session }) {
-  // Load reference data once
-  const companies = query(`SELECT * FROM companies WHERE active = 1 ORDER BY name`)
-  const techs     = query(`SELECT * FROM techs    WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
+  const techs = query(`SELECT * FROM techs WHERE active = 1 ORDER BY name`)
 
-  let _status = null   // { ok: bool, message: string } — set after generate
+  // Assign stable colors by sort order
+  const techColor = {}
+  techs.forEach((t, i) => { techColor[t.tech_id] = TECH_COLORS[i % TECH_COLORS.length] })
 
-  render()
+  // State
+  const now   = new Date()
+  let year    = now.getFullYear()
+  let month   = now.getMonth()        // 0-based
+  let filters = new Set(techs.map(t => t.tech_id))  // all on by default
+  let detail  = null                  // { packet, tech } currently selected
 
   function render() {
-    const coOpts = companies.map(c =>
-      `<option value="${c.company_id}">${esc(c.name)}</option>`
-    ).join('')
+    const packets = loadPackets(year, month)
+    const byDay   = groupByDay(packets)
 
-    const techOpts = techs.map(t =>
-      `<option value="${esc(t.tech_id)}">${esc(t.name)}</option>`
-    ).join('')
+    const calHtml = buildCalendar(year, month, byDay, filters, techColor)
 
-    const today = new Date().toISOString().slice(0, 10)
+    const filterBtns = techs.map(t => `
+      <button class="cal-tech-btn ${filters.has(t.tech_id) ? 'active' : ''}"
+              data-tech-id="${t.tech_id}"
+              style="--chip-color:${techColor[t.tech_id]}">
+        ${esc(t.initials ?? t.name.slice(0,2))}
+      </button>
+    `).join('')
 
     container.innerHTML = `
-      <div class="screen-header-row"><h1>Schedule</h1></div>
-      <div class="screen-body">
+      <div class="screen-header-row">
+        <h1>Schedule</h1>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-left:auto">
+          ${filterBtns}
+        </div>
+      </div>
+      <div class="screen-body" style="padding-bottom:0">
 
-        ${_status ? statusBanner(_status) : ''}
-
-        <div class="section-head"><h2>Generate Packet</h2></div>
-        <div class="info-card" style="margin-bottom:2rem">
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem">
-
-            <div>
-              <label class="field-label">Company *</label>
-              <select class="form-select" id="gen-co" style="width:100%">
-                <option value="">Select company…</option>${coOpts}
-              </select>
-            </div>
-            <div>
-              <label class="field-label">Location *</label>
-              <select class="form-select" id="gen-loc" style="width:100%" disabled>
-                <option value="">Select company first</option>
-              </select>
-            </div>
-            <div>
-              <label class="field-label">Tech *</label>
-              <select class="form-select" id="gen-tech" style="width:100%">
-                <option value="">Select tech…</option>${techOpts}
-              </select>
-            </div>
-            <div>
-              <label class="field-label">Visit Date *</label>
-              <input type="date" class="form-select" id="gen-date" value="${today}" style="width:100%">
-            </div>
-            <div style="grid-column:1/-1">
-              <label class="field-label">Notes for Tech</label>
-              <input type="text" class="search-input" id="gen-notes"
-                     placeholder="Optional — visible to tech in TechTool" style="width:100%">
-            </div>
-
-          </div>
-          <div style="margin-top:1rem;display:flex;align-items:center;gap:0.75rem">
-            <button class="btn btn-primary" id="gen-btn">Generate &amp; Write to Outbox</button>
-            <span id="gen-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
-          </div>
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+          <button class="btn btn-secondary btn-sm" id="prev-btn">&lsaquo; Prev</button>
+          <h2 style="margin:0;min-width:10rem;text-align:center">${monthName(year, month)}</h2>
+          <button class="btn btn-secondary btn-sm" id="next-btn">Next &rsaquo;</button>
+          <button class="btn btn-secondary btn-sm" id="today-btn" style="margin-left:auto">Today</button>
         </div>
 
-        <div class="section-head"><h2>Recent Packets</h2></div>
-        <div id="packets-list"></div>
+        <div style="display:grid;grid-template-columns:1fr ${detail ? '280px' : ''};gap:1rem;align-items:start">
+          <div>${calHtml}</div>
+          ${detail ? detailPanel(detail) : ''}
+        </div>
 
       </div>
     `
 
-    loadLocations()   // populate location select based on initial company value
-    loadPacketList()
+    // Nav buttons
+    container.querySelector('#prev-btn').addEventListener('click', () => {
+      month--; if (month < 0) { month = 11; year-- }; detail = null; render()
+    })
+    container.querySelector('#next-btn').addEventListener('click', () => {
+      month++; if (month > 11) { month = 0; year++ }; detail = null; render()
+    })
+    container.querySelector('#today-btn').addEventListener('click', () => {
+      year = now.getFullYear(); month = now.getMonth(); detail = null; render()
+    })
 
-    container.querySelector('#gen-co').addEventListener('change', loadLocations)
-    container.querySelector('#gen-btn').addEventListener('click', generate)
-  }
-
-  function loadLocations() {
-    const coId  = Number(container.querySelector('#gen-co').value)
-    const locSel = container.querySelector('#gen-loc')
-    if (!coId) { locSel.innerHTML = '<option value="">Select company first</option>'; locSel.disabled = true; return }
-
-    const locs = query(
-      `SELECT location_id, name, city, province FROM locations WHERE company_id = ? AND active = 1 ORDER BY name`,
-      [coId]
-    )
-    locSel.disabled = false
-    locSel.innerHTML = locs.length
-      ? `<option value="">Select location…</option>` +
-        locs.map(l => `<option value="${l.location_id}">${esc(l.name)}${l.city ? ' — ' + esc(l.city) : ''}</option>`).join('')
-      : `<option value="">No active locations</option>`
-  }
-
-  function loadPacketList() {
-    const wrap = container.querySelector('#packets-list')
-    let rows
-    try {
-      rows = query(
-        `SELECT p.*, c.name AS company_name, l.name AS location_name, tk.name AS tech_name
-         FROM packets p
-         JOIN  companies c ON c.company_id  = p.company_id
-         LEFT JOIN locations l  ON l.location_id = p.location_id
-         LEFT JOIN techs    tk ON tk.tech_id     = p.tech_id
-         ORDER BY p.created_at DESC LIMIT 50`
-      )
-    } catch (e) {
-      wrap.innerHTML = `<div class="error-banner">${esc(e.message)}</div>`; return
-    }
-    if (!rows.length) {
-      wrap.innerHTML = `<div class="table-card"><div class="table-empty">No packets generated yet.</div></div>`
-      return
-    }
-    wrap.innerHTML = `
-      <div class="table-card">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr><th>Company</th><th>Location</th><th>Visit Date</th><th>Tech</th><th>Status</th><th>File</th></tr>
-            </thead>
-            <tbody>
-              ${rows.map(p => `
-                <tr>
-                  <td>${esc(p.company_name)}</td>
-                  <td>${esc(p.location_name ?? '—')}</td>
-                  <td>${fmtDate(p.visit_date)}</td>
-                  <td>${esc(p.tech_name ?? '—')}</td>
-                  <td>${packetBadge(p.status)}</td>
-                  <td style="font-size:0.8rem;color:var(--clr-subtle)">${esc(p.filename)}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `
-  }
-
-  async function generate() {
-    const errEl  = container.querySelector('#gen-err')
-    errEl.textContent = ''
-    _status = null
-
-    const coId     = Number(container.querySelector('#gen-co').value)
-    const locId    = Number(container.querySelector('#gen-loc').value)
-    const techId   = container.querySelector('#gen-tech').value
-    const date     = container.querySelector('#gen-date').value
-    const notes    = container.querySelector('#gen-notes').value.trim()
-
-    if (!coId)   { errEl.textContent = 'Select a company.';  return }
-    if (!locId)  { errEl.textContent = 'Select a location.'; return }
-    if (!techId) { errEl.textContent = 'Select a tech.';     return }
-    if (!date)   { errEl.textContent = 'Set a visit date.';  return }
-
-    const company  = query('SELECT * FROM companies WHERE company_id = ?', [coId])[0]
-    const location = query('SELECT * FROM locations WHERE location_id = ?', [locId])[0]
-    const tech     = query('SELECT * FROM techs WHERE tech_id = ?', [techId])[0]
-    if (!company || !location || !tech) { errEl.textContent = 'Record not found — refresh and try again.'; return }
-
-    // Build enriched employee list (baseline + last 2 tests at this location)
-    const roster = listByLocation(locId)
-    const employees = roster.map(emp => ({
-      ...emp,
-      baseline:    getActiveBaseline(emp.employee_id),
-      prior_tests: query(
-        `SELECT * FROM tests WHERE employee_id = ? AND location_id = ? AND deleted_at IS NULL ORDER BY test_date DESC LIMIT 2`,
-        [emp.employee_id, locId]
-      ),
-    }))
-
-    // Province lives on the location in v2
-    const companyForPacket = { ...company, province: location.province ?? 'XX' }
-
-    const rules = query(
-      `SELECT * FROM classification_rules WHERE province_code = ? ORDER BY priority DESC`,
-      [location.province ?? 'XX']
-    )
-
-    let packet
-    try {
-      packet = createPacket({
-        company:          companyForPacket,
-        location,
-        employees,
-        rules,
-        counselTemplates: [],
-        hpdInventory:     [],
-        techId:           tech.tech_id,
-        techInitials:     tech.initials ?? tech.name.slice(0, 2).toUpperCase(),
-        visitDate:        date,
-        stickyNotes:      notes,
+    // Tech filter toggles
+    container.querySelectorAll('.cal-tech-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.techId
+        filters.has(id) ? filters.delete(id) : filters.add(id)
+        detail = null; render()
       })
-    } catch (e) {
-      errEl.textContent = `Packet build failed: ${e.message}`; return
-    }
+    })
 
-    // Derive filename the same way createPacket does internally
-    const coSlug  = company.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 15)
-    const locSlug = location.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 12)
-    const slug    = `${coSlug}-${locSlug}`
-    const initials = tech.initials ?? tech.name.slice(0, 2).toUpperCase()
-    const filename = `${slug}_${date}_${initials}.json`
+    // Chip clicks
+    container.querySelectorAll('.cal-chip').forEach(chip => {
+      chip.addEventListener('click', e => {
+        e.stopPropagation()
+        const packetId = chip.dataset.packetId
+        const pkt = packets.find(p => p.packet_id === packetId)
+        const tech = techs.find(t => t.tech_id === pkt?.tech_id)
+        detail = pkt ? { packet: pkt, tech } : null
+        render()
+      })
+    })
 
-    try {
-      await writePacket(tech.folder_name, filename, packet)
-      run(
-        `INSERT OR REPLACE INTO packets (packet_id, company_id, location_id, tech_id, visit_date, filename, status, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-        [packet.packet_id, coId, locId, techId, date, filename, session.writerName]
-      )
-      await save(session.writerName)
-      _status = { ok: true, message: `Packet written → ${esc(tech.name)}/outbox/${esc(filename)} (${roster.length} workers)` }
-    } catch (e) {
-      _status = { ok: false, message: `Write failed: ${e.message}` }
-    }
+    // Close detail on calendar background click
+    container.querySelector('.cal-grid')?.addEventListener('click', () => {
+      detail = null; render()
+    })
 
-    render()
+    // Reschedule in detail panel
+    container.querySelector('#reschedule-btn')?.addEventListener('click', async () => {
+      const newDate = container.querySelector('#reschedule-date').value
+      if (!newDate) return
+      const errEl = container.querySelector('#reschedule-err')
+      try {
+        run(`UPDATE packets SET visit_date = ?, updated_at = datetime('now') WHERE packet_id = ?`,
+            [newDate, detail.packet.packet_id])
+        await save(session.writerName)
+        detail = null
+        // Move view to rescheduled month if needed
+        const d = new Date(newDate + 'T00:00:00')
+        year = d.getFullYear(); month = d.getMonth()
+        render()
+      } catch (e) {
+        errEl.textContent = e.message
+      }
+    })
+
+    // Cancel chip
+    container.querySelector('#cancel-btn')?.addEventListener('click', async () => {
+      if (!confirm(`Cancel this packet? This cannot be undone.`)) return
+      const errEl = container.querySelector('#reschedule-err')
+      try {
+        run(`UPDATE packets SET status = 'cancelled', updated_at = datetime('now') WHERE packet_id = ?`,
+            [detail.packet.packet_id])
+        await save(session.writerName)
+        detail = null; render()
+      } catch (e) {
+        errEl.textContent = e.message
+      }
+    })
   }
+
+  render()
 }
 
-function statusBanner({ ok, message }) {
-  return ok
-    ? `<div class="success-banner" style="margin-bottom:1rem"><strong>Packet generated.</strong> ${message}</div>`
-    : `<div class="error-banner"   style="margin-bottom:1rem"><strong>Error:</strong> ${message}</div>`
+// ── Data ──────────────────────────────────────────────────────────────────────
+
+function loadPackets(year, month) {
+  const first = `${year}-${String(month+1).padStart(2,'0')}-01`
+  const last  = lastDayOf(year, month)
+  return query(
+    `SELECT p.*, c.name AS company_name, l.name AS location_name, l.province,
+            tk.name AS tech_name, tk.initials AS tech_initials, tk.tech_id
+     FROM packets p
+     JOIN  companies c ON c.company_id  = p.company_id
+     LEFT JOIN locations l  ON l.location_id = p.location_id
+     LEFT JOIN techs    tk ON tk.tech_id     = p.tech_id
+     WHERE p.visit_date BETWEEN ? AND ? AND p.status != 'cancelled'
+     ORDER BY p.visit_date`,
+    [first, last]
+  )
 }
 
-function packetBadge(status) {
-  const map = { pending: ['badge-yellow','Pending'], imported: ['badge-green','Imported'],
-                cancelled: ['badge-gray','Cancelled'], error: ['badge-red','Error'] }
-  const [cls, lbl] = map[status] ?? ['badge-gray', esc(status ?? '?')]
-  return `<span class="badge ${cls}">${lbl}</span>`
+function groupByDay(packets) {
+  const map = {}
+  for (const p of packets) {
+    const d = p.visit_date?.slice(0, 10)
+    if (!d) continue
+    ;(map[d] ??= []).push(p)
+  }
+  return map
+}
+
+// ── Calendar HTML ─────────────────────────────────────────────────────────────
+
+function buildCalendar(year, month, byDay, filters, techColor) {
+  const first     = new Date(year, month, 1)
+  const lastDate  = new Date(year, month + 1, 0).getDate()
+  const startDow  = first.getDay()   // 0=Sun
+  const today     = new Date().toISOString().slice(0, 10)
+
+  const dayHeaders = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    .map(d => `<div style="text-align:center;font-size:0.7rem;font-weight:600;color:var(--clr-subtle);padding:0.25rem">${d}</div>`)
+    .join('')
+
+  let cells = ''
+
+  // Leading empty cells
+  for (let i = 0; i < startDow; i++) {
+    cells += `<div class="cal-cell cal-cell-out"></div>`
+  }
+
+  // Day cells
+  for (let d = 1; d <= lastDate; d++) {
+    const iso   = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    const pkts  = (byDay[iso] ?? []).filter(p => filters.has(p.tech_id))
+    const isToday = iso === today
+
+    const chips = pkts.map(p => {
+      const color = techColor[p.tech_id] ?? '#888'
+      return `<div class="cal-chip" data-packet-id="${esc(p.packet_id)}"
+                   style="background:${color};padding:1px 4px;margin-top:1px;
+                          border-radius:3px;color:#fff;font-size:0.68rem;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer"
+                   title="${esc(p.company_name)} — ${esc(p.tech_name ?? '')}">
+                ${esc(p.tech_initials ?? p.tech_name?.slice(0,2) ?? '?')} ${esc(p.company_name)}
+              </div>`
+    }).join('')
+
+    cells += `
+      <div class="cal-cell ${isToday ? 'cal-cell-today' : ''}">
+        <div class="cal-day-num" style="font-size:0.75rem;text-align:right;color:${isToday ? 'var(--clr-primary)' : 'var(--clr-subtle)'};font-weight:${isToday ? '700' : '400'}">${d}</div>
+        ${chips}
+      </div>
+    `
+  }
+
+  // Trailing empty cells to complete the grid
+  const total = startDow + lastDate
+  const trailing = total % 7 === 0 ? 0 : 7 - (total % 7)
+  for (let i = 0; i < trailing; i++) {
+    cells += `<div class="cal-cell cal-cell-out"></div>`
+  }
+
+  return `
+    <div class="cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);border:1px solid var(--clr-border);border-radius:6px;overflow:hidden">
+      ${dayHeaders}
+      ${cells}
+    </div>
+  `
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────────
+
+function detailPanel({ packet: p, tech }) {
+  return `
+    <div class="info-card" style="position:sticky;top:1rem">
+      <div style="font-size:0.75rem;color:var(--clr-subtle);margin-bottom:0.5rem">Packet detail</div>
+      <dl>
+        ${row('Company',   p.company_name)}
+        ${row('Location',  p.location_name)}
+        ${row('Province',  p.province)}
+        ${row('Visit',     fmtDate(p.visit_date))}
+        ${row('Tech',      p.tech_name)}
+        ${row('Status',    p.status)}
+        ${row('File',      p.filename)}
+        ${row('Created',   fmtDate(p.created_at?.slice(0,10)))}
+      </dl>
+
+      <div style="margin-top:1rem">
+        <label class="field-label">Reschedule to:</label>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <input type="date" id="reschedule-date" class="form-select"
+                 value="${p.visit_date ?? ''}" style="flex:1">
+          <button class="btn btn-primary btn-sm" id="reschedule-btn">Save</button>
+        </div>
+        <div id="reschedule-err" style="color:var(--clr-error-text);font-size:0.8rem;margin-top:0.25rem"></div>
+      </div>
+
+      <div style="margin-top:0.75rem">
+        <button class="btn btn-danger btn-sm" id="cancel-btn">Cancel Packet</button>
+      </div>
+    </div>
+  `
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function monthName(year, month) {
+  return new Date(year, month, 1).toLocaleDateString('en-CA', { month: 'long', year: 'numeric' })
+}
+
+function lastDayOf(year, month) {
+  const d = new Date(year, month + 1, 0)
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function row(label, value) {
+  if (value == null || value === '') return ''
+  return `<dt>${esc(label)}</dt><dd>${esc(String(value))}</dd>`
 }
 
 function esc(s) {
@@ -250,5 +282,5 @@ function esc(s) {
 
 function fmtDate(d) {
   if (!d) return ''
-  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-CA') } catch { return d }
+  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-CA', { month:'short', day:'numeric', year:'numeric' }) } catch { return d }
 }
