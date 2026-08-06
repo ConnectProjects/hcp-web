@@ -36,10 +36,9 @@ const MASTERDB_NAV = [
 ]
 
 const TECHTOOL_NAV = [
-  { name: 'tt-inbox',   label: 'Inbox'    },
-  { name: 'tt-test',    label: 'Test'     },
-  { name: 'tt-history', label: 'History'  },
-  { name: 'tt-settings',label: 'Settings' },
+  { name: 'tt-schedule', label: 'Schedule' },
+  { name: 'tt-history',  label: 'History'  },
+  { name: 'tt-settings', label: 'Settings' },
 ]
 
 function _activeNav() {
@@ -103,7 +102,7 @@ function _setSidebar(visible, active) {
   const brand   = document.getElementById('brand-corner')
   const app     = document.getElementById('app')
   sidebar.hidden = !visible
-  if (brand) brand.hidden = !visible
+  if (brand) brand.hidden = !visible || session.user?.role === 'aud_tech'
   app.classList.toggle('has-sidebar', visible)
   if (visible) _renderSidebar(active)
 }

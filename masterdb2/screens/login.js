@@ -17,7 +17,7 @@
  * No imports from app.js — receives navigate + session via params.
  */
 
-import { loadSql, tryConnect, connectWithPicker, query, claimLock, StoreFileNotFoundError } from '../db/db.js'
+import { loadSql, tryConnect, connectWithPicker, query, run, save, claimLock, StoreFileNotFoundError } from '../db/db.js'
 
 const WASM = new URL('../../masterdb/vendor/sql-wasm.wasm', import.meta.url).href
 
@@ -39,6 +39,7 @@ export function mount(container, { navigate, session }) {
         return
       }
       session.openResult = result
+      await ensureBaselines()
       if (result.conflicts.length) {
         render('conflict-warning', { conflicts: result.conflicts })
       } else {
@@ -58,6 +59,7 @@ export function mount(container, { navigate, session }) {
     try {
       const result = await connectWithPicker()
       session.openResult = result
+      await ensureBaselines()
       if (result.conflicts.length) {
         render('conflict-warning', { conflicts: result.conflicts })
       } else {
@@ -82,7 +84,7 @@ export function mount(container, { navigate, session }) {
     // holds it, the dashboard will show the lock banner from readLock())
     try { await claimLock(session.writerName) } catch { /* StoreLockError handled in dashboard */ }
 
-    navigate(user.role === 'aud_tech' ? 'tt-inbox' : 'dashboard')
+    navigate(user.role === 'aud_tech' ? 'tt-schedule' : 'dashboard')
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -190,9 +192,8 @@ export function mount(container, { navigate, session }) {
 
     const headerHTML = `
       <div class="login-header">
-        <div class="login-logo">HCP</div>
-        <h1 class="login-title">Connect Hearing</h1>
-        <p class="login-subtitle">Who&apos;s using this today?</p>
+        <img src="../shared/techtool%20banner.png" alt="Connect Hearing TechTool" class="login-banner-img">
+        <p class="login-subtitle" style="margin-top:0.375rem">Who&apos;s using this today?</p>
       </div>
     `
 
@@ -235,6 +236,58 @@ export function mount(container, { navigate, session }) {
 
     // Wire up the "wrong folder" button if present
     el.querySelector('#wrong-folder-btn')?.addEventListener('click', onPickFolder)
+  }
+
+  // ── ensureBaselines ────────────────────────────────────────────────────────
+  // Silent auto-repair: for any employee whose earliest test is not already
+  // a Baseline, update that test's type and insert a baselines row.
+  // Runs once at DB open — no UI, no interaction.
+
+  async function ensureBaselines() {
+    try {
+      const THR_KEYS = [
+        'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
+        'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k',
+      ]
+      const thrCols = THR_KEYS.join(', ')
+
+      const affected = query(`
+        SELECT e.employee_id,
+               t.test_id, t.test_date, t.location_id,
+               ${thrCols}
+        FROM employees e
+        JOIN tests t ON t.employee_id = e.employee_id
+               AND t.deleted_at IS NULL
+               AND t.test_id = (
+                 SELECT test_id FROM tests
+                 WHERE  employee_id = e.employee_id AND deleted_at IS NULL
+                 ORDER BY test_date ASC, test_id ASC LIMIT 1
+               )
+        WHERE e.deleted_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM baselines b
+            WHERE  b.employee_id = e.employee_id
+              AND  b.archived    = 0
+              AND  b.deleted_at  IS NULL
+          )
+      `)
+
+      if (!affected.length) return
+
+      for (const row of affected) {
+        run(`UPDATE tests SET test_type = 'Baseline' WHERE test_id = ?`, [row.test_id])
+
+        const thJSON = JSON.stringify(Object.fromEntries(THR_KEYS.map(k => [k, row[k]])))
+
+        run(`
+          INSERT INTO baselines
+            (employee_id, location_id, test_id, test_date, thresholds, archived, created_at)
+          VALUES (?, ?, ?, ?, ?, 0, datetime('now'))
+        `, [row.employee_id, row.location_id, row.test_id, row.test_date, thJSON])
+      }
+
+      await save('startup-repair')
+    } catch { /* silent */ }
   }
 
   // ── Start ──────────────────────────────────────────────────────────────────

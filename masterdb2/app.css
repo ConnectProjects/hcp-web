@@ -613,6 +613,139 @@ ul { list-style: none; }
   image-rendering: crisp-edges;
 }
 
+/* ── TechTool — booth switcher ─────────────────────────────────────────────── */
+.booth-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.booth-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  padding: 0.625rem 1rem;
+  border: 1.5px solid var(--clr-border);
+  border-radius: var(--radius);
+  background: var(--clr-white);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.1s, background 0.1s;
+}
+.booth-tab:hover:not(.active) { border-color: #afc8f0; background: #f0f6ff; }
+.booth-tab.active { border-color: var(--clr-primary); background: #f4fce8; }
+.booth-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clr-subtle);
+}
+.booth-tab.active .booth-label { color: var(--clr-primary); }
+.booth-emp { font-size: 0.9375rem; font-weight: 500; color: var(--clr-text); }
+.booth-emp.empty { color: var(--clr-subtle); font-style: italic; font-size: 0.875rem; }
+
+/* Mini booth tabs in worker list */
+.booth-mini-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.875rem;
+  flex-wrap: wrap;
+}
+.booth-mini-tab {
+  padding: 0.3125rem 0.75rem;
+  border: 1.5px solid var(--clr-border);
+  border-radius: 99px;
+  background: var(--clr-white);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color 0.1s, background 0.1s;
+}
+.booth-mini-tab:hover:not(.active) { border-color: #afc8f0; background: #f0f6ff; }
+.booth-mini-tab.active { border-color: var(--clr-primary); background: #f4fce8; color: #3d6408; }
+
+/* ── TechTool — questionnaire ──────────────────────────────────────────────── */
+.q-section { margin-bottom: 1.25rem; }
+.q-section-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--clr-subtle);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.q-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.625rem;
+  flex-wrap: wrap;
+}
+.q-label { font-size: 0.875rem; flex: 1; min-width: 14rem; }
+.q-sub { padding-left: 1.25rem; border-left: 2px solid var(--clr-border); margin: 0.25rem 0 0.75rem; }
+.q-check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+.q-check-row input[type=checkbox] { width: 1rem; height: 1rem; flex-shrink: 0; cursor: pointer; }
+
+/* Yes / No pill buttons */
+.yesno-group { display: flex; gap: 0.375rem; }
+.yesno-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3125rem 0.875rem;
+  border: 1.5px solid var(--clr-border);
+  border-radius: 99px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background: var(--clr-white);
+  transition: border-color 0.1s, background 0.1s, color 0.1s;
+  user-select: none;
+}
+.yesno-btn input[type=radio] { position: absolute; opacity: 0; width: 0; height: 0; }
+.yesno-btn:has(input:checked) {
+  background: var(--clr-primary);
+  border-color: var(--clr-primary);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── TechTool — calendar chip status colors ────────────────────────────────── */
+.cal-dh {
+  background: var(--clr-surface);
+  text-align: center; font-size: 0.75rem; font-weight: 600;
+  color: var(--clr-subtle); text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 0.375rem 0;
+  border-right: 1px solid var(--clr-border);
+  border-bottom: 1px solid var(--clr-border);
+}
+.cal-chip-scheduled  { background: var(--clr-white); color: var(--clr-subtle); border: 1.5px dashed var(--clr-border); }
+.cal-chip-not-started{ background: #9ca3af; color: #fff; }
+.cal-chip-progress   { background: #3b82f6; color: #fff; }
+.cal-chip-complete   { background: #22c55e; color: #fff; }
+.cal-chip-scheduled:hover  { background: var(--clr-surface); }
+.cal-chip-not-started:hover{ opacity: 0.85; }
+.cal-chip-progress:hover   { opacity: 0.85; }
+.cal-chip-complete:hover   { opacity: 0.85; }
+
+/* ── Login banner image ─────────────────────────────────────────────────────── */
+.login-banner-img {
+  display: block;
+  width: 210px;
+  border-radius: var(--radius);
+  margin: 0 auto 0.625rem;
+}
+
 /* ── Print ─────────────────────────────────────────────────────────────────── */
 @media print {
   .sidebar, .brand-corner, .screen-header-row button, .btn, #back-btn { display: none !important; }
