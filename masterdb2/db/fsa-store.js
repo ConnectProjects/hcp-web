@@ -386,10 +386,24 @@ export async function pickStore() {
 
 /**
  * Try to restore the previously-chosen OneDrive folder from IndexedDB.
- * Returns an FsaStore if a valid, permitted handle is found; null otherwise.
- * A null return means the app must call pickStore() to let the user choose again.
+ * Only queries permission — does NOT call requestPermission (requires user gesture).
+ * Returns an FsaStore if a stored handle exists and permission is already granted,
+ * null otherwise. A null return means the UI should show a button to reconnect or pick.
  */
 export async function recallStore() {
+  const handle = await loadRootHandle()
+  if (!handle) return null
+  const state = await handle.queryPermission({ mode: 'readwrite' })
+  if (state !== 'granted') return null
+  return new FsaStore(handle)
+}
+
+/**
+ * Restore the stored folder handle and request permission (must be called from
+ * inside a user-gesture handler — button click, etc.).
+ * Returns an FsaStore on success, null if no handle stored or permission denied.
+ */
+export async function recallStoreWithPermission() {
   const handle = await loadRootHandle()
   if (!handle) return null
   if (!(await verifyPermission(handle))) return null

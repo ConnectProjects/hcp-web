@@ -17,7 +17,7 @@
  */
 
 // ── Storage backend (swap this line to switch to graph-store) ─────────────────
-import { pickStore, recallStore, StoreConcurrencyError, StoreLockError, StoreFileNotFoundError } from './fsa-store.js'
+import { pickStore, recallStore, recallStoreWithPermission, loadRootHandle, StoreConcurrencyError, StoreLockError, StoreFileNotFoundError } from './fsa-store.js'
 export { StoreConcurrencyError, StoreLockError, StoreFileNotFoundError }
 
 // ── Module state ──────────────────────────────────────────────────────────────
@@ -73,6 +73,23 @@ export async function tryConnect() {
 export async function connectWithPicker() {
   if (!_SQL) throw new Error('call loadSql() before connecting')
   return _doConnect(await pickStore())
+}
+
+/**
+ * Re-connect using the previously stored folder handle, requesting permission.
+ * Must be called from inside a user-gesture handler (button click).
+ * Returns { saveSeq, lastWriter, savedAt, conflicts }, or null if no handle stored.
+ */
+export async function reconnect() {
+  if (!_SQL) throw new Error('call loadSql() before connecting')
+  const store = await recallStoreWithPermission()
+  if (!store) return null
+  return _doConnect(store)
+}
+
+/** Returns true if a folder handle has been stored from a previous session. */
+export async function hasStoredFolder() {
+  return !!(await loadRootHandle())
 }
 
 export function isOpen() { return !!_db }

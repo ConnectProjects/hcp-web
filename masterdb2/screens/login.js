@@ -17,7 +17,7 @@
  * No imports from app.js — receives navigate + session via params.
  */
 
-import { loadSql, tryConnect, connectWithPicker, query, run, save, claimLock, StoreFileNotFoundError } from '../db/db.js'
+import { loadSql, tryConnect, connectWithPicker, reconnect, hasStoredFolder, query, run, save, claimLock, StoreFileNotFoundError } from '../db/db.js'
 
 const WASM = new URL('../vendor/sql-wasm.wasm', import.meta.url).href
 
@@ -35,9 +35,31 @@ export function mount(container, { navigate, session }) {
       render('connecting', { message: 'Connecting to OneDrive folder…' })
       const result = await tryConnect()
       if (!result) {
-        render('needs-folder')
+        const stored = await hasStoredFolder()
+        render(stored ? 'needs-permission' : 'needs-folder')
         return
       }
+      session.openResult = result
+      await ensureBaselines()
+      if (result.conflicts.length) {
+        render('conflict-warning', { conflicts: result.conflicts })
+      } else {
+        showUserSelect()
+      }
+    } catch (e) {
+      if (e instanceof StoreFileNotFoundError) {
+        render('db-not-found')
+      } else {
+        render('error', { message: e.message })
+      }
+    }
+  }
+
+  async function onReconnect() {
+    render('loading-db', { message: 'Reconnecting…' })
+    try {
+      const result = await reconnect()
+      if (!result) { render('needs-folder'); return }
       session.openResult = result
       await ensureBaselines()
       if (result.conflicts.length) {
@@ -113,6 +135,18 @@ export function mount(container, { navigate, session }) {
       case 'loading-db':
         card('', `<div class="spinner"></div><p class="status-text">${esc(data.message)}</p>`)
         break
+
+      case 'needs-permission': {
+        const el = card('', `
+          <p class="status-text">
+            Click below to grant access to your OneDrive folder.
+          </p>
+          <button class="btn btn-primary btn-block" id="reconnect-btn">Grant Folder Access</button>
+          <p class="hint-text">You will see a browser permission prompt.</p>
+        `)
+        el.querySelector('#reconnect-btn').addEventListener('click', onReconnect)
+        break
+      }
 
       case 'needs-folder': {
         const el = card('', `
