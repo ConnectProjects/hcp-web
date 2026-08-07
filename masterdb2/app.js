@@ -111,12 +111,6 @@ function _renderSidebar(active) {
   const footer = document.getElementById('sidebar-footer')
   if (!nav) return
 
-  const isTech   = session.user?.role === 'aud_tech'
-  const logoMark = document.querySelector('.logo-mark')
-  const logoSub  = document.querySelector('.logo-sub')
-  if (logoMark) logoMark.textContent = isTech ? 'TT'  : 'MDB'
-  if (logoSub)  logoSub.textContent  = isTech ? 'v2'  : 'v2'
-
   nav.innerHTML = _activeNav().map(({ name, label }) =>
     `<a class="nav-link${name === active ? ' is-active' : ''}" data-screen="${name}" href="#">${_esc(label)}</a>`
   ).join('')

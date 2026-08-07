@@ -61,22 +61,15 @@ ul { list-style: none; }
 }
 
 .sidebar-logo {
-  display: flex;
-  align-items: baseline;
-  gap: 0.35rem;
-  padding: 1.25rem 1.125rem;
+  padding: 1rem 1.125rem;
   border-bottom: 1px solid rgba(255,255,255,0.07);
 }
-.logo-mark {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--clr-white);
-  letter-spacing: 0.04em;
-}
-.logo-sub {
-  font-size: 0.7rem;
-  color: var(--clr-sidebar-text);
-  font-weight: 500;
+.sidebar-banner {
+  display: block;
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  object-fit: contain;
 }
 /* favicon moved to brand-corner — see below */
 
