@@ -61,15 +61,13 @@ ul { list-style: none; }
 }
 
 .sidebar-logo {
-  padding: 1rem 1.125rem;
+  padding: 0;
   border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .sidebar-banner {
   display: block;
   width: 100%;
-  max-width: 160px;
   height: auto;
-  object-fit: contain;
 }
 /* favicon moved to brand-corner — see below */
 
