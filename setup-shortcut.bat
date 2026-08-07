@@ -8,8 +8,8 @@ echo.
 set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
 if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
-set "ICON=%~dp0favicon.ico"
-if not exist "%ICON%" set "ICON=%EDGE%,0"
+set "ICON=%~dp0favicon.ico,0"
+if not exist "%~dp0favicon.ico" set "ICON=%EDGE%,0"
 
 set "PS=%TEMP%\hcp_%RANDOM%.ps1"
 echo $ws = New-Object -ComObject WScript.Shell > "%PS%"
