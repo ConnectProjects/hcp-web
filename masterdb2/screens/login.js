@@ -19,7 +19,7 @@
 
 import { loadSql, tryConnect, connectWithPicker, query, run, save, claimLock, StoreFileNotFoundError } from '../db/db.js'
 
-const WASM = new URL('../../masterdb/vendor/sql-wasm.wasm', import.meta.url).href
+const WASM = new URL('../vendor/sql-wasm.wasm', import.meta.url).href
 
 export function mount(container, { navigate, session }) {
   const root = document.createElement('div')
