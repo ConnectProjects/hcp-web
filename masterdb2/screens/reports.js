@@ -64,7 +64,7 @@ export function mount(container) {
   function populateLocations(companyId) {
     const filtered = companyId
       ? allLocations.filter(l => l.company_id === Number(companyId))
-      : allLocations
+      : []
     locationsEl.innerHTML = filtered.map(l =>
       `<option value="${l.location_id}">${esc(l.name)}</option>`
     ).join('')
