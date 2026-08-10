@@ -166,7 +166,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr><td>${esc(w)}</td><td style="white-space:nowrap"><strong>Test Date:</strong> ${fmtDate(v.visit_date)}</td></tr>
+        <tr><td>${esc(w)}</td></tr>
       `).join('')
 
       return `
@@ -180,7 +180,7 @@ export function mount(container) {
               <span style="font-size:0.875rem">${esc(v.location_name)}${v.province ? `, ${esc(v.province)}` : ''}</span>
             </div>
             <div style="font-size:0.8rem;color:var(--clr-subtle);white-space:nowrap;margin-left:1rem">
-              ${fmtDate(v.visit_date)}
+              <strong>Test Date:</strong> ${fmtDate(v.visit_date)}
               &nbsp;·&nbsp;
               <strong>${v.workers.length}</strong> worker${v.workers.length !== 1 ? 's' : ''}
             </div>
@@ -188,7 +188,7 @@ export function mount(container) {
           <div class="table-wrap" style="padding:0">
             <table class="data-table" style="margin:0">
               <thead>
-                <tr><th>Worker</th><th>Test Date</th></tr>
+                <tr><th>Worker</th></tr>
               </thead>
               <tbody>${workerRowsHTML}</tbody>
             </table>
