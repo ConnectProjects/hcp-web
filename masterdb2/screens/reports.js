@@ -46,7 +46,7 @@ export function mount(container) {
               ${coOpts}
             </select>
           </div>
-          <div>
+          <div id="r-locations-wrap" style="display:none">
             <label style="font-size:0.8rem;color:var(--clr-subtle);display:block;margin-bottom:0.25rem">Locations <span style="font-weight:400">(none = all)</span></label>
             <select class="form-select" id="r-locations" multiple style="min-width:220px;height:7rem"></select>
           </div>
@@ -58,16 +58,21 @@ export function mount(container) {
     </div>
   `
 
-  const companyEl   = container.querySelector('#r-company')
-  const locationsEl = container.querySelector('#r-locations')
+  const companyEl      = container.querySelector('#r-company')
+  const locationsEl    = container.querySelector('#r-locations')
+  const locationsWrap  = container.querySelector('#r-locations-wrap')
 
   function populateLocations(companyId) {
-    const filtered = companyId
-      ? allLocations.filter(l => l.company_id === Number(companyId))
-      : []
+    if (!companyId) {
+      locationsWrap.style.display = 'none'
+      locationsEl.innerHTML = ''
+      return
+    }
+    const filtered = allLocations.filter(l => l.company_id === Number(companyId))
     locationsEl.innerHTML = filtered.map(l =>
       `<option value="${l.location_id}">${esc(l.name)}</option>`
     ).join('')
+    locationsWrap.style.display = ''
   }
 
   populateLocations('')
