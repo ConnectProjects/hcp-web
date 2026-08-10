@@ -11,13 +11,13 @@ document.getElementById('logout-btn').addEventListener('click', logout);
 
 // ---- State --------------------------------------------------
 let allCompanies = [];
-let naicsList    = [];
+let cuList       = [];
 
 const REFRESH_INTERVAL = 60_000;
 
 const filters = {
   province: '', rbs_status: '', score_min: '', score_max: '',
-  naics_code: '', source: '', outreach: '', search: '', fork: '',
+  cu_number: '', source: '', outreach: '', search: '', fork: '',
 };
 let sortKey = 'hazard_score';
 let sortDir = 'desc';
@@ -44,9 +44,9 @@ const OUTREACH_LABELS = {
 };
 
 // ---- Boot load ----------------------------------------------
-await Promise.all([loadNaics(), loadCompanies()]);
+await Promise.all([loadCu(), loadCompanies()]);
 buildProvinceFilter();
-buildNaicsFilter();
+buildCuFilter();
 renderStats();
 renderTable();
 stampLastUpdated();
@@ -56,7 +56,7 @@ startAutoRefresh();
 async function loadCompanies() {
   const { data, error } = await db
     .from('companies')
-    .select('*, naics_reference(code, descriptor, hazard_score), outreach(id, token, channel, contact_name, contact_email, contact_phone, consent_obtained_at, drafted_at, sent_at, first_opened_at, responded_at, created_at)')
+    .select('*, cu_reference(cu_number, cu_name, hazard_score), outreach(id, token, channel, contact_name, contact_email, contact_phone, consent_obtained_at, drafted_at, sent_at, first_opened_at, responded_at, created_at)')
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
@@ -71,12 +71,12 @@ async function loadCompanies() {
   updateForkCounts();
 }
 
-async function loadNaics() {
+async function loadCu() {
   const { data } = await db
-    .from('naics_reference')
-    .select('code, descriptor, hazard_score, is_noise_hazard')
-    .order('code');
-  naicsList = data ?? [];
+    .from('cu_reference')
+    .select('cu_number, cu_name, hazard_score, is_noise_hazard')
+    .order('cu_number');
+  cuList = data ?? [];
 }
 
 // ---- Fork counts (toolbar badges) --------------------------
@@ -123,7 +123,7 @@ function applyFilters() {
   if (filters.province)   rows = rows.filter(c => c.province === filters.province);
   if (filters.rbs_status) rows = rows.filter(c => c.rbs_status === filters.rbs_status);
   if (filters.source)     rows = rows.filter(c => c.source === filters.source);
-  if (filters.naics_code) rows = rows.filter(c => c.naics_code === filters.naics_code);
+  if (filters.cu_number) rows = rows.filter(c => c.cu_number === filters.cu_number);
   if (filters.outreach)   rows = rows.filter(c => c._outreach_status === filters.outreach);
   if (filters.fork)       rows = rows.filter(c => c.email_fork === filters.fork);
 
@@ -218,8 +218,8 @@ function renderTable() {
     const scoreText  = score ?? '—';
     const rbsClass   = c.rbs_status === 'submitted' ? 'badge-submitted' : 'badge-not-submitted';
     const rbsLabel   = c.rbs_status === 'submitted' ? 'Submitted' : 'Not submitted';
-    const naicsDesc  = c.naics_reference?.descriptor ?? (c.naics_code ? c.naics_code : '—');
-    const naicsShort = naicsDesc.length > 32 ? naicsDesc.slice(0, 32) + '…' : naicsDesc;
+    const cuDesc  = c.cu_reference?.cu_name ?? (c.cu_number ? c.cu_number : '—');
+    const cuShort = cuDesc.length > 32 ? cuDesc.slice(0, 32) + '…' : cuDesc;
     const added      = c.created_at
       ? new Date(c.created_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
@@ -246,7 +246,7 @@ function renderTable() {
       <td class="nowrap">${esc(c.province ?? '')}${c.city ? `<div class="cell-sub">${esc(c.city)}</div>` : ''}</td>
       <td class="cell-phone nowrap">${c.phone ? `<a href="tel:${esc(c.phone)}">${esc(c.phone)}</a>` : '<span class="text-muted">—</span>'}</td>
       <td class="nowrap"><span class="badge ${scoreClass}">${scoreText}</span></td>
-      <td title="${esc(naicsDesc)}">${esc(naicsShort)}</td>
+      <td title="${esc(cuDesc)}">${esc(cuShort)}</td>
       <td class="nowrap">
         <span class="${outreachClass}">${outreachLabel}</span>
         ${respondedDate}
@@ -280,18 +280,18 @@ function buildProvinceFilter() {
     provinces.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
 }
 
-function buildNaicsFilter() {
-  const noiseCodes = naicsList.filter(n => n.is_noise_hazard);
-  const sel = document.getElementById('f-naics');
+function buildCuFilter() {
+  const noiseCus = cuList.filter(n => n.is_noise_hazard);
+  const sel = document.getElementById('f-cu');
   sel.innerHTML = '<option value="">All categories</option>' +
-    noiseCodes.map(n => {
-      const label = `${n.code} — ${n.descriptor.slice(0, 40)}${n.descriptor.length > 40 ? '…' : ''}`;
-      return `<option value="${esc(n.code)}">${esc(label)}</option>`;
+    noiseCus.map(n => {
+      const label = `${n.cu_number} — ${n.cu_name.slice(0, 40)}${n.cu_name.length > 40 ? '…' : ''}`;
+      return `<option value="${esc(n.cu_number)}">${esc(label)}</option>`;
     }).join('');
 
-  const modalSel = document.getElementById('edit-naics-code');
+  const modalSel = document.getElementById('edit-cu-number');
   modalSel.innerHTML = '<option value="">— Unknown —</option>' +
-    naicsList.map(n => `<option value="${esc(n.code)}">${esc(n.code)} — ${esc(n.descriptor.slice(0, 50))}</option>`).join('');
+    cuList.map(n => `<option value="${esc(n.cu_number)}">${esc(n.cu_number)} — ${esc(n.cu_name.slice(0, 50))}</option>`).join('');
 }
 
 // ---- Filter events -----------------------------------------
@@ -299,7 +299,7 @@ document.getElementById('f-province').addEventListener('change', e => { filters.
 document.getElementById('f-rbs').addEventListener('change',      e => { filters.rbs_status = e.target.value; renderTable(); });
 document.getElementById('f-score-min').addEventListener('change',e => { filters.score_min  = e.target.value; renderTable(); });
 document.getElementById('f-score-max').addEventListener('change',e => { filters.score_max  = e.target.value; renderTable(); });
-document.getElementById('f-naics').addEventListener('change',    e => { filters.naics_code = e.target.value; renderTable(); });
+document.getElementById('f-cu').addEventListener('change',       e => { filters.cu_number  = e.target.value; renderTable(); });
 document.getElementById('f-source').addEventListener('change',   e => { filters.source     = e.target.value; renderTable(); });
 document.getElementById('f-outreach').addEventListener('change', e => { filters.outreach   = e.target.value; renderTable(); });
 document.getElementById('f-fork').addEventListener('change',     e => { filters.fork       = e.target.value; renderTable(); });
@@ -876,8 +876,8 @@ function openEditModal(id) {
   document.getElementById('edit-phone').value                 = company?.phone      ?? '';
   document.getElementById('edit-email').value                 = company?.email      ?? '';
   document.getElementById('edit-website').value               = company?.website    ?? '';
-  document.getElementById('edit-naics-code').value            = company?.naics_code ?? '';
-  document.getElementById('edit-naics-confidence').value      = company?.naics_confidence ?? 'unknown';
+  document.getElementById('edit-cu-number').value             = company?.cu_number     ?? '';
+  document.getElementById('edit-cu-confidence').value         = company?.cu_confidence ?? 'unknown';
   document.getElementById('edit-hazard-score').value          = company?.hazard_score ?? '';
   document.getElementById('edit-notes').value                 = company?.notes      ?? '';
   document.getElementById('modal-delete-btn').classList.toggle('hidden', !company);
@@ -913,15 +913,15 @@ document.getElementById('modal-save-btn').addEventListener('click', async () => 
     phone:            document.getElementById('edit-phone').value.trim()                  || null,
     email:            document.getElementById('edit-email').value.trim()                  || null,
     website:          document.getElementById('edit-website').value.trim()                || null,
-    naics_code:       document.getElementById('edit-naics-code').value                    || null,
-    naics_confidence: document.getElementById('edit-naics-confidence').value,
+    cu_number:        document.getElementById('edit-cu-number').value                     || null,
+    cu_confidence:    document.getElementById('edit-cu-confidence').value,
     hazard_score:     parseInt(document.getElementById('edit-hazard-score').value)        || null,
     notes:            document.getElementById('edit-notes').value.trim()                  || null,
   };
 
-  if (!payload.hazard_score && payload.naics_code) {
-    const naics = naicsList.find(n => n.code === payload.naics_code);
-    payload.hazard_score = naics?.hazard_score ?? null;
+  if (!payload.hazard_score && payload.cu_number) {
+    const cu = cuList.find(n => n.cu_number === payload.cu_number);
+    payload.hazard_score = cu?.hazard_score ?? null;
   }
 
   const saveBtn = document.getElementById('modal-save-btn');
@@ -930,7 +930,7 @@ document.getElementById('modal-save-btn').addEventListener('click', async () => 
 
   let error, data;
   if (id === 'new') {
-    ({ error, data } = await db.from('companies').insert([payload]).select('*, naics_reference(code, descriptor, hazard_score)').single());
+    ({ error, data } = await db.from('companies').insert([payload]).select('*, cu_reference(cu_number, cu_name, hazard_score)').single());
     if (!error && data) allCompanies.unshift({ ...data, outreach: [], _latest_outreach: null, _outreach_status: 'not_contacted' });
   } else {
     ({ error } = await db.from('companies').update(payload).eq('id', id));

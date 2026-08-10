@@ -19,7 +19,7 @@
     <ul class="sidebar-nav">
       <li><a href="./dashboard.html"  class="nav-item"><span class="nav-icon">📋</span> Dashboard</a></li>
       <li><a href="./discovery.html"  class="nav-item active"><span class="nav-icon">🔍</span> Discover</a></li>
-      <li><a href="./admin.html"      class="nav-item"><span class="nav-icon">⚙️</span> NAICS Admin</a></li>
+      <li><a href="./admin.html"      class="nav-item"><span class="nav-icon">⚙️</span> CU Admin</a></li>
       <li><a href="./help.html"       class="nav-item"><span class="nav-icon">❓</span> Help</a></li>
     </ul>
     <div class="sidebar-footer">
@@ -50,13 +50,13 @@
             </div>
           </div>
 
-          <details class="naics-accordion" id="naics-accordion">
-            <summary class="naics-accordion__toggle">
-              <span>Narrow by noise-hazard NAICS category</span>
+          <details class="cu-accordion" id="cu-accordion">
+            <summary class="cu-accordion__toggle">
+              <span>Narrow by noise-hazard CU category</span>
               <span class="text-muted text-small" style="font-weight:400">(optional)</span>
-              <span class="naics-selected-badge hidden" id="naics-selected-count"></span>
+              <span class="cu-selected-badge hidden" id="cu-selected-count"></span>
             </summary>
-            <div id="naics-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 0 4px">
+            <div id="cu-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 0 4px">
               <span class="text-muted text-small">Loading categories…</span>
             </div>
           </details>
@@ -88,7 +88,7 @@
                 <th>Phone</th>
                 <th>Website</th>
                 <th>Places type</th>
-                <th>NAICS guess</th>
+                <th>CU guess</th>
                 <th>Status</th>
               </tr>
             </thead>

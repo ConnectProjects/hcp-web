@@ -8,32 +8,32 @@ if (!session) throw new Error('unauthenticated');
 renderUserEmail(session);
 document.getElementById('logout-btn').addEventListener('click', logout);
 
-// Load noise-hazard NAICS for chips + matching
-const { data: naicsList = [] } = await db
-  .from('naics_reference')
-  .select('code, descriptor')
+// Load noise-hazard CUs for chips + matching
+const { data: cuList = [] } = await db
+  .from('cu_reference')
+  .select('cu_number, cu_name, hazard_score')
   .eq('is_noise_hazard', true)
-  .order('code');
+  .order('cu_number');
 
-renderNaicsChips();
+renderCuChips();
 
 // Track places already in our DB to show duplicate warnings
 let existingPlaceIds = new Set();
 await loadExistingPlaceIds();
 
-// ---- NAICS keyword chips ------------------------------------
-let selectedNaicsCodes = new Set();
+// ---- CU keyword chips ---------------------------------------
+let selectedCuNumbers = new Set();
 
-function renderNaicsChips() {
-  const container = document.getElementById('naics-chips');
-  if (!naicsList.length) {
-    container.innerHTML = '<span class="text-muted text-small">No noise-hazard NAICS loaded — run the seed script and review in Admin.</span>';
+function renderCuChips() {
+  const container = document.getElementById('cu-chips');
+  if (!cuList.length) {
+    container.innerHTML = '<span class="text-muted text-small">No noise-hazard CUs loaded — run the seed script and review in Admin.</span>';
     return;
   }
-  container.innerHTML = naicsList.map(n => `
-    <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;border-radius:100px;border:1px solid var(--grey-300);background:#fff;font-size:12px;transition:all .1s" data-code="${esc(n.code)}">
-      <input type="checkbox" value="${esc(n.code)}" style="accent-color:var(--brand)">
-      <span>${esc(n.code)} — ${esc(n.descriptor.slice(0, 40))}</span>
+  container.innerHTML = cuList.map(n => `
+    <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;border-radius:100px;border:1px solid var(--grey-300);background:#fff;font-size:12px;transition:all .1s" data-cu="${esc(n.cu_number)}">
+      <input type="checkbox" value="${esc(n.cu_number)}" style="accent-color:var(--brand)">
+      <span>${esc(n.cu_number)} — ${esc(n.cu_name.slice(0, 40))}</span>
     </label>
   `).join('');
 
@@ -41,22 +41,22 @@ function renderNaicsChips() {
     cb.addEventListener('change', () => {
       const label = cb.closest('label');
       if (cb.checked) {
-        selectedNaicsCodes.add(cb.value);
+        selectedCuNumbers.add(cb.value);
         label.style.background = 'var(--brand-light)';
         label.style.borderColor = 'var(--brand)';
       } else {
-        selectedNaicsCodes.delete(cb.value);
+        selectedCuNumbers.delete(cb.value);
         label.style.background = '#fff';
         label.style.borderColor = 'var(--grey-300)';
       }
-      updateNaicsBadge();
+      updateCuBadge();
     });
   });
 }
 
-function updateNaicsBadge() {
-  const badge = document.getElementById('naics-selected-count');
-  const n = selectedNaicsCodes.size;
+function updateCuBadge() {
+  const badge = document.getElementById('cu-selected-count');
+  const n = selectedCuNumbers.size;
   if (n > 0) {
     badge.textContent = `${n} selected`;
     badge.classList.remove('hidden');
@@ -93,12 +93,12 @@ async function runSearch() {
   const status   = document.getElementById('search-status');
   const btn      = document.getElementById('search-btn');
 
-  // Build text query — append selected NAICS descriptors as context
+  // Build text query — append selected CU names as context
   let textQuery = `${query} ${location} Canada`;
-  if (selectedNaicsCodes.size > 0) {
-    const descs = [...selectedNaicsCodes].map(code => {
-      const n = naicsList.find(x => x.code === code);
-      return n?.descriptor?.split(' ')[0] ?? '';  // just first word for brevity
+  if (selectedCuNumbers.size > 0) {
+    const descs = [...selectedCuNumbers].map(cu => {
+      const n = cuList.find(x => x.cu_number === cu);
+      return n?.cu_name?.split(' ')[0] ?? '';  // just first word for brevity
     }).filter(Boolean).slice(0, 3);
     if (descs.length) textQuery += ' ' + descs.join(' ');
   }
@@ -186,7 +186,7 @@ function renderResults() {
     const website = place.websiteUri ?? '';
     const types   = (place.types ?? []).filter(t => !['point_of_interest','establishment','geocode'].includes(t)).slice(0, 2).join(', ');
     const alreadyIn = existingPlaceIds.has(place.id);
-    const naicsGuess = guessNaics(name, place.types ?? []);
+    const cuGuess = guessCu(name, place.types ?? []);
 
     return `<tr class="result-row${alreadyIn ? ' text-muted' : ''}" data-index="${i}">
       <td><input type="checkbox" class="result-check" data-index="${i}" ${alreadyIn ? 'disabled' : ''}></td>
@@ -195,7 +195,7 @@ function renderResults() {
       <td class="cell-phone text-small nowrap">${phone ? `<a href="tel:${esc(phone)}">${esc(phone)}</a>` : '—'}</td>
       <td class="text-small">${website ? `<a href="${esc(website)}" target="_blank" rel="noopener">↗</a>` : '—'}</td>
       <td class="text-small text-muted">${esc(types) || '—'}</td>
-      <td class="text-small">${naicsGuess ? `<span title="${esc(naicsGuess.descriptor)}">${esc(naicsGuess.code)}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td class="text-small">${cuGuess ? `<span title="${esc(cuGuess.cu_name)}">${esc(cuGuess.cu_number)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-small">${alreadyIn ? '<span class="badge badge-submitted" style="font-size:10px">Already added</span>' : ''}</td>
     </tr>`;
   }).join('');
@@ -229,12 +229,12 @@ function updateImportBtn() {
   btn.textContent = n > 0 ? `Import ${n} selected` : 'Import selected';
 }
 
-// ---- NAICS guessing from Places data ------------------------
-function guessNaics(businessName, types) {
+// ---- CU guessing from Places data ---------------------------
+function guessCu(businessName, types) {
   const combined = (businessName + ' ' + types.join(' ')).toLowerCase();
-  // Walk noise-hazard NAICS by descriptor keyword match
-  for (const n of naicsList) {
-    const kw = n.descriptor.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+  // Walk noise-hazard CUs by name keyword match
+  for (const n of cuList) {
+    const kw = n.cu_name.toLowerCase().split(/\W+/).filter(w => w.length > 4);
     if (kw.some(w => combined.includes(w))) return n;
   }
   return null;
@@ -260,23 +260,23 @@ document.getElementById('import-btn').addEventListener('click', async () => {
     const province = parseProvince(address);
     const city     = parseCity(address);
 
-    const naicsGuess = guessNaics(name, place.types ?? []);
+    const cuGuess = guessCu(name, place.types ?? []);
 
     return {
       name,
-      address:          address || null,
-      city:             city    || null,
-      province:         province || null,
+      address:        address || null,
+      city:           city    || null,
+      province:       province || null,
       phone,
       website,
-      google_place_id:  place.id,
-      latitude:         place.location?.latitude  ?? null,
-      longitude:        place.location?.longitude ?? null,
-      naics_code:       naicsGuess?.code ?? null,
-      naics_confidence: naicsGuess ? 'inferred' : 'unknown',
-      hazard_score:     naicsGuess?.hazard_score ?? null,
-      source:           'discovered',
-      rbs_status:       'not_submitted',
+      google_place_id: place.id,
+      latitude:        place.location?.latitude  ?? null,
+      longitude:       place.location?.longitude ?? null,
+      cu_number:       cuGuess?.cu_number ?? null,
+      cu_confidence:   cuGuess ? 'inferred' : 'unknown',
+      hazard_score:    cuGuess?.hazard_score ?? null,
+      source:          'discovered',
+      rbs_status:      'not_submitted',
     };
   });
 

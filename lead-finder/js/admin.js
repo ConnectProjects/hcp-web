@@ -12,16 +12,16 @@ document.getElementById('logout-btn').addEventListener('click', logout);
 let allRows = [];       // full list from DB
 let pendingChanges = {};  // { id: { is_noise_hazard?, hazard_score? } }
 
-await loadNaics();
+await loadCu();
 
 // ---- Load ---------------------------------------------------
-async function loadNaics() {
+async function loadCu() {
   const { data, error } = await db
-    .from('naics_reference')
-    .select('id, code, descriptor, level_depth, is_noise_hazard, hazard_score')
-    .order('code');
+    .from('cu_reference')
+    .select('id, cu_number, cu_name, is_noise_hazard, hazard_score')
+    .order('cu_number');
 
-  if (error) { showToast('Failed to load NAICS: ' + error.message, 'error'); return; }
+  if (error) { showToast('Failed to load CU list: ' + error.message, 'error'); return; }
   allRows = data ?? [];
   renderTable();
 }
@@ -33,7 +33,7 @@ function getFilteredRows() {
 
   return allRows.filter(row => {
     if (showNoise && !row.is_noise_hazard) return false;
-    if (search && !row.code.includes(search) && !row.descriptor.toLowerCase().includes(search)) return false;
+    if (search && !row.cu_number.includes(search) && !row.cu_name.toLowerCase().includes(search)) return false;
     return true;
   });
 }
@@ -42,10 +42,10 @@ function getFilteredRows() {
 function renderTable() {
   const rows  = getFilteredRows();
   const tbody = document.getElementById('admin-tbody');
-  document.getElementById('admin-count').textContent = `${rows.length} code${rows.length !== 1 ? 's' : ''}`;
+  document.getElementById('admin-count').textContent = `${rows.length} CU${rows.length !== 1 ? 's' : ''}`;
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--grey-400)">No codes match.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:28px;color:var(--grey-400)">No CUs match.</td></tr>`;
     return;
   }
 
@@ -56,9 +56,8 @@ function renderTable() {
     const isDirty = row.id in pendingChanges;
 
     return `<tr data-id="${row.id}" class="${isDirty ? 'dirty-row' : ''}">
-      <td class="nowrap" style="font-family:monospace;font-size:12px">${esc(row.code)}</td>
-      <td>${esc(row.descriptor)}</td>
-      <td class="text-muted text-small">${row.level_depth ?? '—'}</td>
+      <td class="nowrap" style="font-family:monospace;font-size:12px">${esc(row.cu_number)}</td>
+      <td>${esc(row.cu_name)}</td>
       <td>
         <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-size:13px">
           <input type="checkbox" class="noise-check" data-id="${row.id}" ${isNoise ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--brand);cursor:pointer">
@@ -145,7 +144,7 @@ document.getElementById('save-all-btn').addEventListener('click', async () => {
   let errorCount = 0;
   for (const id of ids) {
     const { error } = await db
-      .from('naics_reference')
+      .from('cu_reference')
       .update(pendingChanges[id])
       .eq('id', id);
     if (error) {

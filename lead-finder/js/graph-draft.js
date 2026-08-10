@@ -155,17 +155,17 @@ function csvToBase64(str) {
 }
 
 function buildCsv(leads) {
-  const headers = ['Company', 'Address', 'City', 'Province', 'Phone', 'Website', 'NAICS Code', 'Industry', 'Hazard Score'];
+  const headers = ['Company', 'Address', 'City', 'Province', 'Phone', 'Website', 'CU Number', 'Industry', 'Hazard Score'];
   const rows = leads.map(c => [
     c.name,
-    c.address                      ?? '',
-    c.city                         ?? '',
-    c.province                     ?? '',
-    c.phone                        ?? '',
-    c.website                      ?? '',
-    c.naics_code                   ?? '',
-    c.naics_reference?.descriptor  ?? '',
-    c.hazard_score                 ?? '',
+    c.address              ?? '',
+    c.city                 ?? '',
+    c.province             ?? '',
+    c.phone                ?? '',
+    c.website              ?? '',
+    c.cu_number            ?? '',
+    c.cu_reference?.cu_name ?? '',
+    c.hazard_score         ?? '',
   ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
   return [headers.map(h => `"${h}"`).join(','), ...rows].join('\r\n');
 }
