@@ -166,7 +166,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr><td>${esc(w)}</td></tr>
+        <tr><td>${esc(w)}</td><td style="white-space:nowrap">${fmtDate(v.visit_date)}</td></tr>
       `).join('')
 
       return `
@@ -188,7 +188,7 @@ export function mount(container) {
           <div class="table-wrap" style="padding:0">
             <table class="data-table" style="margin:0">
               <thead>
-                <tr><th>Worker</th></tr>
+                <tr><th>Worker</th><th>Test Date</th></tr>
               </thead>
               <tbody>${workerRowsHTML}</tbody>
             </table>
