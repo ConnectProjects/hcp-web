@@ -115,8 +115,7 @@ export function mount(container) {
           c.company_id,  c.name AS company_name,
           l.location_id, l.name AS location_name, l.province,
           DATE(te.test_date) AS visit_date,
-          e.last_name, e.first_name,
-          te.classification
+          e.last_name, e.first_name
         FROM tests te
         JOIN  employees e  ON e.employee_id = te.employee_id
         JOIN  locations l  ON l.location_id = te.location_id
@@ -159,10 +158,7 @@ export function mount(container) {
         visitIndex[key] = visit
         visits.push(visit)
       }
-      visitIndex[key].workers.push({
-        name:           `${row.last_name}, ${row.first_name}`,
-        classification: row.classification,
-      })
+      visitIndex[key].workers.push(`${row.last_name}, ${row.first_name}`)
     }
 
     const totalWorkers = workerRows.length
@@ -170,10 +166,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr>
-          <td>${esc(w.name)}</td>
-          <td>${classificationBadge(w.classification)}</td>
-        </tr>
+        <tr><td>${esc(w)}</td></tr>
       `).join('')
 
       return `
@@ -195,10 +188,7 @@ export function mount(container) {
           <div class="table-wrap" style="padding:0">
             <table class="data-table" style="margin:0">
               <thead>
-                <tr>
-                  <th style="width:55%">Worker</th>
-                  <th>Classification</th>
-                </tr>
+                <tr><th>Worker</th></tr>
               </thead>
               <tbody>${workerRowsHTML}</tbody>
             </table>
@@ -301,24 +291,3 @@ function fmtDate(d) {
   try { return new Date(d + 'T00:00:00').toLocaleDateString('en-CA') } catch { return d }
 }
 
-const CLASS_LABELS = {
-  'normal':                 ['Normal',                 '#2d6a2d', '#e8f5e9'],
-  'early_warning':          ['Early Warning',          '#7a5000', '#fff8e1'],
-  'early warning':          ['Early Warning',          '#7a5000', '#fff8e1'],
-  'abnormal':               ['Abnormal',               '#8b1a1a', '#fdecea'],
-  'normal_change':          ['Normal Change',          '#1a4a7a', '#e3f0fb'],
-  'normal change':          ['Normal Change',          '#1a4a7a', '#e3f0fb'],
-  'early_warning_change':   ['Early Warning Change',   '#7a5000', '#fff3cd'],
-  'early warning change':   ['Early Warning Change',   '#7a5000', '#fff3cd'],
-  'abnormal_change':        ['Abnormal Change',        '#6b0000', '#fce4e4'],
-  'abnormal change':        ['Abnormal Change',        '#6b0000', '#fce4e4'],
-}
-
-function classificationBadge(raw) {
-  if (!raw) return '<span style="color:var(--clr-subtle)">—</span>'
-  const key    = String(raw).toLowerCase().trim()
-  const entry  = CLASS_LABELS[key]
-  if (!entry) return esc(raw)
-  const [label, color, bg] = entry
-  return `<span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:0.78rem;font-weight:600;color:${color};background:${bg}">${label}</span>`
-}
