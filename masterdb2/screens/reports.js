@@ -8,10 +8,8 @@
 import { query } from '../db/db.js'
 
 export function mount(container) {
-  const today   = new Date()
-  const yearAgo = new Date(today)
-  yearAgo.setFullYear(today.getFullYear() - 1)
-  const defaultFrom = yearAgo.toISOString().slice(0, 10)
+  const today       = new Date()
+  const defaultFrom = `${today.getFullYear()}-01-01`
   const defaultTo   = today.toISOString().slice(0, 10)
 
   let companies = []
