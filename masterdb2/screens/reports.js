@@ -108,109 +108,115 @@ export function mount(container) {
       return
     }
 
-    let rows
+    let workerRows
     try {
       const sql = `
         SELECT
           c.company_id,  c.name AS company_name,
           l.location_id, l.name AS location_name, l.province,
           DATE(te.test_date) AS visit_date,
-          MIN(tk.name)                               AS tech_name,
-          COUNT(DISTINCT te.employee_id)             AS workers_tested,
-          COUNT(te.test_id)                          AS test_count,
-          SUM(COALESCE(te.sts_flag,              0)) AS sts_count,
-          SUM(COALESCE(te.referral_given_to_worker,0)) AS referral_count
+          e.last_name, e.first_name,
+          te.classification
         FROM tests te
+        JOIN  employees e  ON e.employee_id = te.employee_id
         JOIN  locations l  ON l.location_id = te.location_id
         JOIN  companies c  ON c.company_id  = l.company_id
-        LEFT JOIN techs tk ON tk.tech_id    = te.tech_id
         WHERE te.deleted_at IS NULL
           AND te.test_date >= ?
           AND te.test_date <= ?
           ${companyId ? 'AND c.company_id = ?' : ''}
           ${locationClause(locationIds)}
-        GROUP BY c.company_id, l.location_id, DATE(te.test_date)
-        ORDER BY c.name, te.test_date DESC, l.name`
+        ORDER BY c.name, te.test_date DESC, l.name, e.last_name, e.first_name`
 
       const params = [from, to,
         ...(companyId   ? [Number(companyId)] : []),
         ...locationIds
       ]
-      rows = query(sql, params)
+      workerRows = query(sql, params)
     } catch (e) {
       output.innerHTML = `<div class="error-banner"><strong>Query error:</strong> ${esc(e.message)}</div>`
       return
     }
 
-    if (!rows.length) {
+    if (!workerRows.length) {
       output.innerHTML = `<div class="table-card"><div class="table-empty">No tests found in that date range.</div></div>`
       return
     }
 
-    const totals = rows.reduce((acc, r) => {
-      acc.workers  += r.workers_tested
-      acc.tests    += r.test_count
-      acc.sts      += r.sts_count
-      acc.referrals += r.referral_count
-      return acc
-    }, { workers: 0, tests: 0, sts: 0, referrals: 0 })
+    // Group by company → location → visit date
+    const visits = []
+    const visitIndex = {}
+    for (const row of workerRows) {
+      const key = `${row.company_id}|${row.location_id}|${row.visit_date}`
+      if (!visitIndex[key]) {
+        const visit = {
+          company_name:  row.company_name,
+          location_name: row.location_name,
+          province:      row.province,
+          visit_date:    row.visit_date,
+          workers:       [],
+        }
+        visitIndex[key] = visit
+        visits.push(visit)
+      }
+      visitIndex[key].workers.push({
+        name:           `${row.last_name}, ${row.first_name}`,
+        classification: row.classification,
+      })
+    }
 
-    const rowsHTML = rows.map(r => `
-      <tr>
-        <td>${esc(r.company_name)}</td>
-        <td>${esc(r.location_name)}${r.province ? `, ${esc(r.province)}` : ''}</td>
-        <td>${fmtDate(r.visit_date)}</td>
-        <td>${esc(r.tech_name ?? '—')}</td>
-        <td style="text-align:right">${r.workers_tested}</td>
-        <td style="text-align:right"><strong>${r.test_count}</strong></td>
-        <td style="text-align:right">${r.sts_count || ''}</td>
-        <td style="text-align:right">${r.referral_count || ''}</td>
-      </tr>
-    `).join('')
+    const totalWorkers = workerRows.length
+    const totalVisits  = visits.length
+
+    const blocksHTML = visits.map(v => {
+      const workerRowsHTML = v.workers.map(w => `
+        <tr>
+          <td>${esc(w.name)}</td>
+          <td>${classificationBadge(w.classification)}</td>
+        </tr>
+      `).join('')
+
+      return `
+        <div class="info-card" style="margin-bottom:1rem;padding:0">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;
+                      padding:0.6rem 1rem;border-bottom:1px solid var(--clr-border);
+                      background:var(--clr-surface-alt, #f8f9fa);border-radius:var(--radius) var(--radius) 0 0">
+            <div>
+              <strong style="font-size:0.95rem">${esc(v.company_name)}</strong>
+              <span style="color:var(--clr-subtle);margin:0 0.4rem">·</span>
+              <span style="font-size:0.875rem">${esc(v.location_name)}${v.province ? `, ${esc(v.province)}` : ''}</span>
+            </div>
+            <div style="font-size:0.8rem;color:var(--clr-subtle);white-space:nowrap;margin-left:1rem">
+              ${fmtDate(v.visit_date)}
+              &nbsp;·&nbsp;
+              <strong>${v.workers.length}</strong> worker${v.workers.length !== 1 ? 's' : ''}
+            </div>
+          </div>
+          <div class="table-wrap" style="padding:0">
+            <table class="data-table" style="margin:0">
+              <thead>
+                <tr>
+                  <th style="width:55%">Worker</th>
+                  <th>Classification</th>
+                </tr>
+              </thead>
+              <tbody>${workerRowsHTML}</tbody>
+            </table>
+          </div>
+        </div>
+      `
+    }).join('')
 
     output.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
         <p style="font-size:0.875rem;color:var(--clr-subtle)">
-          ${rows.length} visit${rows.length !== 1 ? 's' : ''}
+          ${totalVisits} visit${totalVisits !== 1 ? 's' : ''}
           &nbsp;&mdash;&nbsp;
-          <strong>${totals.tests}</strong> tests
-          &nbsp;/&nbsp;
-          <strong>${totals.workers}</strong> workers
-          &nbsp;/&nbsp;
-          <strong>${totals.sts}</strong> STS
-          &nbsp;/&nbsp;
-          <strong>${totals.referrals}</strong> referrals
+          <strong>${totalWorkers}</strong> worker${totalWorkers !== 1 ? 's' : ''} tested
         </p>
         <button class="btn btn-secondary" id="r-csv">Export CSV</button>
       </div>
-      <div class="table-card">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th>Location</th>
-                <th>Visit Date</th>
-                <th>Tech</th>
-                <th style="text-align:right">Workers</th>
-                <th style="text-align:right">Tests</th>
-                <th style="text-align:right">STS</th>
-                <th style="text-align:right">Referrals</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHTML}</tbody>
-            <tfoot>
-              <tr style="font-weight:600;border-top:2px solid var(--clr-border)">
-                <td colspan="4">Total</td>
-                <td style="text-align:right">${totals.workers}</td>
-                <td style="text-align:right">${totals.tests}</td>
-                <td style="text-align:right">${totals.sts}</td>
-                <td style="text-align:right">${totals.referrals}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+      ${blocksHTML}
     `
 
     output.querySelector('#r-csv').addEventListener('click', () => {
@@ -293,4 +299,26 @@ function esc(s) {
 function fmtDate(d) {
   if (!d) return ''
   try { return new Date(d + 'T00:00:00').toLocaleDateString('en-CA') } catch { return d }
+}
+
+const CLASS_LABELS = {
+  'normal':                 ['Normal',                 '#2d6a2d', '#e8f5e9'],
+  'early_warning':          ['Early Warning',          '#7a5000', '#fff8e1'],
+  'early warning':          ['Early Warning',          '#7a5000', '#fff8e1'],
+  'abnormal':               ['Abnormal',               '#8b1a1a', '#fdecea'],
+  'normal_change':          ['Normal Change',          '#1a4a7a', '#e3f0fb'],
+  'normal change':          ['Normal Change',          '#1a4a7a', '#e3f0fb'],
+  'early_warning_change':   ['Early Warning Change',   '#7a5000', '#fff3cd'],
+  'early warning change':   ['Early Warning Change',   '#7a5000', '#fff3cd'],
+  'abnormal_change':        ['Abnormal Change',        '#6b0000', '#fce4e4'],
+  'abnormal change':        ['Abnormal Change',        '#6b0000', '#fce4e4'],
+}
+
+function classificationBadge(raw) {
+  if (!raw) return '<span style="color:var(--clr-subtle)">—</span>'
+  const key    = String(raw).toLowerCase().trim()
+  const entry  = CLASS_LABELS[key]
+  if (!entry) return esc(raw)
+  const [label, color, bg] = entry
+  return `<span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:0.78rem;font-weight:600;color:${color};background:${bg}">${label}</span>`
 }
