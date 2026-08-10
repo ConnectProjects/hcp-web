@@ -13,9 +13,11 @@ export function mount(container) {
   const defaultTo   = today.toISOString().slice(0, 10)
 
   let companies = []
+  let allLocations = []
   try {
-    companies = query(`SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name`)
-  } catch { /* non-fatal — company filter just won't populate */ }
+    companies    = query(`SELECT company_id, name FROM companies WHERE active = 1 ORDER BY name`)
+    allLocations = query(`SELECT l.location_id, l.name, l.company_id FROM locations l JOIN companies c ON c.company_id = l.company_id WHERE c.active = 1 ORDER BY l.name`)
+  } catch { /* non-fatal */ }
 
   const coOpts = companies.map(c =>
     `<option value="${c.company_id}">${esc(c.name)}</option>`
@@ -44,7 +46,11 @@ export function mount(container) {
               ${coOpts}
             </select>
           </div>
-          <button class="btn btn-primary" id="r-generate">Generate</button>
+          <div>
+            <label style="font-size:0.8rem;color:var(--clr-subtle);display:block;margin-bottom:0.25rem">Locations <span style="font-weight:400">(none = all)</span></label>
+            <select class="form-select" id="r-locations" multiple style="min-width:220px;height:7rem"></select>
+          </div>
+          <button class="btn btn-primary" id="r-generate" style="align-self:flex-end">Generate</button>
         </div>
       </div>
 
@@ -52,13 +58,41 @@ export function mount(container) {
     </div>
   `
 
+  const companyEl   = container.querySelector('#r-company')
+  const locationsEl = container.querySelector('#r-locations')
+
+  function populateLocations(companyId) {
+    const filtered = companyId
+      ? allLocations.filter(l => l.company_id === Number(companyId))
+      : allLocations
+    locationsEl.innerHTML = filtered.map(l =>
+      `<option value="${l.location_id}">${esc(l.name)}</option>`
+    ).join('')
+  }
+
+  populateLocations('')
+
+  companyEl.addEventListener('change', () => {
+    populateLocations(companyEl.value)
+  })
+
   container.querySelector('#r-generate').addEventListener('click', generateReport)
 
+  function getSelectedLocationIds() {
+    return Array.from(locationsEl.selectedOptions).map(o => Number(o.value))
+  }
+
+  function locationClause(locationIds) {
+    if (!locationIds.length) return ''
+    return `AND l.location_id IN (${locationIds.map(() => '?').join(',')})`
+  }
+
   function generateReport() {
-    const from      = container.querySelector('#r-from').value
-    const to        = container.querySelector('#r-to').value
-    const companyId = container.querySelector('#r-company').value
-    const output    = container.querySelector('#r-output')
+    const from        = container.querySelector('#r-from').value
+    const to          = container.querySelector('#r-to').value
+    const companyId   = companyEl.value
+    const locationIds = getSelectedLocationIds()
+    const output      = container.querySelector('#r-output')
 
     if (!from || !to) {
       output.innerHTML = `<div class="warning-banner">Please set both a From and To date.</div>`
@@ -89,10 +123,14 @@ export function mount(container) {
           AND te.test_date >= ?
           AND te.test_date <= ?
           ${companyId ? 'AND c.company_id = ?' : ''}
+          ${locationClause(locationIds)}
         GROUP BY c.company_id, l.location_id, DATE(te.test_date)
         ORDER BY c.name, te.test_date DESC, l.name`
 
-      const params = companyId ? [from, to, Number(companyId)] : [from, to]
+      const params = [from, to,
+        ...(companyId   ? [Number(companyId)] : []),
+        ...locationIds
+      ]
       rows = query(sql, params)
     } catch (e) {
       output.innerHTML = `<div class="error-banner"><strong>Query error:</strong> ${esc(e.message)}</div>`
@@ -171,7 +209,6 @@ export function mount(container) {
     `
 
     output.querySelector('#r-csv').addEventListener('click', () => {
-      // Fetch per-worker rows for detailed CSV
       let workerRows = []
       try {
         const sql2 = `
@@ -194,8 +231,12 @@ export function mount(container) {
             AND te.test_date >= ?
             AND te.test_date <= ?
             ${companyId ? 'AND c.company_id = ?' : ''}
+            ${locationClause(locationIds)}
           ORDER BY c.name, te.test_date DESC, l.name, e.last_name, e.first_name`
-        const params2 = companyId ? [from, to, Number(companyId)] : [from, to]
+        const params2 = [from, to,
+          ...(companyId   ? [Number(companyId)] : []),
+          ...locationIds
+        ]
         workerRows = query(sql2, params2)
       } catch { /* fall back to summary only */ }
 
