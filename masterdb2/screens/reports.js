@@ -182,7 +182,7 @@ export function mount(container) {
             <div style="font-size:0.8rem;color:var(--clr-subtle);white-space:nowrap;margin-left:1rem">
               <strong>Test Date:</strong> ${fmtDate(v.visit_date)}
               &nbsp;·&nbsp;
-              <strong>${v.workers.length}</strong> worker${v.workers.length !== 1 ? 's' : ''}
+              <strong>${v.workers.length}</strong> worker${v.workers.length !== 1 ? 's' : ''} tested
             </div>
           </div>
           <div class="table-wrap" style="padding:0">
