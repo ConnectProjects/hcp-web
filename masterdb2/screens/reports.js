@@ -5,7 +5,7 @@
  * Generates a summary table and a downloadable CSV.
  */
 
-import { query, run, save } from '../db/db.js'
+import { query } from '../db/db.js'
 
 export function mount(container) {
   const today       = new Date()
@@ -115,7 +115,6 @@ export function mount(container) {
           c.company_id,  c.name AS company_name,
           l.location_id, l.name AS location_name, l.province,
           DATE(te.test_date) AS visit_date,
-          te.test_id,
           e.last_name, e.first_name
         FROM tests te
         JOIN  employees e  ON e.employee_id = te.employee_id
@@ -159,7 +158,7 @@ export function mount(container) {
         visitIndex[key] = visit
         visits.push(visit)
       }
-      visitIndex[key].workers.push({ test_id: row.test_id, name: `${row.last_name}, ${row.first_name}` })
+      visitIndex[key].workers.push(`${row.last_name}, ${row.first_name}`)
     }
 
     const totalWorkers = workerRows.length
@@ -167,13 +166,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr data-test-id="${w.test_id}">
-          <td>${esc(w.name)}</td>
-          <td style="text-align:right">
-            <button class="btn btn-danger btn-sm delete-test-btn" data-test-id="${w.test_id}" data-name="${esc(w.name)}"
-                    style="font-size:0.75rem;padding:2px 10px">Delete</button>
-          </td>
-        </tr>
+        <tr><td>${esc(w)}</td></tr>
       `).join('')
 
       return `
@@ -195,7 +188,7 @@ export function mount(container) {
           <div class="table-wrap" style="padding:0">
             <table class="data-table" style="margin:0">
               <thead>
-                <tr><th>Worker</th><th></th></tr>
+                <tr><th>Worker</th></tr>
               </thead>
               <tbody>${workerRowsHTML}</tbody>
             </table>
@@ -215,21 +208,6 @@ export function mount(container) {
       </div>
       ${blocksHTML}
     `
-
-    output.addEventListener('click', async e => {
-      const btn = e.target.closest('.delete-test-btn')
-      if (!btn) return
-      const testId = Number(btn.dataset.testId)
-      const name   = btn.dataset.name
-      if (!confirm(`Delete the test for ${name}? This cannot be undone.`)) return
-      try {
-        run(`UPDATE tests SET deleted_at = datetime('now') WHERE test_id = ?`, [testId])
-        await save('reports-delete')
-        btn.closest('tr').remove()
-      } catch (err) {
-        alert('Delete failed: ' + err.message)
-      }
-    })
 
     output.querySelector('#r-csv').addEventListener('click', () => {
       let workerRows = []
