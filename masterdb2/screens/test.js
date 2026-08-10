@@ -5,7 +5,7 @@
  * Shows: audiogram SVG, all test fields, questionnaire data, HPD assessments.
  */
 
-import { query } from '../db/db.js'
+import { query, run, save } from '../db/db.js'
 import { getById, getHpdAssessments } from '../db/workers.js'
 
 const FREQ_KEYS   = ['500','1k','2k','3k','4k','6k','8k']
@@ -124,14 +124,27 @@ export function mount(container, { navigate, testId, employeeId }) {
 
     </div>
 
-    <div class="screen-body" style="padding-top:0">
+    <div class="screen-body" style="padding-top:0;display:flex;gap:0.75rem;align-items:center">
       <button class="btn btn-secondary" onclick="window.print()">Print / Save PDF</button>
+      <button class="btn btn-danger" id="delete-test-btn">Delete Test</button>
     </div>
   `
 
   container.querySelector('#back-btn').addEventListener('click', () =>
     navigate('worker', { employeeId })
   )
+
+  container.querySelector('#delete-test-btn').addEventListener('click', async () => {
+    const label = emp ? `${emp.last_name}, ${emp.first_name}` : `test ${testId}`
+    if (!confirm(`Delete the test for ${label} on ${fmtDate(test.test_date)}? This cannot be undone.`)) return
+    try {
+      run(`UPDATE tests SET deleted_at = datetime('now') WHERE test_id = ?`, [testId])
+      await save('test-delete')
+      navigate('worker', { employeeId })
+    } catch (err) {
+      alert('Delete failed: ' + err.message)
+    }
+  })
 }
 
 // ── Audiogram SVG ─────────────────────────────────────────────────────────────
