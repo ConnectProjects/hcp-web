@@ -37,8 +37,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
   let _packet     = null
   let _slots      = [emptySlot(), emptySlot()]
   let _activeSlot = 0
-  let _mode       = 'list'   // 'list' | 'test'
-  let _status     = null     // { ok, msg }
+  let _mode        = 'list'   // 'list' | 'test'
+  let _status      = null     // { ok, msg }
+  let _selected    = new Set()
+  let _skipConfirm = false
 
   // ── Boot ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const name    = `${emp.last_name ?? ''}, ${emp.first_name ?? ''}`
       let badge, action
 
+      const canCheck = inSlot == null && !tested && !skipped
+
       if (inSlot != null) {
         const lbl = inSlot === 0 ? 'Left Booth' : 'Right Booth'
         badge  = `<span class="badge" style="background:#1e2a3a;color:#fff">${lbl}</span>`
@@ -110,6 +114,11 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       }
 
       return `<tr>
+        <td style="width:2rem;text-align:center">
+          ${canCheck
+            ? `<input type="checkbox" class="worker-check" data-idx="${idx}" ${_selected.has(idx) ? 'checked' : ''}>`
+            : ''}
+        </td>
         <td>
           <strong>${esc(name)}</strong>
           ${emp.job_title ? `<br><span style="font-size:0.75rem;color:var(--clr-subtle)">${esc(emp.job_title)}</span>` : ''}
@@ -121,7 +130,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         <td>${badge}</td>
         <td>${action}</td>
       </tr>`
-    }).join('') || `<tr><td colspan="5" class="table-empty">No workers in this packet.</td></tr>`
+    }).join('') || `<tr><td colspan="6" class="table-empty">No workers in this packet.</td></tr>`
 
     const boothSel = `
       <div class="booth-mini-bar">
@@ -152,14 +161,31 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         <div class="table-card">
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th></th><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
         </div>
+        ${_skipConfirm ? `
+          <div class="info-card" style="border-color:var(--clr-border);margin-top:1rem">
+            <p style="font-size:0.875rem;font-weight:500;margin-bottom:0.625rem">
+              Skip ${_selected.size} worker${_selected.size !== 1 ? 's' : ''}?
+            </p>
+            <input class="search-input" id="bulk-skip-reason"
+                   placeholder="Reason (optional — e.g. Worker absent)" style="margin-bottom:0.625rem">
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn btn-danger btn-sm" id="confirm-bulk-skip">Confirm skip</button>
+              <button class="btn btn-secondary btn-sm" id="cancel-bulk-skip">Cancel</button>
+            </div>
+          </div>` : ''}
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.25rem;gap:1rem;flex-wrap:wrap">
           <span style="font-size:0.875rem;color:var(--clr-subtle)">${nTotal ? `${nTested} of ${nTotal} tested${nSkip ? `, ${nSkip} skipped` : ''}` : ''}</span>
-          <button class="btn btn-primary" id="submit-btn" ${allDone ? '' : 'disabled'}>Submit Packet →</button>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            ${_selected.size > 0 && !_skipConfirm
+              ? `<button class="btn btn-secondary" id="skip-selected-btn">Skip selected (${_selected.size})</button>`
+              : ''}
+            <button class="btn btn-primary" id="submit-btn" ${allDone ? '' : 'disabled'}>Submit Packet →</button>
+          </div>
         </div>
       </div>`
 
@@ -172,7 +198,6 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         const idx  = Number(btn.dataset.idx)
         const goTo = btn.dataset.goto != null ? Number(btn.dataset.goto) : null
         if (goTo != null) {
-          // Worker already in a booth — just open that booth
           _activeSlot = goTo
         } else {
           assignToSlot(_activeSlot, idx)
@@ -182,7 +207,45 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         render()
       })
     })
+    container.querySelectorAll('.worker-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const idx = Number(cb.dataset.idx)
+        if (cb.checked) _selected.add(idx)
+        else _selected.delete(idx)
+        const btn = container.querySelector('#skip-selected-btn')
+        if (btn) btn.textContent = `Skip selected (${_selected.size})`
+        else if (_selected.size > 0) render()  // show the button for the first selection
+      })
+    })
+    container.querySelector('#skip-selected-btn')?.addEventListener('click', () => {
+      _skipConfirm = true; render()
+    })
+    container.querySelector('#confirm-bulk-skip')?.addEventListener('click', () => {
+      const reason = container.querySelector('#bulk-skip-reason')?.value.trim() || 'Worker absent'
+      skipSelected(reason)
+    })
+    container.querySelector('#cancel-bulk-skip')?.addEventListener('click', () => {
+      _skipConfirm = false; render()
+    })
     container.querySelector('#submit-btn')?.addEventListener('click', runSubmit)
+  }
+
+  async function skipSelected(reason) {
+    const indices = [..._selected]
+    for (const idx of indices) {
+      markEmployeeSkipped(_packet, _packet.employees[idx].employee_id, reason)
+    }
+    try {
+      await saveTechPacket(techFolder, filename, _packet)
+      _selected.clear()
+      _skipConfirm = false
+      _status = { ok: true, msg: `${indices.length} worker${indices.length !== 1 ? 's' : ''} marked as skipped.` }
+      render()
+    } catch (e) {
+      _skipConfirm = false
+      _status = { ok: false, msg: `Skip failed: ${e.message}` }
+      render()
+    }
   }
 
   function assignToSlot(slotIdx, empIdx) {
