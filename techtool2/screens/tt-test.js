@@ -161,7 +161,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         <div class="table-card">
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th></th><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th style="width:2rem;text-align:center"><input type="checkbox" id="select-all-check" title="Select all"></th><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -207,16 +207,44 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         render()
       })
     })
-    container.querySelectorAll('.worker-check').forEach(cb => {
+    const checkboxes = [...container.querySelectorAll('.worker-check')]
+    const selectAll  = container.querySelector('#select-all-check')
+
+    function syncSelectAll() {
+      if (!selectAll) return
+      const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked)
+      const anyChecked = checkboxes.some(cb => cb.checked)
+      selectAll.checked       = allChecked
+      selectAll.indeterminate = anyChecked && !allChecked
+    }
+
+    function updateSkipBtn() {
+      const btn = container.querySelector('#skip-selected-btn')
+      if (btn) btn.textContent = `Skip selected (${_selected.size})`
+      else if (_selected.size > 0) render()
+    }
+
+    selectAll?.addEventListener('change', () => {
+      checkboxes.forEach(cb => {
+        cb.checked = selectAll.checked
+        const idx = Number(cb.dataset.idx)
+        if (selectAll.checked) _selected.add(idx)
+        else _selected.delete(idx)
+      })
+      updateSkipBtn()
+    })
+
+    checkboxes.forEach(cb => {
       cb.addEventListener('change', () => {
         const idx = Number(cb.dataset.idx)
         if (cb.checked) _selected.add(idx)
         else _selected.delete(idx)
-        const btn = container.querySelector('#skip-selected-btn')
-        if (btn) btn.textContent = `Skip selected (${_selected.size})`
-        else if (_selected.size > 0) render()  // show the button for the first selection
+        syncSelectAll()
+        updateSkipBtn()
       })
     })
+
+    syncSelectAll()
     container.querySelector('#skip-selected-btn')?.addEventListener('click', () => {
       _skipConfirm = true; render()
     })
