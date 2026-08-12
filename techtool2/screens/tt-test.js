@@ -720,7 +720,7 @@ function audiogramSVG(ear, thr, baseline) {
   const ph = H - mt - mb   // 160
 
   const xOf = i  => ml + i * pw / (FKEYS.length - 1)
-  const yOf = db => mt + (db + 10) / 130 * ph
+  const yOf = db => mt + (db + 10) / 110 * ph
 
   const isLeft = ear === 'left'
   const color  = isLeft ? '#2563eb' : '#dc2626'
@@ -731,7 +731,7 @@ function audiogramSVG(ear, thr, baseline) {
     height="${yOf(25) - yOf(0)}" fill="#f0fdf4"/>`
 
   // Horizontal grid lines
-  const hLines = Array.from({ length: 14 }, (_, i) => i * 10 - 10).map(db => {
+  const hLines = Array.from({ length: 12 }, (_, i) => i * 10 - 10).map(db => {
     const y = yOf(db)
     return `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"
       stroke="${db % 20 === 0 ? '#d1d5db' : '#f3f4f6'}"
@@ -748,7 +748,7 @@ function audiogramSVG(ear, thr, baseline) {
   const freqLabels = FLABELS.map((lbl, i) =>
     `<text x="${xOf(i)}" y="${mt - 5}" font-size="7" text-anchor="middle" fill="#9ca3af">${lbl}</text>`
   ).join('')
-  const dbLabels = [0, 20, 40, 60, 80, 100, 120].map(db =>
+  const dbLabels = [0, 20, 40, 60, 80, 100].map(db =>
     `<text x="${ml - 3}" y="${yOf(db) + 3}" font-size="7" text-anchor="end" fill="#9ca3af">${db}</text>`
   ).join('')
 
@@ -779,12 +779,12 @@ function audiogramSVG(ear, thr, baseline) {
       if (isLeft) {
         const s = alpha < 1 ? 3 : 5
         return `<line x1="${p.x-s}" y1="${p.y-s}" x2="${p.x+s}" y2="${p.y+s}"
-          stroke="${color}" stroke-width="${alpha < 1 ? 1 : 2}" opacity="${alpha}"/>
+          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>
                 <line x1="${p.x+s}" y1="${p.y-s}" x2="${p.x-s}" y2="${p.y+s}"
-          stroke="${color}" stroke-width="${alpha < 1 ? 1 : 2}" opacity="${alpha}"/>`
+          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>`
       } else {
         return `<circle cx="${p.x}" cy="${p.y}" r="${alpha < 1 ? 3 : 5}"
-          fill="none" stroke="${color}" stroke-width="${alpha < 1 ? 1 : 2}" opacity="${alpha}"/>`
+          fill="none" stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>`
       }
     }).join('')
 
