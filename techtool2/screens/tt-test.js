@@ -720,7 +720,7 @@ function audiogramSVG(ear, thr, baseline) {
   const ph = H - mt - mb   // 160
 
   const xOf = i  => ml + i * pw / (FKEYS.length - 1)
-  const yOf = db => mt + (db + 10) / 110 * ph
+  const yOf = db => mt + db / 100 * ph
 
   const isLeft = ear === 'left'
   const color  = isLeft ? '#2563eb' : '#dc2626'
@@ -731,7 +731,7 @@ function audiogramSVG(ear, thr, baseline) {
     height="${yOf(25) - yOf(0)}" fill="#f0fdf4"/>`
 
   // Horizontal grid lines
-  const hLines = Array.from({ length: 12 }, (_, i) => i * 10 - 10).map(db => {
+  const hLines = Array.from({ length: 11 }, (_, i) => i * 10).map(db => {
     const y = yOf(db)
     return `<line x1="${ml}" y1="${y}" x2="${W - mr}" y2="${y}"
       stroke="${db % 20 === 0 ? '#d1d5db' : '#f3f4f6'}"
