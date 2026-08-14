@@ -6,6 +6,7 @@
  */
 
 import { query, run, scalar, save, listBackups, checkConflictCopies } from '../db/db.js'
+import { mountSection as mountReconcile } from './reconcile.js'
 
 // ── Seed: known staff ─────────────────────────────────────────────────────────
 const SEED_USERS = [
@@ -55,11 +56,14 @@ export function mount(container, { session }) {
         <div id="s-db"></div>
         <div id="s-seed"></div>
         <div id="s-techs"></div>
+        <div class="section-head"><h2>Archive Reconciliation</h2></div>
+        <div id="s-reconcile"></div>
       </div>
     `
     renderDbSection()
     renderSeed()
     renderTechs()
+    mountReconcile(container.querySelector('#s-reconcile'), { session })
   }
 
   // ── DB Status section ─────────────────────────────────────────────────────

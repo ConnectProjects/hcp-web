@@ -204,7 +204,7 @@ export function mount(container) {
           &nbsp;&mdash;&nbsp;
           <strong>${totalWorkers}</strong> worker${totalWorkers !== 1 ? 's' : ''} tested
         </p>
-        <button class="btn btn-secondary" id="r-csv">Export CSV</button>
+        <button class="btn btn-secondary" id="r-csv">Export to Excel</button>
       </div>
       ${blocksHTML}
     `
@@ -220,9 +220,7 @@ export function mount(container) {
             tk.name            AS tech_name,
             e.last_name, e.first_name, e.middle_name, e.dob,
             te.test_type, te.classification,
-            te.sts_flag, te.referral_given_to_worker,
-            te.left_500, te.left_1k, te.left_2k, te.left_3k, te.left_4k, te.left_6k, te.left_8k,
-            te.right_500, te.right_1k, te.right_2k, te.right_3k, te.right_4k, te.right_6k, te.right_8k
+            te.referral_given_to_worker, te.sts_flag
           FROM tests te
           JOIN  employees e  ON e.employee_id  = te.employee_id
           JOIN  locations l  ON l.location_id  = te.location_id
@@ -244,9 +242,7 @@ export function mount(container) {
       const headers = [
         'Company','Location','Province','Visit Date','Tech',
         'Last Name','First Name','Middle','DOB',
-        'Test Type','Classification','STS','Referral',
-        'L_500','L_1k','L_2k','L_3k','L_4k','L_6k','L_8k',
-        'R_500','R_1k','R_2k','R_3k','R_4k','R_6k','R_8k'
+        'Test Type','Classification','Referral','STS'
       ]
       const csvData = [
         headers,
@@ -254,11 +250,8 @@ export function mount(container) {
           r.company_name, r.location_name, r.province ?? '', r.visit_date, r.tech_name ?? '',
           r.last_name, r.first_name, r.middle_name ?? '', r.dob ?? '',
           r.test_type ?? '', r.classification ?? '',
-          r.sts_flag ? 'Yes' : '', r.referral_given_to_worker ? 'Yes' : '',
-          r.left_500 ?? '', r.left_1k ?? '', r.left_2k ?? '', r.left_3k ?? '',
-          r.left_4k ?? '', r.left_6k ?? '', r.left_8k ?? '',
-          r.right_500 ?? '', r.right_1k ?? '', r.right_2k ?? '', r.right_3k ?? '',
-          r.right_4k ?? '', r.right_6k ?? '', r.right_8k ?? '',
+          r.referral_given_to_worker ? 'Yes' : '',
+          r.sts_flag ? 'Yes' : '',
         ])
       ]
       downloadCSV(`masterdb-report-${from}-to-${to}.csv`, csvData)

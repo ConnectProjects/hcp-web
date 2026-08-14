@@ -30,7 +30,6 @@ const MASTERDB_NAV = [
   { name: 'workers',   label: 'Workers'    },
   { name: 'schedule',  label: 'Schedule'   },
   { name: 'import',    label: 'Import'     },
-  { name: 'reconcile', label: 'Reconcile'  },
   { name: 'reports',   label: 'Reports'    },
   { name: 'users',     label: 'Users'      },
   { name: 'settings',  label: 'Settings'   },

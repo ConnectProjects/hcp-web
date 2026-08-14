@@ -81,8 +81,8 @@ ul { list-style: none; }
   align-items: center;
   gap: 0.625rem;
   padding: 0.5625rem 1.125rem;
-  color: var(--clr-sidebar-text);
-  font-size: 0.875rem;
+  color: var(--clr-primary);
+  font-size: 1rem;
   font-weight: 400;
   border-radius: 0;
   transition: background 0.12s, color 0.12s;
