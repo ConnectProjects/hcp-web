@@ -193,7 +193,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     container.querySelectorAll('.booth-mini-tab[data-slot]').forEach(btn =>
       btn.addEventListener('click', () => { _activeSlot = Number(btn.dataset.slot); render() })
     )
-    container.querySelectorAll('[data-idx]').forEach(btn => {
+    container.querySelectorAll('button[data-idx]').forEach(btn => {
       btn.addEventListener('click', () => {
         const idx  = Number(btn.dataset.idx)
         const goTo = btn.dataset.goto != null ? Number(btn.dataset.goto) : null
