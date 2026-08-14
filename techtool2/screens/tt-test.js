@@ -344,7 +344,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       return
     }
 
-    const emp = p.employees[slot.empIdx]
+    const emp          = p.employees[slot.empIdx]
+    const lastTestDate = emp.prior_tests?.[0]?.test_date ?? null
 
     container.innerHTML = `
       <div class="screen-header-row">
@@ -366,6 +367,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
                 <input class="search-input" id="ef-middle" value="${esc(emp.middle_name ?? '')}" style="width:100%"></div>
               <div><label class="field-label">Date of birth</label>
                 <input class="search-input" id="ef-dob" type="date" value="${esc(emp.dob ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Last test</label>
+                <div class="search-input" style="width:100%;background:var(--clr-surface);color:${lastTestDate ? 'inherit' : 'var(--clr-subtle)'}">${lastTestDate ? esc(lastTestDate) : 'None on file'}</div></div>
               <div><label class="field-label">Job title</label>
                 <input class="search-input" id="ef-job" value="${esc(emp.job_title ?? '')}" style="width:100%"></div>
             </div>
