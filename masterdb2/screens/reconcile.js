@@ -1,13 +1,12 @@
 /**
  * masterdb2/screens/reconcile.js — archive vs DB reconciliation
  *
- * Reads every .json packet in the root archive/ folder, counts the
- * completed tests with threshold data, and compares against the tests
- * table (matched by packet_id). Flags any packet whose test count in
- * the DB differs from what the packet file says.
+ * Scans every techs/{folder}/archive/ subfolder, counts completed tests
+ * with threshold data per packet, and compares against the tests table
+ * (matched by packet_id). Flags any packet whose test count differs.
  */
 
-import { scalar, query, listRootArchive, readRootArchivePacket } from '../db/db.js'
+import { scalar, query, listTechFolders, listTechArchive, readTechArchivePacket } from '../db/db.js'
 
 const THR_KEYS = [
   'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
@@ -54,17 +53,30 @@ export function mount(container, { session }) {
     `
     const prog = () => container.querySelector('#progress')
 
-    let files
+    // Collect all archived packets across every techs/*/archive/ folder
+    let techFolders
     try {
-      const all = await listRootArchive()
-      files = all.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
+      techFolders = await listTechFolders()
     } catch (e) {
-      renderError(`Could not read archive/ folder: ${e.message}`)
+      renderError(`Could not list tech folders: ${e.message}`)
       return
     }
 
-    if (!files.length) {
-      renderError('No .json packets found in the archive/ folder.')
+    // Build flat list of { techFolder, name } for every archived .json
+    const allFiles = []
+    for (const tf of techFolders) {
+      try {
+        const entries = await listTechArchive(tf)
+        for (const f of entries) {
+          if (f.kind === 'file' && f.name.endsWith('.json')) {
+            allFiles.push({ techFolder: tf, name: f.name })
+          }
+        }
+      } catch { /* tech may not have an archive folder yet */ }
+    }
+
+    if (!allFiles.length) {
+      renderError('No archived packets found in any techs/*/archive/ folder.')
       return
     }
 
@@ -72,15 +84,15 @@ export function mount(container, { session }) {
     let totalExpected = 0
     let totalFound    = 0
 
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i]
-      if (prog()) prog().textContent = `Checking ${i + 1} / ${files.length}: ${f.name}…`
+    for (let i = 0; i < allFiles.length; i++) {
+      const f = allFiles[i]
+      if (prog()) prog().textContent = `Checking ${i + 1} / ${allFiles.length}: ${f.name}…`
 
       let packet
       try {
-        packet = await readRootArchivePacket(f.name)
+        packet = await readTechArchivePacket(f.techFolder, f.name)
       } catch (e) {
-        results.push({ filename: f.name, error: `Read failed: ${e.message}` })
+        results.push({ filename: `${f.techFolder}/${f.name}`, error: `Read failed: ${e.message}` })
         continue
       }
 
@@ -111,7 +123,7 @@ export function mount(container, { session }) {
       totalFound    += found
 
       results.push({
-        filename:     f.name,
+        filename:     `${f.techFolder}/${f.name}`,
         packetId:     packet.packet_id,
         company:      packet.company?.name ?? '?',
         location:     packet.location?.name ?? '—',
@@ -255,8 +267,8 @@ export function mountSection(container, { session }) {
     container.innerHTML = `
       <div class="info-card" style="margin-bottom:1rem">
         <p style="margin:0 0 0.5rem">
-          Reads every packet in the root <strong>archive/</strong> folder and
-          verifies that its completed tests exist in the database (matched by
+          Scans every <strong>techs/*/archive/</strong> folder and verifies that
+          each packet's completed tests exist in the database (matched by
           <code>packet_id</code>). Run this before merging to production.
         </p>
         <p style="margin:0 0 1rem;color:var(--clr-subtle);font-size:0.875rem">
@@ -273,22 +285,33 @@ export function mountSection(container, { session }) {
     container.innerHTML = `
       <div class="info-card">
         <div class="spinner"></div>
-        <p class="status-text" id="rec-progress">Listing archive…</p>
+        <p class="status-text" id="rec-progress">Listing tech folders…</p>
       </div>
     `
     const prog = () => container.querySelector('#rec-progress')
 
-    let files
+    let techFolders
     try {
-      const all = await listRootArchive()
-      files = all.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
+      techFolders = await listTechFolders()
     } catch (e) {
-      renderError(`Could not read archive/ folder: ${e.message}`)
+      renderError(`Could not list tech folders: ${e.message}`)
       return
     }
 
-    if (!files.length) {
-      renderError('No .json packets found in the archive/ folder.')
+    const allFiles = []
+    for (const tf of techFolders) {
+      try {
+        const entries = await listTechArchive(tf)
+        for (const f of entries) {
+          if (f.kind === 'file' && f.name.endsWith('.json')) {
+            allFiles.push({ techFolder: tf, name: f.name })
+          }
+        }
+      } catch { /* tech may not have an archive folder yet */ }
+    }
+
+    if (!allFiles.length) {
+      renderError('No archived packets found in any techs/*/archive/ folder.')
       return
     }
 
@@ -296,15 +319,15 @@ export function mountSection(container, { session }) {
     let totalExpected = 0
     let totalFound    = 0
 
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i]
-      if (prog()) prog().textContent = `Checking ${i + 1} / ${files.length}: ${f.name}…`
+    for (let i = 0; i < allFiles.length; i++) {
+      const f = allFiles[i]
+      if (prog()) prog().textContent = `Checking ${i + 1} / ${allFiles.length}: ${f.name}…`
 
       let packet
       try {
-        packet = await readRootArchivePacket(f.name)
+        packet = await readTechArchivePacket(f.techFolder, f.name)
       } catch (e) {
-        results.push({ filename: f.name, error: `Read failed: ${e.message}` })
+        results.push({ filename: `${f.techFolder}/${f.name}`, error: `Read failed: ${e.message}` })
         continue
       }
 
@@ -333,7 +356,7 @@ export function mountSection(container, { session }) {
       totalFound    += found
 
       results.push({
-        filename: f.name, packetId: packet.packet_id,
+        filename: `${f.techFolder}/${f.name}`, packetId: packet.packet_id,
         company:  packet.company?.name ?? '?',
         location: packet.location?.name ?? '—',
         visitDate: packet.visit?.visit_date ?? '?',

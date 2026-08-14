@@ -263,6 +263,25 @@ export async function readRootArchivePacket(filename) {
   return JSON.parse(new TextDecoder().decode(bytes))
 }
 
+/** List tech subfolder names under techs/ (one per technician). */
+export async function listTechFolders() {
+  _assertOpen()
+  const entries = await _store.list(['techs'])
+  return entries.filter(e => e.kind === 'directory').map(e => e.name)
+}
+
+/** List archived packets for a specific tech. */
+export const listTechArchive = (techFolder) => {
+  _assertOpen(); return _store.list(['techs', techFolder, 'archive'])
+}
+
+/** Read an archived packet from a tech's archive folder. */
+export async function readTechArchivePacket(techFolder, filename) {
+  _assertOpen()
+  const bytes = await _store.readFile(['techs', techFolder, 'archive', filename])
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 /** List backup snapshots in db/backups/. Returns [{ name, size, lastModified }]. */
 export const listBackups = () => { _assertOpen(); return _store.list(['db', 'backups']) }
 
