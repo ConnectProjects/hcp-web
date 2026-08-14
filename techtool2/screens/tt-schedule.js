@@ -154,7 +154,9 @@ export function mount(container, { navigate, session }) {
         subline:      p.location_name ?? p.city ?? null,
         status:       fileEntry
           ? fileStatus(fileEntry)
-          : (p.status === 'pushed' ? 'not-started' : 'scheduled'),
+          : (p.status === 'pushed'   ? 'not-started'
+           : p.status === 'imported' ? 'imported'
+           : 'scheduled'),
       }
       ;(byDay[d] ??= []).push(ev)
     }
@@ -284,7 +286,7 @@ export function mount(container, { navigate, session }) {
       const isToday = iso === today
 
       const chips = evList.map((ev, idx) => {
-        const chipStatus = ev.status === 'submitted' ? 'complete' : ev.status
+        const chipStatus = (ev.status === 'submitted' || ev.status === 'imported') ? 'complete' : ev.status
         const cls = `cal-chip cal-chip-${chipStatus}`
         return `<div class="${cls}" data-ev="${idx}" data-date="${iso}"
                      title="${esc(ev.displayName)}${ev.subline ? ' — ' + ev.subline : ''}">
@@ -344,6 +346,10 @@ export function mount(container, { navigate, session }) {
             ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
                  Submitted — your LC will import this when they&apos;re back in the office.
                </div>`
+            : ev.status === 'imported'
+            ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
+                 Imported into MasterDB. Results are on file.
+               </div>`
             : `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
                  This packet hasn&apos;t been pushed to your OneDrive folder yet.
                  Check back later or ask your LC.
@@ -387,7 +393,7 @@ export function mount(container, { navigate, session }) {
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function statusLabel(s) {
-  return { scheduled: 'Scheduled', 'not-started': 'Ready', progress: 'In progress', complete: 'Complete', submitted: 'Submitted' }[s] ?? s
+  return { scheduled: 'Scheduled', 'not-started': 'Ready', progress: 'In progress', complete: 'Complete', submitted: 'Submitted', imported: 'Imported' }[s] ?? s
 }
 
 function monthName(year, month) {
