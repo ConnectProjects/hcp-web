@@ -871,14 +871,14 @@ function audiogramSVG(ear, thr, baseline) {
 
     const marks = pts.filter(Boolean).map(p => {
       if (isLeft) {
-        const s = alpha < 1 ? 3 : 5
+        const s = 3
         return `<line x1="${p.x-s}" y1="${p.y-s}" x2="${p.x+s}" y2="${p.y+s}"
-          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>
+          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1}" opacity="${alpha}"/>
                 <line x1="${p.x+s}" y1="${p.y-s}" x2="${p.x-s}" y2="${p.y+s}"
-          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>`
+          stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1}" opacity="${alpha}"/>`
       } else {
-        return `<circle cx="${p.x}" cy="${p.y}" r="${alpha < 1 ? 3 : 5}"
-          fill="none" stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1.25}" opacity="${alpha}"/>`
+        return `<circle cx="${p.x}" cy="${p.y}" r="3"
+          fill="none" stroke="${color}" stroke-width="${alpha < 1 ? 0.75 : 1}" opacity="${alpha}"/>`
       }
     }).join('')
 

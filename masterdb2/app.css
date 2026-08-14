@@ -8,7 +8,7 @@
   --clr-sidebar-text:     #94a3b8;
   --clr-sidebar-hi:       #f1f5f9;
   --clr-text:             #111827;
-  --clr-subtle:           #6b7280;
+  --clr-subtle:           #4b5563;
   --clr-border:           #e5e7eb;
   --clr-surface:          #f3f4f6;
   --clr-white:            #ffffff;
@@ -396,7 +396,7 @@ ul { list-style: none; }
 .badge-gray   { background: var(--clr-surface); color: var(--clr-subtle); }
 
 /* ── Form labels ────────────────────────────────────────────────────────────── */
-.field-label { display: block; font-size: 0.75rem; color: var(--clr-subtle); margin-bottom: 0.25rem; }
+.field-label { display: block; font-size: 0.8125rem; color: var(--clr-subtle); margin-bottom: 0.25rem; }
 
 /* ── Select / form inputs ──────────────────────────────────────────────────── */
 .form-select {
@@ -708,7 +708,7 @@ ul { list-style: none; }
   margin-bottom: 0.625rem;
   flex-wrap: wrap;
 }
-.q-label { font-size: 0.875rem; flex: 1; min-width: 14rem; }
+.q-label { font-size: 0.9375rem; flex: 1; min-width: 14rem; color: var(--clr-text); }
 .q-sub { padding-left: 1.25rem; border-left: 2px solid var(--clr-border); margin: 0.25rem 0 0.75rem; }
 .q-check-row {
   display: inline-flex;
