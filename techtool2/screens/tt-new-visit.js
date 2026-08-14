@@ -279,12 +279,15 @@ export function mount(container, { navigate, session }) {
   function bindCompany() {
     const searchEl = container.querySelector('#co-search')
     searchEl?.addEventListener('input', e => {
+      const pos = e.target.selectionStart
       _coSearch = e.target.value
       _coResults = _coSearch.length >= 2
         ? query(`SELECT company_id, name, city FROM companies WHERE name LIKE ? AND active = 1 ORDER BY name LIMIT 8`,
                 [`%${_coSearch}%`])
         : []
       renderBody()
+      const el = container.querySelector('#co-search')
+      if (el) { el.focus(); el.setSelectionRange(pos, pos) }
     })
 
     container.querySelectorAll('[data-id]').forEach(el => {
@@ -395,6 +398,7 @@ export function mount(container, { navigate, session }) {
     })
 
     container.querySelector('#w-search')?.addEventListener('input', e => {
+      const pos = e.target.selectionStart
       _wSearch = e.target.value
       if (_wSearch.length >= 2) {
         const all = searchWorkers(_wSearch, { includeInactive: false })
@@ -404,6 +408,8 @@ export function mount(container, { navigate, session }) {
         _wResults = []; _wForm = null
       }
       renderBody()
+      const el = container.querySelector('#w-search')
+      if (el) { el.focus(); el.setSelectionRange(pos, pos) }
     })
 
     container.querySelectorAll('[data-wid]').forEach(el => {
