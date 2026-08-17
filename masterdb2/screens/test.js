@@ -87,6 +87,7 @@ export function mount(container, { navigate, testId, employeeId }) {
         <div class="section-head"><h2>Test Details</h2></div>
         <div class="info-card">
           <dl>
+            ${emp ? row('Worker', emp.last_name + ', ' + emp.first_name) : ''}
             ${row('Date',           fmtDate(test.test_date))}
             ${row('Type',           test.test_type)}
             ${row('Province',       test.province)}
