@@ -771,43 +771,55 @@ ul { list-style: none; }
 /* ── Print ─────────────────────────────────────────────────────────────────── */
 .print-header { display: none; }
 
+/* 1 cm margins — small enough that most browsers drop their own
+   URL/date/title header lines, maximizing usable page area.       */
+@page { margin: 1cm; size: letter portrait; }
+
 @media print {
+  /* Scale all rem-based spacing down ~27% — affects inline rem values too */
+  html { font-size: 11px; }
+
   .print-header {
     display: block;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: #6b7280;
     border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 0.25rem;
-    margin-bottom: 0.5rem;
+    padding-bottom: 0.2rem;
+    margin-bottom: 0.35rem;
   }
 
   .sidebar, .brand-corner, .screen-header-row button, .btn, #back-btn { display: none !important; }
   .app.has-sidebar .screen { margin-left: 0 !important; }
 
   .screen-header-row {
-    padding: 0.25rem 0 !important;
+    padding: 0.2rem 0 !important;
     border-bottom: none !important;
   }
   .screen-header-row h1 { font-size: 1rem !important; }
 
   .screen-body {
     padding: 0 !important;
-    gap: 0.75rem !important;   /* override inline grid gap */
+    gap: 0.5rem !important;
   }
 
-  .section-head { margin-bottom: 0.25rem !important; }
+  .section-head { margin-bottom: 0.15rem !important; }
   .section-head h2 { font-size: 0.875rem !important; }
 
   .info-card {
-    padding: 0.4rem 0.6rem !important;
-    margin-bottom: 0.5rem !important;
+    padding: 0.3rem 0.5rem !important;
+    margin-bottom: 0.35rem !important;
     border-radius: 0 !important;
+    break-inside: avoid;
   }
   .info-card dl {
-    gap: 0.15rem 0.75rem !important;
+    gap: 0.1rem 0.5rem !important;
     font-size: 0.8rem !important;
   }
 
-  /* Remove the margin-top on section-heads inside the grid columns */
-  .screen-body [style*="margin-top:1rem"] { margin-top: 0.4rem !important; }
+  /* Table rows are the biggest space hog when unset */
+  .data-table { font-size: 0.8rem !important; }
+  .data-table th { padding: 0.15rem 0.4rem !important; }
+  .data-table td { padding: 0.15rem 0.4rem !important; }
+
+  .screen-body [style*="margin-top:1rem"] { margin-top: 0.3rem !important; }
 }
