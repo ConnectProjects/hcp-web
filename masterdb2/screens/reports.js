@@ -254,7 +254,7 @@ export function mount(container) {
           r.sts_flag ? 'Yes' : '',
         ])
       ]
-      downloadCSV(`masterdb-report-${from}-to-${to}.csv`, csvData)
+      downloadCSV(`connect-hearing-report-${from}-to-${to}.csv`, csvData)
     })
   }
 }

@@ -769,7 +769,18 @@ ul { list-style: none; }
 }
 
 /* ── Print ─────────────────────────────────────────────────────────────────── */
+.print-header { display: none; }
+
 @media print {
+  .print-header {
+    display: block;
+    font-size: 0.8rem;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+
   .sidebar, .brand-corner, .screen-header-row button, .btn, #back-btn { display: none !important; }
   .app.has-sidebar .screen { margin-left: 0 !important; }
 
