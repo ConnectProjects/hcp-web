@@ -433,8 +433,8 @@ document.getElementById('lc-report-btn').addEventListener('click', async () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-      window.location.href = result.fallback;
-      showToast('Email opened in mail client — CSV downloaded separately', 'success');
+      window.open(result.fallback, '_blank');
+      showToast('Email opened in Outlook Web — CSV downloaded separately', 'success');
     }
   } catch (err) {
     showToast('Report failed: ' + err.message, 'error');
@@ -558,8 +558,8 @@ document.getElementById('email-draft-btn').addEventListener('click', async () =>
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
-      window.location.href = result.fallback;
-      showToast('Email opened in your mail client', 'success');
+      window.open(result.fallback, '_blank');
+      showToast('Email opened in Outlook Web', 'success');
     }
 
     await loadCompanies();
@@ -794,8 +794,8 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
-      window.location.href = result.fallback;
-      showToast('Email opened in your mail client', 'success');
+      window.open(result.fallback, '_blank');
+      showToast('Email opened in Outlook Web', 'success');
     }
 
     await loadCompanies();
