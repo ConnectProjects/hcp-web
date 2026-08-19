@@ -188,9 +188,12 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         ${_addMode ? `
           <div class="info-card" style="margin-top:1rem">
             <div style="font-size:0.875rem;font-weight:600;margin-bottom:0.625rem">Add worker to packet</div>
-            <div class="nv-search-wrap" style="margin-bottom:0.5rem">
+            <div style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:0.5rem">
+              Search to add an existing worker, or fill in the fields below for a new one.
+            </div>
+            <div class="nv-search-wrap" style="margin-bottom:1rem">
               <input class="search-input" id="aw-search" type="search" autocomplete="off"
-                     placeholder="Search by name…" value="${esc(_addSearch)}">
+                     placeholder="Search by name to find existing worker…" value="${esc(_addSearch)}">
               ${_addResults.length
                 ? `<div class="nv-search-drop" id="aw-drop">
                      ${_addResults.map(w =>
@@ -198,29 +201,24 @@ export function mount(container, { navigate, session, filename, techFolder }) {
                           <strong>${esc(w.last_name)}, ${esc(w.first_name)}</strong>
                           ${w.dob ? `<span style="color:var(--clr-subtle)"> — ${esc(w.dob)}</span>` : ''}
                         </div>`).join('')}
-                     <div class="nv-search-item" data-awid="new" style="color:var(--clr-primary)">+ Add as new worker</div>
                    </div>`
-                : (_addSearch.length >= 2
-                    ? `<div class="nv-search-drop"><div class="nv-search-item" style="color:var(--clr-subtle)">No match — fill in below.</div></div>`
-                    : '')}
+                : ''}
             </div>
-            ${_addForm !== null ? `
-              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem;margin-bottom:0.625rem">
-                <div><label class="field-label">First name *</label>
-                  <input class="search-input" id="aw-first" value="${esc(_addForm.first_name ?? '')}" style="width:100%"></div>
-                <div><label class="field-label">Last name *</label>
-                  <input class="search-input" id="aw-last" value="${esc(_addForm.last_name ?? '')}" style="width:100%"></div>
-                <div><label class="field-label">Middle name</label>
-                  <input class="search-input" id="aw-middle" value="${esc(_addForm.middle_name ?? '')}" style="width:100%"></div>
-                <div><label class="field-label">Date of birth</label>
-                  <input class="search-input" id="aw-dob" type="date" value="${esc(_addForm.dob ?? '')}" style="width:100%"></div>
-              </div>
-              <div style="display:flex;gap:0.5rem">
-                <button class="btn btn-primary btn-sm" id="aw-confirm"
-                  ${_addForm.first_name?.trim() && _addForm.last_name?.trim() ? '' : 'disabled'}>Add Worker</button>
-                <button class="btn btn-secondary btn-sm" id="aw-cancel">Cancel</button>
-              </div>` : `
-            <button class="btn btn-secondary btn-sm" id="aw-cancel">Cancel</button>`}
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem;margin-bottom:0.625rem">
+              <div><label class="field-label">First name *</label>
+                <input class="search-input" id="aw-first" value="${esc(_addForm?.first_name ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Last name *</label>
+                <input class="search-input" id="aw-last" value="${esc(_addForm?.last_name ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Middle name</label>
+                <input class="search-input" id="aw-middle" value="${esc(_addForm?.middle_name ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Date of birth</label>
+                <input class="search-input" id="aw-dob" type="date" value="${esc(_addForm?.dob ?? '')}" style="width:100%"></div>
+            </div>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn btn-primary btn-sm" id="aw-confirm"
+                ${_addForm?.first_name?.trim() && _addForm?.last_name?.trim() ? '' : 'disabled'}>Add Worker</button>
+              <button class="btn btn-secondary btn-sm" id="aw-cancel">Cancel</button>
+            </div>
           </div>`
           : `<div style="margin-top:0.75rem">
                <button class="btn btn-secondary btn-sm" id="aw-open-btn">+ Add Worker</button>
@@ -311,7 +309,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
     // ── Add-worker panel ──────────────────────────────────────────────────────
     container.querySelector('#aw-open-btn')?.addEventListener('click', () => {
-      _addMode = true; _addSearch = ''; _addResults = []; _addForm = null
+      _addMode = true; _addSearch = ''; _addResults = []
+      _addForm = { first_name: '', last_name: '', middle_name: '', dob: '' }
       render()
     })
     container.querySelector('#aw-cancel')?.addEventListener('click', () => {
@@ -327,9 +326,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         const already = new Set(_packet.employees.map(emp => String(emp.employee_id)))
         const all = searchWorkers(_addSearch, { includeInactive: false })
         _addResults = all.filter(r => !already.has(String(r.employee_id))).slice(0, 8)
-        _addForm = _addResults.length ? null : { first_name: '', last_name: '', middle_name: '', dob: '' }
       } else {
-        _addResults = []; _addForm = null
+        _addResults = []
       }
       render()
       const el = container.querySelector('#aw-search')
@@ -341,7 +339,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         e.preventDefault()
         const awid = el.dataset.awid
         if (awid === 'new') {
-          _addForm = { first_name: _addSearch.trim(), last_name: '', middle_name: '', dob: '' }
+          // shouldn't appear anymore — left for safety
           _addResults = []
           render()
         } else {
