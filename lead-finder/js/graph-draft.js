@@ -138,10 +138,9 @@ export async function createDraft({ outreach, company, session }) {
 
   const fallback = `https://outlook.office.com/mail/deeplink/compose`
     + `?to=${encodeURIComponent(outreach.contact_email)}`
-    + `&subject=${encodeURIComponent(subject)}`
-    + `&body=${encodeURIComponent(plainBody)}`;
+    + `&subject=${encodeURIComponent(subject)}`;
 
-  return { success: false, fallback };
+  return { success: false, fallback, clipBody: plainBody };
 }
 
 function escHtml(str) {
@@ -293,11 +292,11 @@ export async function createLcReportDraft(leads, session) {
 
   const fallback = `https://outlook.office.com/mail/deeplink/compose`
     + `?to=${encodeURIComponent(_cliffEmail)}`
-    + `&subject=${encodeURIComponent(subject)}`
-    + `&body=${encodeURIComponent(plainBody)}`;
+    + `&subject=${encodeURIComponent(subject)}`;
 
   return {
     success:     false,
+    clipBody:    plainBody,
     fallback,
     csvBlob:     new Blob([csv], { type: 'text/csv' }),
     csvFilename: filename,

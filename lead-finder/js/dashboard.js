@@ -433,8 +433,9 @@ document.getElementById('lc-report-btn').addEventListener('click', async () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
+      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
       window.open(result.fallback, '_blank');
-      showToast('Email opened in Outlook Web — CSV downloaded separately', 'success');
+      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
     }
   } catch (err) {
     showToast('Report failed: ' + err.message, 'error');
@@ -558,8 +559,9 @@ document.getElementById('email-draft-btn').addEventListener('click', async () =>
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
+      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
       window.open(result.fallback, '_blank');
-      showToast('Email opened in Outlook Web', 'success');
+      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
     }
 
     await loadCompanies();
@@ -794,8 +796,9 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
+      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
       window.open(result.fallback, '_blank');
-      showToast('Email opened in Outlook Web', 'success');
+      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
     }
 
     await loadCompanies();
