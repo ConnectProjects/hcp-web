@@ -434,8 +434,8 @@ document.getElementById('lc-report-btn').addEventListener('click', async () => {
         URL.revokeObjectURL(url);
       }
       if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
-      window.open(result.fallback, '_blank');
-      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
+      window.open('https://outlook.office.com/mail/0/', '_blank');
+      showToast(`Body copied to clipboard. In Outlook, new message → To: ${result.composeTo} → paste body`, 'success');
     }
   } catch (err) {
     showToast('Report failed: ' + err.message, 'error');
@@ -484,6 +484,7 @@ function openEmailPanel(companyId) {
 
 function closeEmailPanel() {
   document.getElementById('email-modal').classList.add('hidden');
+  document.getElementById('email-compose-hint').classList.add('hidden');
   emailPanel.companyId  = null;
   emailPanel.outreachId = null;
   emailPanel.token      = null;
@@ -560,8 +561,10 @@ document.getElementById('email-draft-btn').addEventListener('click', async () =>
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
       if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
-      window.open(result.fallback, '_blank');
-      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
+      document.getElementById('compose-hint-to').textContent      = result.composeTo      ?? '';
+      document.getElementById('compose-hint-subject').textContent = result.composeSubject ?? '';
+      document.getElementById('email-compose-hint').classList.remove('hidden');
+      showToast('Body copied to clipboard — see compose details below', 'success');
     }
 
     await loadCompanies();
@@ -658,6 +661,7 @@ function openCallPanel(companyId) {
 
 function closeCallPanel() {
   document.getElementById('call-modal').classList.add('hidden');
+  document.getElementById('call-compose-hint').classList.add('hidden');
   callPanel.companyId  = null;
   callPanel.outreachId = null;
   callPanel.token      = null;
@@ -797,8 +801,10 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
       if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
-      window.open(result.fallback, '_blank');
-      showToast('Outlook Web opened — body copied to clipboard, paste it in', 'success');
+      document.getElementById('call-compose-hint-to').textContent      = result.composeTo      ?? '';
+      document.getElementById('call-compose-hint-subject').textContent = result.composeSubject ?? '';
+      document.getElementById('call-compose-hint').classList.remove('hidden');
+      showToast('Body copied to clipboard — see compose details below', 'success');
     }
 
     await loadCompanies();
