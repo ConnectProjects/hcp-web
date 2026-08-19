@@ -136,7 +136,16 @@ export async function createDraft({ outreach, company, session }) {
     unsubscribeUrl ? `To unsubscribe: ${unsubscribeUrl}` : null,
   ].filter(line => line != null).join('\n');
 
-  return { success: false, clipBody: plainBody, composeTo: outreach.contact_email, composeSubject: subject };
+  const clipHtml = plainToClipHtml(plainBody);
+  return { success: false, clipBody: plainBody, clipHtml, composeTo: outreach.contact_email, composeSubject: subject };
+}
+
+function plainToClipHtml(text) {
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const paras = text.split('\n\n').map(para =>
+    `<p style="margin:0 0 14px 0">${esc(para).split('\n').join('<br>')}</p>`
+  ).join('');
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">${paras}</div>`;
 }
 
 function escHtml(str) {
@@ -289,6 +298,7 @@ export async function createLcReportDraft(leads, session) {
   return {
     success:        false,
     clipBody:       plainBody,
+    clipHtml:       plainToClipHtml(plainBody),
     composeTo:      _cliffEmail,
     composeSubject: subject,
     csvBlob:        new Blob([csv], { type: 'text/csv' }),

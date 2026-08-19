@@ -3,6 +3,21 @@ import { requireAuth, renderUserEmail, logout } from './auth.js';
 import { showToast } from './toast.js';
 import { createDraft, createLcReportDraft } from './graph-draft.js';
 
+async function copyToClipboard(text, html) {
+  try {
+    if (html && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html':  new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([text], { type: 'text/plain' }),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+  } catch {
+    await navigator.clipboard.writeText(text).catch(() => {});
+  }
+}
+
 // ---- Boot ---------------------------------------------------
 const session = await requireAuth();
 if (!session) throw new Error('unauthenticated');
@@ -433,9 +448,9 @@ document.getElementById('lc-report-btn').addEventListener('click', async () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
+      if (result.clipBody) await copyToClipboard(result.clipBody, result.clipHtml);
       window.open('https://outlook.office.com/mail/0/', '_blank');
-      showToast(`Body copied to clipboard. In Outlook, new message → To: ${result.composeTo} → paste body`, 'success');
+      showToast(`Body copied to clipboard — new message in Outlook, To: ${result.composeTo}, paste body`, 'success');
     }
   } catch (err) {
     showToast('Report failed: ' + err.message, 'error');
@@ -514,6 +529,23 @@ document.getElementById('email-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('email-modal')) closeEmailPanel();
 });
 
+document.getElementById('copy-hint-to-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('compose-hint-to').textContent).catch(() => {});
+  showToast('To address copied', 'success');
+});
+document.getElementById('copy-hint-subject-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('compose-hint-subject').textContent).catch(() => {});
+  showToast('Subject copied', 'success');
+});
+document.getElementById('copy-call-hint-to-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('call-compose-hint-to').textContent).catch(() => {});
+  showToast('To address copied', 'success');
+});
+document.getElementById('copy-call-hint-subject-btn').addEventListener('click', () => {
+  navigator.clipboard.writeText(document.getElementById('call-compose-hint-subject').textContent).catch(() => {});
+  showToast('Subject copied', 'success');
+});
+
 // Draft email in Outlook
 document.getElementById('email-draft-btn').addEventListener('click', async () => {
   const company      = allCompanies.find(c => c.id === emailPanel.companyId);
@@ -560,11 +592,11 @@ document.getElementById('email-draft-btn').addEventListener('click', async () =>
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
-      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
+      if (result.clipBody) await copyToClipboard(result.clipBody, result.clipHtml);
       document.getElementById('compose-hint-to').textContent      = result.composeTo      ?? '';
       document.getElementById('compose-hint-subject').textContent = result.composeSubject ?? '';
       document.getElementById('email-compose-hint').classList.remove('hidden');
-      showToast('Body copied to clipboard — see compose details below', 'success');
+      showToast('Body copied to clipboard — follow steps below', 'success');
     }
 
     await loadCompanies();
@@ -800,11 +832,11 @@ document.getElementById('call-draft-btn').addEventListener('click', async () => 
       if (result.webLink) window.open(result.webLink, '_blank');
       showToast('Draft created — check your Outlook Drafts', 'success');
     } else {
-      if (result.clipBody) await navigator.clipboard.writeText(result.clipBody).catch(() => {});
+      if (result.clipBody) await copyToClipboard(result.clipBody, result.clipHtml);
       document.getElementById('call-compose-hint-to').textContent      = result.composeTo      ?? '';
       document.getElementById('call-compose-hint-subject').textContent = result.composeSubject ?? '';
       document.getElementById('call-compose-hint').classList.remove('hidden');
-      showToast('Body copied to clipboard — see compose details below', 'success');
+      showToast('Body copied to clipboard — follow steps below', 'success');
     }
 
     await loadCompanies();

@@ -333,10 +333,12 @@
 
       <!-- Compose hint (shown after fallback draft) -->
       <div id="call-compose-hint" class="hidden" style="margin-bottom:12px;padding:12px;background:var(--grey-50,#f9fafb);border:1px solid var(--grey-200,#e5e7eb);border-radius:6px;font-size:13px">
-        <p style="margin:0 0 8px;font-weight:600">Open Outlook and create a new message:</p>
-        <div style="margin-bottom:4px"><span style="color:var(--grey-500)">To:</span> <span id="call-compose-hint-to" style="user-select:all"></span></div>
-        <div style="margin-bottom:8px"><span style="color:var(--grey-500)">Subject:</span> <span id="call-compose-hint-subject" style="user-select:all"></span></div>
-        <p style="margin:0 0 10px;color:var(--grey-500)">Body is copied to your clipboard — paste with Ctrl+V.</p>
+        <p style="margin:0 0 10px;font-weight:600">Steps — keep this panel open alongside Outlook:</p>
+        <ol style="margin:0 0 12px;padding-left:18px;line-height:2">
+          <li><strong>Paste body</strong> — already on clipboard, Ctrl+V in the message area</li>
+          <li><strong>To:</strong> <span id="call-compose-hint-to"></span> <button class="btn btn-ghost btn-xs" id="copy-call-hint-to-btn">Copy</button></li>
+          <li><strong>Subject:</strong> <span id="call-compose-hint-subject"></span> <button class="btn btn-ghost btn-xs" id="copy-call-hint-subject-btn">Copy</button></li>
+        </ol>
         <button class="btn btn-primary btn-sm" onclick="window.open('https://outlook.office.com/mail/0/','_blank')">Open Outlook Web</button>
       </div>
 
@@ -378,10 +380,12 @@
         Reply-to is automatically set to Cliff Stephens. The draft will appear in your Outlook Drafts — review and send from there.
       </p>
       <div id="email-compose-hint" class="hidden" style="margin-top:16px;padding:12px;background:var(--grey-50,#f9fafb);border:1px solid var(--grey-200,#e5e7eb);border-radius:6px;font-size:13px">
-        <p style="margin:0 0 8px;font-weight:600">Open Outlook and create a new message:</p>
-        <div style="margin-bottom:4px"><span style="color:var(--grey-500)">To:</span> <span id="compose-hint-to" style="user-select:all"></span></div>
-        <div style="margin-bottom:8px"><span style="color:var(--grey-500)">Subject:</span> <span id="compose-hint-subject" style="user-select:all"></span></div>
-        <p style="margin:0 0 10px;color:var(--grey-500)">Body is copied to your clipboard — paste with Ctrl+V.</p>
+        <p style="margin:0 0 10px;font-weight:600">Steps — keep this panel open alongside Outlook:</p>
+        <ol style="margin:0 0 12px;padding-left:18px;line-height:2">
+          <li><strong>Paste body</strong> — already on clipboard, Ctrl+V in the message area</li>
+          <li><strong>To:</strong> <span id="compose-hint-to"></span> <button class="btn btn-ghost btn-xs" id="copy-hint-to-btn">Copy</button></li>
+          <li><strong>Subject:</strong> <span id="compose-hint-subject"></span> <button class="btn btn-ghost btn-xs" id="copy-hint-subject-btn">Copy</button></li>
+        </ol>
         <button class="btn btn-primary btn-sm" onclick="window.open('https://outlook.office.com/mail/0/','_blank')">Open Outlook Web</button>
       </div>
     </div>
