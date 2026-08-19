@@ -50,7 +50,7 @@ export const PACKET_STATUS = {
  * @param {string} [opts.stickyNotes]     - Office notes to tech
  * @returns {object} packet
  */
-export function createPacket({ company, location, employees, rules, counselTemplates, hpdInventory, techId, techInitials, visitDate, stickyNotes = '' }) {
+export function createPacket({ company, location, employees, rules, counselTemplates, hpdInventory, techId, techInitials, techName = '', visitDate, stickyNotes = '' }) {
   const companySlug  = company.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 15)
   const locationSlug = (location?.name ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12)
   const slug         = locationSlug ? `${companySlug}-${locationSlug}` : companySlug
@@ -67,8 +67,9 @@ export function createPacket({ company, location, employees, rules, counselTempl
     updated_at:     new Date().toISOString(),
 
     tech: {
-      tech_id:      techId,
-      tech_initials: techInitials
+      tech_id:       techId,
+      tech_initials: techInitials,
+      tech_name:     techName || null,
     },
 
     visit: {
@@ -77,22 +78,24 @@ export function createPacket({ company, location, employees, rules, counselTempl
     },
 
     company: {
-      company_id:   company.company_id,
-      name:         company.name,
-      province:     company.province,
-      address:      company.address     ?? null,
-      contact_name: company.contact_name ?? null,
-      contact_phone: company.contact_phone ?? null,
-      contact_email: company.contact_email ?? null,
-      sticky_notes: stickyNotes
+      company_id:              company.company_id,
+      name:                    company.name,
+      province:                company.province,
+      address:                 company.address                 ?? null,
+      contact_name:            company.contact_name            ?? null,
+      contact_phone:           company.contact_phone           ?? null,
+      contact_email:           company.contact_email           ?? null,
+      worksafebc_employer_id:  company.worksafebc_employer_id  ?? null,
+      sticky_notes:            stickyNotes
     },
 
-  location: location ? {
-  location_id: location.location_id ?? null,
-  name:        location.name        ?? null,
-  province:    location.province    ?? company.province ?? null,
-  address:     location.address     ?? null
-} : null,
+    location: location ? {
+      location_id: location.location_id ?? null,
+      name:        location.name        ?? null,
+      province:    location.province    ?? company.province ?? null,
+      address:     location.address     ?? null,
+      cu_code:     location.cu_code     ?? null,
+    } : null,
 
     // Classification rules for this company's province — snapshotted at packet creation time
     rules,
@@ -110,6 +113,10 @@ export function createPacket({ company, location, employees, rules, counselTempl
       middle_name:    emp.middle_name    ?? null,
       last_name:      emp.last_name,
       dob:            emp.dob            ?? null,
+      gender:         emp.gender         ?? null,
+      sin_last_4:     emp.sin_last_4     ?? null,
+      phone:          emp.phone          ?? null,
+      email:          emp.email          ?? null,
       hire_date:      emp.hire_date      ?? null,
       job_title:      emp.job_title      ?? null,
       status:         emp.status         ?? 'active',

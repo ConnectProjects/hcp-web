@@ -79,7 +79,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     const nTested = emps.filter(e => (e.completed_tests?.length ?? 0) > 0).length
     const nSkip   = emps.filter(e => !!e.skipped_at).length
     const nTotal  = emps.length
-    const allDone = nTotal > 0 && (nTested + nSkip) >= nTotal
+    const allDone  = nTotal > 0 && (nTested + nSkip) >= nTotal
+    const province = p.visit?.province ?? p.company?.province ?? null
 
     const statusHTML = _status
       ? `<div class="${_status.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:1rem">${esc(_status.msg)}</div>`
@@ -184,6 +185,9 @@ export function mount(container, { navigate, session, filename, techFolder }) {
             ${_selected.size > 0 && !_skipConfirm
               ? `<button class="btn btn-secondary" id="skip-selected-btn">Skip selected (${_selected.size})</button>`
               : ''}
+            ${province === 'BC' && allDone
+              ? `<button class="btn btn-secondary" id="wbc-export-btn">Export WorkSafeBC CSV</button>`
+              : ''}
             <button class="btn btn-primary" id="submit-btn" ${allDone ? '' : 'disabled'}>Submit Packet →</button>
           </div>
         </div>
@@ -255,6 +259,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     container.querySelector('#cancel-bulk-skip')?.addEventListener('click', () => {
       _skipConfirm = false; render()
     })
+    container.querySelector('#wbc-export-btn')?.addEventListener('click', exportWorksafeBCCsv)
     container.querySelector('#submit-btn')?.addEventListener('click', runSubmit)
   }
 
@@ -295,7 +300,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       s.pre  = { noise_2h: q.noise_2h ?? null, noise_2h_duration: q.noise_2h_duration ?? null,
                   wear_hpd: q.wear_hpd ?? null, hpd_class: q.hpd_class ?? null,
                   hpd_style: q.hpd_style ?? null, hpd_no_reason: q.hpd_no_reason ?? null,
-                  employer_info: q.employer_info ?? null }
+                  employer_info: q.employer_info ?? null,
+                  years_in_occupation: q.years_in_occupation ?? null }
       s.post = { ear_infection: q.ear_infection ?? null, ear_surgery: q.ear_surgery ?? null,
                   dizziness: q.dizziness ?? null, head_injury: q.head_injury ?? null,
                   childhood_loss: q.childhood_loss ?? null, tinnitus: q.tinnitus ?? null,
@@ -346,6 +352,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
     const emp          = p.employees[slot.empIdx]
     const lastTestDate = emp.prior_tests?.[0]?.test_date ?? null
+    const isBC         = (p.visit?.province ?? p.company?.province) === 'BC'
 
     container.innerHTML = `
       <div class="screen-header-row">
@@ -371,6 +378,24 @@ export function mount(container, { navigate, session, filename, techFolder }) {
                 <div class="search-input" style="width:100%;background:var(--clr-surface);color:${lastTestDate ? 'inherit' : 'var(--clr-subtle)'}">${lastTestDate ? esc(lastTestDate) : 'None on file'}</div></div>
               <div><label class="field-label">Job title</label>
                 <input class="search-input" id="ef-job" value="${esc(emp.job_title ?? '')}" style="width:100%"></div>
+              ${isBC ? `
+              <div><label class="field-label">Gender</label>
+                <select class="form-select" id="ef-gender" style="width:100%">
+                  <option value="">—</option>
+                  ${['Male','Female','Other'].map(g =>
+                    `<option value="${g}"${(emp.gender ?? '') === g ? ' selected' : ''}>${g}</option>`
+                  ).join('')}
+                </select></div>
+              <div><label class="field-label">SIN last 4</label>
+                <input class="search-input" id="ef-sin" maxlength="4" value="${esc(emp.sin_last_4 ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Yrs in occupation</label>
+                <input class="search-input" id="ef-years" type="number" min="0" max="60"
+                       value="${esc(slot.pre?.years_in_occupation ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Email</label>
+                <input class="search-input" id="ef-email" type="email" value="${esc(emp.email ?? '')}" style="width:100%"></div>
+              <div><label class="field-label">Phone</label>
+                <input class="search-input" id="ef-phone" value="${esc(emp.phone ?? '')}" style="width:100%"></div>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -665,6 +690,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       middle_name: q('#ef-middle')?.value.trim() || null,
       dob:         q('#ef-dob')?.value            || null,
       job_title:   q('#ef-job')?.value.trim()    || null,
+      gender:      q('#ef-gender')?.value         || null,
+      sin_last_4:  q('#ef-sin')?.value.trim()    || null,
+      email:       q('#ef-email')?.value.trim()  || null,
+      phone:       q('#ef-phone')?.value.trim()  || null,
     }
 
     slot.testType = q('#tf-type')?.value  ?? 'Periodic'
@@ -678,6 +707,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     })
 
     slot.pre = {
+      years_in_occupation: q('#ef-years')?.value || null,
       noise_2h:          radio('noise_2h'),
       noise_2h_duration: q('#pre-noise-dur')?.value       || null,
       wear_hpd:          radio('wear_hpd'),
@@ -739,6 +769,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       emp.middle_name = slot.empEdits.middle_name ?? emp.middle_name
       emp.dob         = slot.empEdits.dob         ?? emp.dob
       emp.job_title   = slot.empEdits.job_title   ?? emp.job_title
+      emp.gender      = slot.empEdits.gender      ?? emp.gender    ?? null
+      emp.sin_last_4  = slot.empEdits.sin_last_4  ?? emp.sin_last_4 ?? null
+      emp.email       = slot.empEdits.email       ?? emp.email     ?? null
+      emp.phone       = slot.empEdits.phone       ?? emp.phone     ?? null
     }
 
     slot.saving = true
@@ -798,6 +832,97 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       _status = { ok: false, msg: `Submit failed: ${e.message}` }
       render()
     }
+  }
+
+  function exportWorksafeBCCsv() {
+    const p       = _packet
+    const tech    = p.tech ?? {}
+    const parts   = (tech.tech_name ?? '').trim().split(/\s+/)
+    const techFirst = parts[0] ?? ''
+    const techLast  = parts.length > 1 ? parts.slice(1).join(' ') : techFirst
+
+    const headers = [
+      'Submitted by user','Test Date','Technician ID','Technician First Name','Technician Last Name',
+      'Worker ID','Worker First Name','Worker Middle Name','Worker Last Name','Worker Abbr Name',
+      'Birth Date','Gender','4 digits SIN','Years in Occupation',
+      'Employer ID','Employer Name','Operating Location','CU Code','CU Description',
+      'Occupation Code','Occupation Job Title','Comment',
+      'LeftEar05khz','LeftEar1khz','LeftEar2khz','LeftEar3khz','LeftEar4khz','LeftEar6khz','LeftEar8khz',
+      'RightEar05khz','RightEar1khz','RightEar2khz','RightEar3khz','RightEar4khz','RightEar6khz','RightEar8khz',
+      'ExposedToNoiseInLastHours','HowManyHoursExposedToNoise',
+      'RegularlyWearHearingProt','ClassOfHearingProtWornReg','StyleOfHearingProtWornReg','WhyNotWearHearingProtReg',
+      'HaveReceivedEducationAboutNoiseAndLostInLastYear',
+      'HadSevereEarInfection','HadEarSurgery','HadDizzinessOrBalanceProblems','HadSeriousHeadInjury',
+      'HadHearingLossInChildhood','HasRingingInEars','WhichEar','WhenFirstNoticed',
+      'HadExposureToLoudBlast','HasUsedFirearms','FromWhichShoulderShoot','NumYearsShootingFirearms',
+      'I confirm that technician who conducted the test determined the test category for this worker',
+      'I confirm that technician who conducted the test appropriately counselled the worker on both test results and hearing protection',
+      'Worker Email','Worker Phone Number',
+    ]
+
+    const rows = [headers]
+
+    for (const emp of p.employees ?? []) {
+      for (const test of emp.completed_tests ?? []) {
+        const q  = test.questionnaire ?? {}
+        const th = test.thresholds    ?? {}
+        const abbr = ((emp.first_name?.[0] ?? '') + (emp.last_name ?? '')).trim()
+        rows.push([
+          session.user?.name ?? '',
+          test.test_date ?? '',
+          tech.tech_id   ?? '',
+          techFirst,
+          techLast,
+          '',                                        // Worker ID — not captured
+          emp.first_name  ?? '',
+          emp.middle_name ?? '',
+          emp.last_name   ?? '',
+          abbr,
+          emp.dob         ?? '',
+          emp.gender      ?? '',
+          emp.sin_last_4  ?? '',
+          q.years_in_occupation ?? '',
+          p.company?.worksafebc_employer_id ?? '',
+          p.company?.name     ?? '',
+          p.location?.name    ?? '',
+          p.location?.cu_code ?? '',
+          '',                                        // CU Description — not captured
+          '',                                        // Occupation Code — not captured
+          emp.job_title   ?? '',
+          test.notes      ?? '',
+          th.left_500  ?? '', th.left_1k  ?? '', th.left_2k  ?? '', th.left_3k  ?? '',
+          th.left_4k   ?? '', th.left_6k  ?? '', th.left_8k  ?? '',
+          th.right_500 ?? '', th.right_1k ?? '', th.right_2k ?? '', th.right_3k ?? '',
+          th.right_4k  ?? '', th.right_6k ?? '', th.right_8k ?? '',
+          boolToYN(q.noise_2h),
+          q.noise_2h_duration ?? '',
+          boolToYN(q.wear_hpd),
+          q.hpd_class      ?? '',
+          q.hpd_style      ?? '',
+          q.hpd_no_reason  ?? '',
+          boolToYN(q.employer_info),
+          boolToYN(q.ear_infection),
+          boolToYN(q.ear_surgery),
+          boolToYN(q.dizziness),
+          boolToYN(q.head_injury),
+          boolToYN(q.childhood_loss),
+          boolToYN(q.tinnitus),
+          q.tinnitus_ear      ?? '',
+          q.tinnitus_duration ?? '',
+          boolToYN(q.blast_exposure),
+          boolToYN(q.firearms),
+          q.firearms_shoulder ?? '',
+          q.firearms_duration ?? '',
+          'Yes',                                     // Confirmation: test category determined
+          'Yes',                                     // Confirmation: counselled
+          emp.email ?? '',
+          emp.phone ?? '',
+        ])
+      }
+    }
+
+    const coSlug = (p.company?.name ?? 'export').replace(/[^a-z0-9]/gi, '_').slice(0, 20)
+    downloadCsv(`WorkSafeBC_${coSlug}_${p.visit?.visit_date ?? 'unknown'}.csv`, rows)
   }
 
   load()
@@ -966,4 +1091,24 @@ function fmtDate(d) {
     return new Date(d + 'T00:00:00').toLocaleDateString('en-CA',
       { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
   } catch { return d }
+}
+
+function boolToYN(val) {
+  if (val === true)  return 'Yes'
+  if (val === false) return 'No'
+  return ''
+}
+
+function downloadCsv(filename, rows) {
+  const csv  = rows.map(r => r.map(csvCellWBC).join(',')).join('\r\n')
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename })
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function csvCellWBC(v) {
+  const s = String(v ?? '')
+  return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }

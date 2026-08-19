@@ -38,7 +38,7 @@ export function mount(container, { navigate, session }) {
   let _step = 1
 
   // Step 1 — Company
-  let _co        = { name:'', city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'' }
+  let _co        = { name:'', city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'', worksafebc_employer_id:'' }
   let _coId      = null    // null = new company
   let _coSearch  = ''
   let _coResults = []
@@ -127,6 +127,12 @@ export function mount(container, { navigate, session }) {
              ${fld('co-email', 'Contact email',   _co.contact_email)}
              ${fld('co-web',   'Website',         _co.website)}
            </div>`}
+
+      <div class="nv-form-row" style="max-width:280px;margin-top:0.75rem">
+        <label class="field-label" for="co-wsbc">WorkSafeBC Employer ID</label>
+        <input class="search-input" id="co-wsbc" type="text" autocomplete="off"
+               placeholder="From appointment notes" value="${esc(_co.worksafebc_employer_id)}">
+      </div>
 
       <div style="display:flex;justify-content:flex-end;margin-top:1.25rem">
         <button class="btn btn-primary" id="step1-next" ${!_co.name.trim() ? 'disabled' : ''}>
@@ -296,14 +302,15 @@ export function mount(container, { navigate, session }) {
         const id = el.dataset.id
         if (id === 'new') {
           _coId = null
-          _co = { name: _coSearch.trim(), city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'' }
+          _co = { name: _coSearch.trim(), city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'', worksafebc_employer_id:'' }
         } else {
           const co = query('SELECT * FROM companies WHERE company_id = ?', [Number(id)])[0]
           if (!co) return
           _coId = co.company_id
           _co   = { name: co.name, city: co.city ?? '', address: co.address ?? '',
                     contact_name: co.contact_name ?? '', contact_phone: co.contact_phone ?? '',
-                    contact_email: co.contact_email ?? '', website: co.website ?? '' }
+                    contact_email: co.contact_email ?? '', website: co.website ?? '',
+                    worksafebc_employer_id: co.worksafebc_employer_id ?? '' }
           _coSearch = co.name
         }
         _coResults = []
@@ -313,13 +320,14 @@ export function mount(container, { navigate, session }) {
 
     container.querySelector('#co-clear')?.addEventListener('click', () => {
       _coId = null; _coSearch = ''; _coResults = []
-      _co = { name:'', city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'' }
+      _co = { name:'', city:'', address:'', contact_name:'', contact_phone:'', contact_email:'', website:'', worksafebc_employer_id:'' }
       renderBody()
     })
 
     const coFieldMap = { 'co-name':'name','co-city':'city','co-addr':'address',
                          'co-cname':'contact_name','co-phone':'contact_phone',
-                         'co-email':'contact_email','co-web':'website' }
+                         'co-email':'contact_email','co-web':'website',
+                         'co-wsbc':'worksafebc_employer_id' }
     Object.entries(coFieldMap).forEach(([id, key]) => {
       container.querySelector(`#${id}`)?.addEventListener('input', e => {
         _co[key] = e.target.value
@@ -493,13 +501,14 @@ export function mount(container, { navigate, session }) {
       : _loc.province
 
     const companyForPacket = {
-      company_id:    _coId ?? null,
-      name:          _co.name.trim(),
-      address:       _co.address || null,
-      city:          _co.city   || null,
-      contact_name:  _co.contact_name  || null,
-      contact_phone: _co.contact_phone || null,
-      contact_email: _co.contact_email || null,
+      company_id:             _coId ?? null,
+      name:                   _co.name.trim(),
+      address:                _co.address       || null,
+      city:                   _co.city          || null,
+      contact_name:           _co.contact_name  || null,
+      contact_phone:          _co.contact_phone || null,
+      contact_email:          _co.contact_email || null,
+      worksafebc_employer_id: _co.worksafebc_employer_id || null,
       province,
     }
 
@@ -531,6 +540,7 @@ export function mount(container, { navigate, session }) {
       packet = createPacket({
         company:          companyForPacket,
         location:         locationForPacket,
+        techName:         techRow.name ?? '',
         employees:        _workers.map(w => ({
           employee_id:  w.id,
           uid:          w.uid   ?? null,
