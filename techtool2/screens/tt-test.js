@@ -12,7 +12,8 @@
  * Params: { filename, techFolder }
  */
 
-import { readTechPacket, saveTechPacket, submitTechPacket } from '../../masterdb2/db/db.js'
+import { query, readTechPacket, saveTechPacket, submitTechPacket } from '../../masterdb2/db/db.js'
+import { search as searchWorkers } from '../../masterdb2/db/workers.js'
 import { appendTestResult, markEmployeeSkipped, markSubmitted } from '../../shared/packet/schema.js'
 
 const FREQS = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
@@ -41,6 +42,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
   let _status      = null     // { ok, msg }
   let _selected    = new Set()
   let _skipConfirm = false
+  let _addMode     = false
+  let _addSearch   = ''
+  let _addResults  = []
+  let _addForm     = null   // { first_name, last_name, middle_name, dob } when entering new
 
   // ── Boot ──────────────────────────────────────────────────────────────────
 
@@ -179,6 +184,48 @@ export function mount(container, { navigate, session, filename, techFolder }) {
               <button class="btn btn-secondary btn-sm" id="cancel-bulk-skip">Cancel</button>
             </div>
           </div>` : ''}
+
+        ${_addMode ? `
+          <div class="info-card" style="margin-top:1rem">
+            <div style="font-size:0.875rem;font-weight:600;margin-bottom:0.625rem">Add worker to packet</div>
+            <div class="nv-search-wrap" style="margin-bottom:0.5rem">
+              <input class="search-input" id="aw-search" type="search" autocomplete="off"
+                     placeholder="Search by name…" value="${esc(_addSearch)}">
+              ${_addResults.length
+                ? `<div class="nv-search-drop" id="aw-drop">
+                     ${_addResults.map(w =>
+                       `<div class="nv-search-item" data-awid="${w.employee_id}">
+                          <strong>${esc(w.last_name)}, ${esc(w.first_name)}</strong>
+                          ${w.dob ? `<span style="color:var(--clr-subtle)"> — ${esc(w.dob)}</span>` : ''}
+                        </div>`).join('')}
+                     <div class="nv-search-item" data-awid="new" style="color:var(--clr-primary)">+ Add as new worker</div>
+                   </div>`
+                : (_addSearch.length >= 2
+                    ? `<div class="nv-search-drop"><div class="nv-search-item" style="color:var(--clr-subtle)">No match — fill in below.</div></div>`
+                    : '')}
+            </div>
+            ${_addForm !== null ? `
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem;margin-bottom:0.625rem">
+                <div><label class="field-label">First name *</label>
+                  <input class="search-input" id="aw-first" value="${esc(_addForm.first_name ?? '')}" style="width:100%"></div>
+                <div><label class="field-label">Last name *</label>
+                  <input class="search-input" id="aw-last" value="${esc(_addForm.last_name ?? '')}" style="width:100%"></div>
+                <div><label class="field-label">Middle name</label>
+                  <input class="search-input" id="aw-middle" value="${esc(_addForm.middle_name ?? '')}" style="width:100%"></div>
+                <div><label class="field-label">Date of birth</label>
+                  <input class="search-input" id="aw-dob" type="date" value="${esc(_addForm.dob ?? '')}" style="width:100%"></div>
+              </div>
+              <div style="display:flex;gap:0.5rem">
+                <button class="btn btn-primary btn-sm" id="aw-confirm"
+                  ${_addForm.first_name?.trim() && _addForm.last_name?.trim() ? '' : 'disabled'}>Add Worker</button>
+                <button class="btn btn-secondary btn-sm" id="aw-cancel">Cancel</button>
+              </div>` : `
+            <button class="btn btn-secondary btn-sm" id="aw-cancel">Cancel</button>`}
+          </div>`
+          : `<div style="margin-top:0.75rem">
+               <button class="btn btn-secondary btn-sm" id="aw-open-btn">+ Add Worker</button>
+             </div>`}
+
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:1.25rem;gap:1rem;flex-wrap:wrap">
           <span style="font-size:0.875rem;color:var(--clr-subtle)">${nTotal ? `${nTested} of ${nTotal} tested${nSkip ? `, ${nSkip} skipped` : ''}` : ''}</span>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
@@ -261,6 +308,67 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     })
     container.querySelector('#wbc-export-btn')?.addEventListener('click', exportWorksafeBCCsv)
     container.querySelector('#submit-btn')?.addEventListener('click', runSubmit)
+
+    // ── Add-worker panel ──────────────────────────────────────────────────────
+    container.querySelector('#aw-open-btn')?.addEventListener('click', () => {
+      _addMode = true; _addSearch = ''; _addResults = []; _addForm = null
+      render()
+    })
+    container.querySelector('#aw-cancel')?.addEventListener('click', () => {
+      _addMode = false; _addSearch = ''; _addResults = []; _addForm = null
+      render()
+    })
+
+    const awSearch = container.querySelector('#aw-search')
+    awSearch?.addEventListener('input', e => {
+      const pos = e.target.selectionStart
+      _addSearch = e.target.value
+      if (_addSearch.length >= 2) {
+        const already = new Set(_packet.employees.map(emp => String(emp.employee_id)))
+        const all = searchWorkers(_addSearch, { includeInactive: false })
+        _addResults = all.filter(r => !already.has(String(r.employee_id))).slice(0, 8)
+        _addForm = _addResults.length ? null : { first_name: '', last_name: '', middle_name: '', dob: '' }
+      } else {
+        _addResults = []; _addForm = null
+      }
+      render()
+      const el = container.querySelector('#aw-search')
+      if (el) { el.focus(); el.setSelectionRange(pos, pos) }
+    })
+
+    container.querySelectorAll('[data-awid]').forEach(el => {
+      el.addEventListener('mousedown', async e => {
+        e.preventDefault()
+        const awid = el.dataset.awid
+        if (awid === 'new') {
+          _addForm = { first_name: _addSearch.trim(), last_name: '', middle_name: '', dob: '' }
+          _addResults = []
+          render()
+        } else {
+          await addWorkerToPacket(Number(awid), null)
+        }
+      })
+    })
+
+    const awFieldMap = { 'aw-first':'first_name','aw-last':'last_name','aw-middle':'middle_name','aw-dob':'dob' }
+    Object.entries(awFieldMap).forEach(([id, key]) => {
+      container.querySelector(`#${id}`)?.addEventListener('input', e => {
+        if (!_addForm) return
+        _addForm[key] = e.target.value
+        const btn = container.querySelector('#aw-confirm')
+        if (btn) btn.disabled = !(_addForm.first_name?.trim() && _addForm.last_name?.trim())
+      })
+    })
+
+    container.querySelector('#aw-confirm')?.addEventListener('click', async () => {
+      if (!_addForm?.first_name?.trim() || !_addForm?.last_name?.trim()) return
+      await addWorkerToPacket(null, {
+        first_name:  _addForm.first_name.trim(),
+        last_name:   _addForm.last_name.trim(),
+        middle_name: _addForm.middle_name?.trim() || null,
+        dob:         _addForm.dob || null,
+      })
+    })
   }
 
   async function skipSelected(reason) {
@@ -832,6 +940,75 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       _status = { ok: false, msg: `Submit failed: ${e.message}` }
       render()
     }
+  }
+
+  const TKEYS = [
+    'left_500','left_1k','left_2k','left_3k','left_4k','left_6k','left_8k',
+    'right_500','right_1k','right_2k','right_3k','right_4k','right_6k','right_8k'
+  ]
+
+  async function addWorkerToPacket(empId, newData) {
+    let entry
+    if (empId != null) {
+      const emp = query('SELECT * FROM employees WHERE employee_id = ?', [empId])[0]
+      if (!emp) return
+      const baseline   = query('SELECT * FROM baselines WHERE employee_id = ? AND archived = 0 LIMIT 1', [empId])[0] ?? null
+      const priorTests = query('SELECT * FROM tests WHERE employee_id = ? AND deleted_at IS NULL ORDER BY test_date DESC LIMIT 2', [empId])
+      entry = {
+        employee_id:  emp.employee_id,
+        uid:          emp.uid         ?? null,
+        first_name:   emp.first_name,
+        middle_name:  emp.middle_name ?? null,
+        last_name:    emp.last_name,
+        dob:          emp.dob         ?? null,
+        gender:       emp.gender      ?? null,
+        sin_last_4:   emp.sin_last_4  ?? null,
+        phone:        emp.phone       ?? null,
+        email:        emp.email       ?? null,
+        job_title:    emp.job_title   ?? null,
+        status:       emp.status      ?? 'active',
+        baseline: baseline ? {
+          baseline_id: baseline.baseline_id,
+          test_date:   baseline.test_date,
+          thresholds:  Object.fromEntries(TKEYS.map(k => [k, baseline[k] ?? null]))
+        } : null,
+        prior_tests: priorTests.map(t => ({
+          test_id:        t.test_id,
+          test_date:      t.test_date,
+          classification: t.classification ?? null,
+          thresholds:     Object.fromEntries(TKEYS.map(k => [k, t[k] ?? null]))
+        })),
+        completed_tests: [],
+      }
+    } else {
+      entry = {
+        employee_id:  'new_' + Date.now(),
+        uid:          null,
+        first_name:   newData.first_name,
+        middle_name:  newData.middle_name ?? null,
+        last_name:    newData.last_name,
+        dob:          newData.dob         ?? null,
+        gender:       null, sin_last_4: null, phone: null, email: null,
+        job_title:    null,
+        status:       'active',
+        baseline:     null,
+        prior_tests:  [],
+        completed_tests: [],
+        new_employee: true,
+      }
+    }
+
+    _packet.employees.push(entry)
+    _packet.updated_at = new Date().toISOString()
+
+    try {
+      await saveTechPacket(techFolder, filename, _packet)
+      _addMode = false; _addSearch = ''; _addResults = []; _addForm = null
+      _status = { ok: true, msg: `${entry.last_name}, ${entry.first_name} added to packet.` }
+    } catch (e) {
+      _status = { ok: false, msg: `Could not save: ${e.message}` }
+    }
+    render()
   }
 
   function exportWorksafeBCCsv() {
