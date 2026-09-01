@@ -115,7 +115,8 @@ export function mount(container) {
           c.company_id,  c.name AS company_name,
           l.location_id, l.name AS location_name, l.province,
           DATE(te.test_date) AS visit_date,
-          e.last_name, e.first_name
+          e.last_name, e.first_name,
+          te.classification
         FROM tests te
         JOIN  employees e  ON e.employee_id = te.employee_id
         JOIN  locations l  ON l.location_id = te.location_id
@@ -158,7 +159,7 @@ export function mount(container) {
         visitIndex[key] = visit
         visits.push(visit)
       }
-      visitIndex[key].workers.push(`${row.last_name}, ${row.first_name}`)
+      visitIndex[key].workers.push({ name: `${row.last_name}, ${row.first_name}`, classification: row.classification ?? '' })
     }
 
     const totalWorkers = workerRows.length
@@ -166,7 +167,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr><td>${esc(w)}</td></tr>
+        <tr><td>${esc(w.name)}</td><td>${esc(w.classification)}</td></tr>
       `).join('')
 
       return `
@@ -188,7 +189,7 @@ export function mount(container) {
           <div class="table-wrap" style="padding:0">
             <table class="data-table" style="margin:0">
               <thead>
-                <tr><th>Worker</th></tr>
+                <tr><th>Worker</th><th>Category</th></tr>
               </thead>
               <tbody>${workerRowsHTML}</tbody>
             </table>
