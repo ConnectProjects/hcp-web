@@ -155,7 +155,7 @@ export function mount(container) {
 
     function categoryLabel(province, code) {
       if (!code) return ''
-      return (labelMap[province] ?? {})[code] ?? code
+      return (labelMap[province] ?? {})[code] ?? (code === 'N' ? 'Normal' : code)
     }
 
     // Group by company → location → visit date
