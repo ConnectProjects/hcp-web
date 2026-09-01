@@ -37,16 +37,18 @@ export function mount(container, { navigate, testId, employeeId }) {
   const hpd = getHpdAssessments(testId)
 
   // Resolve classification code to human-readable label
+  const CODE_FALLBACKS = { N: 'Normal', EW: 'Early Warning', A: 'Abnormal',
+                           NC: 'Normal', EWC: 'Early Warning Concern', AC: 'Audiometric Concern' }
   function classificationLabel(province, code) {
     if (!code) return null
-    if (code === 'N') return 'Normal'
     try {
       const rows = query(
         `SELECT category_label FROM classification_rules WHERE province_code = ? AND category_code = ? LIMIT 1`,
         [province, code]
       )
-      return rows[0]?.category_label ?? code
-    } catch { return code }
+      if (rows[0]?.category_label) return rows[0].category_label
+    } catch { /* non-fatal */ }
+    return CODE_FALLBACKS[code] ?? code
   }
   const classLabel = classificationLabel(test.province, test.classification)
 

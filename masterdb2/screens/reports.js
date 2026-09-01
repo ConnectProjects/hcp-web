@@ -144,18 +144,21 @@ export function mount(container) {
     }
 
     // Build province → code → label map so we show "Normal" not "N"
+    // Fallback covers 'N' which is a hardcoded engine return (no DB row in SK)
+    const CODE_FALLBACKS = { N: 'Normal', EW: 'Early Warning', A: 'Abnormal',
+                             NC: 'Normal', EWC: 'Early Warning Concern', AC: 'Audiometric Concern' }
     let labelMap = {}
     try {
-      const ruleRows = query('SELECT province_code, category_code, category_label FROM classification_rules GROUP BY province_code, category_code')
+      const ruleRows = query('SELECT province_code, category_code, MIN(category_label) AS category_label FROM classification_rules GROUP BY province_code, category_code')
       for (const r of ruleRows) {
         if (!labelMap[r.province_code]) labelMap[r.province_code] = {}
-        if (!labelMap[r.province_code][r.category_code]) labelMap[r.province_code][r.category_code] = r.category_label
+        labelMap[r.province_code][r.category_code] = r.category_label
       }
     } catch { /* non-fatal */ }
 
     function categoryLabel(province, code) {
       if (!code) return ''
-      return (labelMap[province] ?? {})[code] ?? (code === 'N' ? 'Normal' : code)
+      return (labelMap[province] ?? {})[code] ?? CODE_FALLBACKS[code] ?? code
     }
 
     // Group by company → location → visit date
