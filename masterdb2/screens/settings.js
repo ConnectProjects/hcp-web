@@ -6,6 +6,7 @@
  */
 
 import { query, run, scalar, save, listBackups, checkConflictCopies } from '../db/db.js'
+import { classify } from '../../shared/classification/engine.js'
 import { mountSection as mountReconcile } from './reconcile.js'
 
 // ── Seed: known staff ─────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ export function mount(container, { session }) {
   let _asyncDone  = false
 
   let _seedMsg = null
+  let _reclassMsg = null
 
   render()
 
@@ -133,7 +135,7 @@ export function mount(container, { session }) {
     el.innerHTML = `
       <div class="section-head"><h2>Seed Data</h2></div>
       ${_seedMsg ? `<div class="${_seedMsg.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:0.75rem">${esc(_seedMsg.message)}</div>` : ''}
-      <div class="info-card" style="margin-bottom:2rem">
+      <div class="info-card" style="margin-bottom:1rem">
         <p style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:1rem">
           These buttons are safe to run multiple times — they skip records that already exist.
         </p>
@@ -142,9 +144,21 @@ export function mount(container, { session }) {
           <button class="btn btn-secondary" id="seed-test-btn">Seed Test Company</button>
         </div>
       </div>
+
+      <div class="section-head"><h2>Reclassify Tests</h2></div>
+      ${_reclassMsg ? `<div class="${_reclassMsg.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:0.75rem">${esc(_reclassMsg.message)}</div>` : ''}
+      <div class="info-card" style="margin-bottom:2rem">
+        <p style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:1rem">
+          Calculates and stores the classification (Normal, Early Warning, Abnormal, etc.) for every test
+          that is missing one. Run this once after an initial database setup or import.
+          Safe to run multiple times — only updates tests where classification is currently blank.
+        </p>
+        <button class="btn btn-secondary" id="reclass-btn">Reclassify Unclassified Tests</button>
+      </div>
     `
     el.querySelector('#seed-users-btn').addEventListener('click', seedUsers)
     el.querySelector('#seed-test-btn').addEventListener('click', seedTestCompany)
+    el.querySelector('#reclass-btn').addEventListener('click', reclassifyTests)
   }
 
   async function seedUsers() {
@@ -296,6 +310,74 @@ export function mount(container, { session }) {
       _seedMsg = { ok: true, message: `Test company "ACME Manufacturing Ltd." created with 5 workers and sample test history.` }
     } catch (e) {
       _seedMsg = { ok: false, message: `Seed failed: ${e.message}` }
+    }
+    renderSeed()
+  }
+
+  async function reclassifyTests() {
+    const btn = container.querySelector('#reclass-btn')
+    if (btn) { btn.disabled = true; btn.textContent = 'Working…' }
+    try {
+      const tests = query(`
+        SELECT test_id, province, employee_id,
+               left_500, left_1k, left_2k, left_3k, left_4k, left_6k, left_8k,
+               right_500, right_1k, right_2k, right_3k, right_4k, right_6k, right_8k
+        FROM tests
+        WHERE deleted_at IS NULL AND classification IS NULL
+      `)
+
+      const rulesCache    = {}
+      const baselineCache = {}
+
+      function rulesFor(province) {
+        if (!rulesCache[province]) {
+          rulesCache[province] = query(
+            'SELECT * FROM classification_rules WHERE province_code = ? ORDER BY priority DESC',
+            [province]
+          )
+        }
+        return rulesCache[province]
+      }
+
+      function baselineFor(employeeId) {
+        if (!(employeeId in baselineCache)) {
+          const rows = query(
+            `SELECT * FROM baselines WHERE employee_id = ? AND archived = 0 AND deleted_at IS NULL LIMIT 1`,
+            [employeeId]
+          )
+          baselineCache[employeeId] = rows[0] ?? null
+        }
+        return baselineCache[employeeId]
+      }
+
+      let updated = 0, skipped = 0
+      for (const te of tests) {
+        const rules = rulesFor(te.province)
+        if (!rules.length) { skipped++; continue }
+        const baseline = baselineFor(te.employee_id)
+        const cl = classify(te, baseline, rules)
+        run(
+          `UPDATE tests SET
+             classification     = ?,
+             triggered_rule_id  = ?,
+             sts_flag           = ?,
+             triggering_freq_hz = ?,
+             triggering_ear     = ?,
+             shift_db           = ?
+           WHERE test_id = ?`,
+          [cl.category, cl.triggered_rule_id ?? null, cl.sts_calculated ? 1 : 0,
+           cl.triggering_freq_hz ?? null, cl.triggering_ear ?? null,
+           cl.shift_db ?? null, te.test_id]
+        )
+        updated++
+      }
+
+      if (updated > 0) await save(session.writerName)
+
+      const skipNote = skipped ? ` (${skipped} skipped — no rules for province)` : ''
+      _reclassMsg = { ok: true, message: `Done: ${updated} test${updated !== 1 ? 's' : ''} classified.${skipNote}` }
+    } catch (e) {
+      _reclassMsg = { ok: false, message: `Reclassify failed: ${e.message}` }
     }
     renderSeed()
   }

@@ -143,6 +143,21 @@ export function mount(container) {
       return
     }
 
+    // Build province → code → label map so we show "Normal" not "N"
+    let labelMap = {}
+    try {
+      const ruleRows = query('SELECT province_code, category_code, category_label FROM classification_rules GROUP BY province_code, category_code')
+      for (const r of ruleRows) {
+        if (!labelMap[r.province_code]) labelMap[r.province_code] = {}
+        if (!labelMap[r.province_code][r.category_code]) labelMap[r.province_code][r.category_code] = r.category_label
+      }
+    } catch { /* non-fatal */ }
+
+    function categoryLabel(province, code) {
+      if (!code) return ''
+      return (labelMap[province] ?? {})[code] ?? code
+    }
+
     // Group by company → location → visit date
     const visits = []
     const visitIndex = {}
@@ -159,7 +174,10 @@ export function mount(container) {
         visitIndex[key] = visit
         visits.push(visit)
       }
-      visitIndex[key].workers.push({ name: `${row.last_name}, ${row.first_name}`, classification: row.classification ?? '' })
+      visitIndex[key].workers.push({
+        name:     `${row.last_name}, ${row.first_name}`,
+        category: categoryLabel(row.province, row.classification),
+      })
     }
 
     const totalWorkers = workerRows.length
@@ -167,7 +185,7 @@ export function mount(container) {
 
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
-        <tr><td>${esc(w.name)}</td><td>${esc(w.classification)}</td></tr>
+        <tr><td>${esc(w.name)}</td><td>${esc(w.category)}</td></tr>
       `).join('')
 
       return `
