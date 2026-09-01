@@ -36,6 +36,20 @@ export function mount(container, { navigate, testId, employeeId }) {
   const emp = employeeId ? getById(employeeId) : null
   const hpd = getHpdAssessments(testId)
 
+  // Resolve classification code to human-readable label
+  function classificationLabel(province, code) {
+    if (!code) return null
+    if (code === 'N') return 'Normal'
+    try {
+      const rows = query(
+        `SELECT category_label FROM classification_rules WHERE province_code = ? AND category_code = ? LIMIT 1`,
+        [province, code]
+      )
+      return rows[0]?.category_label ?? code
+    } catch { return code }
+  }
+  const classLabel = classificationLabel(test.province, test.classification)
+
   // Parse questionnaire
   let qData = null
   if (test.questionnaire) {
@@ -91,7 +105,7 @@ export function mount(container, { navigate, testId, employeeId }) {
             ${row('Date',           fmtDate(test.test_date))}
             ${row('Type',           test.test_type)}
             ${row('Province',       test.province)}
-            ${row('Classification', test.classification)}
+            ${row('Classification', classLabel)}
             ${row('Triggered Rule', test.triggered_rule_id)}
             ${row('STS Flag',       test.sts_flag ? 'Yes' : null)}
             ${row('Triggering Freq', test.triggering_freq_hz ? test.triggering_freq_hz + ' Hz' : null)}
