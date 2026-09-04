@@ -97,11 +97,12 @@ This is the most common task. You have a confirmed booking — a company, a date
 3. Under the company's locations, click the relevant **location**.
 4. On the location detail page, scroll to the **Generate Packet** section.
 5. Fill in:
-   - **Visit date** — the scheduled date of the site visit
-   - **Assign to tech** — select the technician from the dropdown
+   - **Tech** — select the technician from the dropdown
+   - **Visit Date** — the scheduled date of the site visit
+   - **Notes for Tech** — optional; anything the tech should know before arrival
 6. Click **Generate & Write to Outbox**.
 
-The packet appears in the Schedule calendar and in the tech's TechTool inbox. The status shows as **Outbox** until the tech opens it.
+The packet appears in the Schedule calendar and in the tech's TechTool inbox. The status shows as **Pending** until the tech picks it up.
 
 **What if the roster looks wrong?**  
 Worker records come from previous test history. If someone is missing or a worker has left, the Admin can update the worker list before the packet is generated. Let Admin know ahead of time.
@@ -162,7 +163,14 @@ You are the keeper of the database. After a site visit, the tech's completed pac
 
 When a tech submits a completed packet, it moves into their inbox folder on OneDrive. You import it into MasterDB.
 
-**Steps:**
+**Option 1 — Auto-import (try this first):**
+
+1. Go to **Import** in the sidebar.
+2. Click **Auto-import all →**.
+3. The app scans every tech's inbox and commits any packet that imports cleanly — no unknown workers, no location conflicts, no duplicates.
+4. A summary shows how many packets were imported and how many need manual review.
+
+**Option 2 — Manual review (for packets that need decisions):**
 
 1. Go to **Import** in the sidebar.
 2. Select the **technician** whose inbox you want to check.
@@ -170,7 +178,7 @@ When a tech submits a completed packet, it moves into their inbox folder on OneD
 4. Review the **preview**:
    - New workers are highlighted — these are employees who appear in the packet but are not yet in MasterDB. Confirm them or skip.
    - Any flagged decisions (e.g., unknown location, worker name mismatch) appear here. Resolve each one before proceeding.
-5. Click **Commit**.
+5. Click **Commit Import**.
 6. The packet moves to the tech's archive folder and the tests are recorded in MasterDB.
 
 **If a packet doesn't appear:** Make sure the tech submitted it (not just saved). The packet must be in their inbox folder, not outbox. Check with the tech if expected packets are missing.
@@ -198,17 +206,20 @@ Reports produce a date-range summary of tests — useful for billing, compliance
 
 ### Reconcile the Archive
 
-Reconcile is a sanity check: it compares what's in the archive folder on OneDrive against what's recorded in the database. Run it periodically, or any time you suspect a packet was lost.
+Reconcile is a data-integrity check: for every archived packet, it counts how many tests with actual threshold data are inside the packet file, then checks whether that same number of test records exist in the database. Run it periodically, or any time you suspect tests were lost during an import.
 
 **Steps:**
 
 1. Go to **Reconcile** in the sidebar.
-2. The app scans the archive folders for all active technicians and compares them to the packets table in MasterDB.
-3. Results appear as:
-   - **Matched** — packet in archive and in database, consistent
-   - **Archive only** — packet file exists but no database record (may need re-import)
-   - **Database only** — database record but no archive file (may have been moved or deleted)
-4. Investigate any unmatched items. A packet in "Archive only" can usually be re-imported from the Import screen.
+2. Click **Run Check →**.
+3. The app reads every packet in every tech's archive folder and compares test counts against the database (matched by packet ID).
+4. Results appear per packet:
+   - **✓ Match** — test count in the archive file equals the database record count; all good
+   - **Missing N** — the archive file has more tests than the database; tests may not have been imported
+   - **+N extra** — the database has more records than the archive file; possibly a double-import
+5. Expand any mismatched packet row to see which workers are affected. Contact Norm if you find missing tests — recovery requires manual inspection.
+
+**Note:** Only tests with threshold data count. Workers who were skipped or attended without a completed audiogram are not expected to have database records and are excluded from the comparison.
 
 ---
 
@@ -227,13 +238,16 @@ Worker records are created automatically when a packet is first imported. Ongoin
 
 **Users** control who can log into MasterDB and what role they see.
 
-1. Go to **Settings** → **Users**.
-2. Add or edit users with their name, role (Admin, LC, Aud-Tech, Management), and OneDrive folder name if they are a technician.
+1. Go to **Users** in the sidebar.
+2. Add or edit users with their name, role (Admin, LC, Aud-Tech, Management), and initials.
 
-**Technicians** are a separate record from users — they appear in packet generation dropdowns and have a designated OneDrive folder.
+**Technicians** are a separate record — they appear in packet generation dropdowns and have a designated OneDrive folder. A user who is also a tech needs both a user record and a tech record.
 
-1. Go to **Settings** → **Technicians**.
-2. Each tech record needs a **folder name** — this must exactly match the folder name inside `techs/` on the shared OneDrive (e.g., `norm`, `heather`). The outbox and inbox folders live under this path.
+1. Go to **Settings** in the sidebar, then scroll to the **Technicians** section.
+2. Each tech record needs a **folder name** — this must exactly match the folder name inside `techs/` on the shared OneDrive (e.g., `Norman`, `Cal`). The outbox and inbox folders live under this path.
+3. Each tech also needs a **IAT Number** for compliance records, and **initials** that appear on packet filenames.
+
+**Tip:** Running **Seed Staff Users** in Settings → Seed Data will populate the current Connect Hearing roster in one click, and is safe to run more than once.
 
 ---
 
@@ -262,8 +276,11 @@ Before leaving for a site visit, make sure you have a copy of the packet on your
 
 1. Open TechTool (https://connectprojects.github.io/hcp-web/).
 2. Go to **Inbox** in the sidebar.
-3. You will see all packets assigned to you with a status of **Outbox** (not yet opened) or **In Progress**.
-4. Tap a packet to open it. TechTool loads the worker roster and company details.
+3. You will see cards for all packets assigned to you. Each card shows the company, location, visit date, and a progress badge:
+   - **N workers** (gray) — not started yet
+   - **N of N tested** (blue) — in progress
+   - **Complete — ready to submit** (green) — all workers done
+4. Tap a card to open the packet. TechTool loads the worker roster and company details.
 5. Repeat for any other packets you need for the trip.
 
 Once opened, the packet is cached locally. You can work fully offline from this point.
@@ -275,17 +292,21 @@ Once opened, the packet is cached locally. You can work fully offline from this 
 **Steps:**
 
 1. From **Inbox**, open the packet for the site you're at.
-2. Tap a worker's name to begin their test.
-3. Complete the **pre-test questionnaire** — HPD use, noise exposure history, any recent loud noise events.
-4. Run the audiogram. Enter thresholds for each frequency in both ears.
-5. The app calculates the audiometric category based on the location's province rules and displays it immediately.
-6. Complete the **post-test section** if applicable (referral decisions, counselling notes).
-7. Save the test. The worker's row in the roster updates to show their result.
-8. Move to the next worker.
+2. Click **Test →** next to a worker's name to begin their test.
+3. Confirm or correct the **Worker Info** at the top (name, DOB, job title).
+4. Complete the **Pre-Test Questions** — recent noise exposure, HPD use, employer information.
+5. Enter thresholds for each frequency in both ears. The audiogram updates live as you type.
+6. Set the **Type** (Periodic / Baseline / Exit) and confirm the **Date**.
+7. Complete the **Post-Test Questions** — medical history, tinnitus, firearms use.
+8. Add any **Tech Notes** if needed.
+9. Click **Save test**. The worker's row updates to show they've been tested.
+10. Move to the next worker.
 
-**Dual-booth:** If you're running two booths simultaneously, TechTool handles both — open one worker in each panel and work them in parallel.
+**Classification:** Audiometric categories (Normal, STS, Referral) are calculated when Admin imports the packet in MasterDB — they are not shown in TechTool during testing.
 
-**Baseline tests:** First-time workers are flagged automatically. Their test becomes the baseline on record.
+**Dual-booth:** TechTool supports two simultaneous booths — Left Booth and Right Booth tabs at the top. Assign one worker to each and switch between them as needed.
+
+**Baseline tests:** For a worker's first test, set Type to **Baseline**. The app defaults to Periodic — you need to change this manually. Workers with no baseline on file show "None" in the Baseline column as a reminder.
 
 ---
 
@@ -295,16 +316,20 @@ A walk-in is a worker who shows up for testing but is not on the original roster
 
 **Steps:**
 
-1. Go to **New Visit** in the sidebar.
-2. Search for the **company** by name and select it.
-3. Select the **location** for this visit.
-4. Search for the **worker** by name.
-   - If they're already in the database, select them.
-   - If not, enter their details (name, employee ID) to create a new record.
-5. TechTool creates a mini-packet for this worker on the spot.
-6. Proceed with the test the same way as a scheduled worker.
+New Visit is a 3-step wizard.
 
-The walk-in test is submitted alongside the main packet when you finish the visit.
+**Step 1 — Company:**
+Search for the company by name. Select it if found. If it's a brand-new company, fill in the details below the search box.
+
+**Step 2 — Location:**
+If the company has existing locations, pick from the list or choose **+ Add new location**. Set the province — this determines which classification rules apply.
+
+**Step 3 — Workers:**
+Search for each worker by name. If found in the database, select them. If not, fill in the name fields to create a new worker record. Add all workers you'll be testing.
+
+Click **Create Visit →** when ready. TechTool writes the packet to your outbox and returns you to the **Schedule** screen, where the new visit appears as a calendar chip. Tap it to open and begin testing.
+
+**Each walk-in is its own separate packet** — it is not merged with any other packet from the same day. It submits and imports the same way as a scheduled packet.
 
 ---
 
@@ -315,9 +340,13 @@ When all workers for a visit are tested, submit the packet. This sends the resul
 **Steps:**
 
 1. From **Inbox**, open the completed packet.
-2. Review the worker list — all tested workers show a category result. Workers marked **Not Tested** will remain untested in the record (document the reason if needed).
-3. Tap **Submit**.
-4. The packet moves from your outbox to your inbox folder on OneDrive. Admin will see it on the Import screen.
+2. Review the worker list. Workers can be in one of three states:
+   - **Tested** (green) — audiogram saved
+   - **Skipped** (gray) — marked absent or deferred, with a reason
+   - Untested — still needs action
+3. The **Submit Packet →** button becomes active when every worker is either Tested or Skipped. If a worker won't be tested (absent, refused, etc.), use the **Skip worker** button on their test screen and enter a reason.
+4. Click **Submit Packet →**.
+5. The packet moves from your outbox to your inbox folder on OneDrive. Admin will see it on the Import screen.
 
 **If you're still offline when you finish:** TechTool saves results locally. Submit as soon as you have a connection — the file will sync to OneDrive automatically.
 
@@ -333,13 +362,21 @@ You do not need to operate MasterDB day-to-day. This section is a quick-referenc
 
 The Schedule screen in MasterDB shows a month calendar of all scheduled site visits, colour-coded by technician. A chip on the calendar means a packet has been generated for that date. You can click any chip to see the company, location, tech, and packet status.
 
-**Statuses:**
+**Statuses on the MasterDB Schedule:**
 | Status | Meaning |
 |---|---|
-| Outbox | Packet generated, tech hasn't opened it yet |
-| In Progress | Tech has opened and begun testing |
-| Inbox | Tech submitted, waiting for Admin to import |
-| Archived | Admin has imported and closed the visit |
+| Pending | Packet generated, not yet picked up by the tech |
+| Imported | Admin has imported and closed the visit |
+| Cancelled | Visit was cancelled |
+
+**Statuses on the TechTool Schedule (what the tech sees):**
+| Status | Meaning |
+|---|---|
+| Scheduled | Packet exists in DB but no file in the tech's OneDrive yet |
+| Ready to test | File is in the outbox, no tests started |
+| In progress | Some workers tested, not all done |
+| Complete | All workers tested or skipped — ready to submit |
+| Submitted | Tech has submitted, waiting for Admin to import |
 
 ### The Reports Screen
 
@@ -368,8 +405,8 @@ Province-specific labels may differ slightly (Alberta uses different threshold c
 
 ### Key Things to Watch
 
-- **Inbox backlog:** Packets stuck in "Inbox" status haven't been imported yet. Ask Admin if visits from more than a day or two ago are still showing Inbox.
-- **Reconcile discrepancies:** If Admin finds packets in the archive with no database record, tests may have been lost. Worth flagging.
+- **Submitted backlog:** Packets in "Submitted" status (visible on TechTool Schedule) haven't been imported yet. Ask Admin if visits from more than a day or two ago are still showing Submitted.
+- **Reconcile discrepancies:** If Admin finds packets where the archive test count doesn't match the database, tests may have been lost. Worth flagging.
 - **Lead Finder pipeline:** New companies enter from Lead Finder → LC books a visit → LC generates a packet → test day → Admin imports. If the pipeline is thin, check with the LC on lead status.
 
 ---
