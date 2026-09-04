@@ -14,24 +14,27 @@ HCP-Web is a browser-based platform for managing occupational audiometric testin
 
 It replaces paper-based and spreadsheet-based workflows with a modern, provincially compliant system that works on any laptop, requires no IT approval, and functions fully offline in the field.
 
-The platform consists of two integrated applications:
+The platform consists of three integrated tools:
 
-**TechTool** — Used by field audiometric technicians. Runs in Chrome on any Windows laptop. Downloads company packets before a trip, works fully offline at remote industrial sites, and syncs completed tests automatically when connectivity returns.
+**TechTool** — Used by field audiometric technicians. Runs in Edge as an installed app on any Windows laptop. Downloads company packets, works fully offline at remote industrial sites, and uploads completed tests when connectivity returns.
 
-**MasterDB** — Used by office administrators. Manages companies, employees, test history, scheduling, and reporting. Generates tech packets and imports completed results. All data stays on office-controlled hardware — never on any external server.
+**MasterDB** — Used by office administrators. Manages companies, employees, test history, scheduling, and reporting. Imports completed results from the field. All data lives in a single SQLite file on your office-controlled OneDrive — never on any external server.
+
+**Lead Finder** — Used by Logistical Coordinators to discover companies likely to have noise-exposed workers. Searches business registries and Google Places, tracks lead status, and generates outreach lists. Separate Supabase backend.
+
+TechTool and MasterDB are a unified app with role-based routing — the same URL serves both roles depending on who logs in.
 
 ---
 
 ## Key Features
 
-- **No installation required** — opens in Chrome like any website
+- **No installation required** — opens in Edge like any website, pinned as an app
 - **Full offline capability** — sync packets before your trip, work anywhere
 - **Provincially compliant classification** — Alberta OHS Part 16, BC WorkSafeBC, Saskatchewan OHS Regulations, expanding
 - **Data-driven classification engine** — new provinces added as data, no code changes required
-- **Zero data exposure** — worker health records never leave your hardware or your OneDrive
+- **Zero data exposure** — all worker health records live in your OneDrive, never on any HCP-Web server
 - **HPD adequacy calculation** — CSA Z94.2-14 derating built in
-- **OneDrive sync** — uses your existing Microsoft 365 infrastructure, no new backend required
-- **Free to self-host** — deploy to Netlify or Cloudflare Pages in under 30 minutes
+- **OneDrive-backed database** — single canonical SQLite file on your shared OneDrive folder; no sync conflicts, no merge logic
 
 ---
 
@@ -43,10 +46,9 @@ This is the most important thing to understand about HCP-Web:
 
 The host server delivers only the application code — HTML, CSS, and JavaScript. It holds no database, no patient records, and no business logic that processes sensitive information.
 
-All worker health records, company data, and audiometric test results live in one of two places:
+All worker health records, company data, and audiometric test results live in one place:
 
-1. **Your office machine** — MasterDB stores everything in your browser's local Origin Private File System (OPFS). It never leaves your hardware.
-2. **Your OneDrive** — JSON packets travel between office and field via a shared folder in your existing Microsoft 365 tenant. HCP-Web never sees the contents.
+**Your OneDrive** — a single `masterdb.sqlite` file in your shared OneDrive folder. The browser accesses it through the File System Access API against your locally-synced OneDrive folder. The file never leaves your Microsoft 365 tenant.
 
 This architecture makes HCP-Web suitable for occupational health records under WorkSafeBC, Alberta OHS, and Saskatchewan OHS requirements.
 
@@ -70,18 +72,17 @@ Province classification rules are stored as JSON data files. Contributing a new 
 
 ### Prerequisites
 
-- A Microsoft 365 account (for OneDrive and authentication)
-- A free Netlify or Cloudflare Pages account
-- Chrome browser on all devices
+- A Microsoft 365 account with OneDrive sync running on Windows
+- Microsoft Edge browser (for app-mode installation)
+- A shared OneDrive folder that both office and field machines have synced
 
 ### Deploy
 
 1. Fork this repository
-2. Connect your fork to Netlify or Cloudflare Pages
+2. Connect your fork to Netlify, Cloudflare Pages, or GitHub Pages
 3. Deploy — no build step required, it's a static site
-4. Register an app in Azure Active Directory to get your Microsoft Graph API credentials
-5. Add your credentials to `config.js`
-6. Open your deployed URL in Chrome and sign in with your Microsoft 365 account
+4. Open your deployed URL — the hub page links to MasterDB and TechTool
+5. On first launch, click **Grant Folder Access** and select your shared OneDrive folder
 
 Full setup documentation: [docs/setup.md](docs/setup.md)
 
@@ -90,19 +91,49 @@ Full setup documentation: [docs/setup.md](docs/setup.md)
 ## Architecture Overview
 
 ```
-Host Server              OneDrive Folder          Devices
-────────────             ──────────────           ───────
-App code only       ←→   /inbox             ←→   TechTool (Chrome)
-HTML / CSS / JS          /outbox                  IndexedDB cache
-Zero patient data        /archive                 Offline capable
-                         ──────────
-                         Office Machine
-                         MasterDB (Chrome)
-                         OPFS database
-                         Data never leaves
+Host Server              OneDrive Folder           Devices
+────────────             ──────────────────         ───────────────────
+App code only       ←→   masterdb.sqlite       ←→  MasterDB (Edge app)
+HTML / CSS / JS          techs/{name}/outbox        TechTool (Edge app)
+Zero patient data        techs/{name}/inbox          File System Access API
+                         techs/{name}/archive        to locally-synced folder
 ```
 
+The browser uses the **File System Access API** to read and write the SQLite database directly from the locally-synced OneDrive folder. No Microsoft Graph API, no cloud calls — just a local folder that OneDrive happens to keep in sync.
+
+**Packet flow:**
+1. MasterDB writes a company packet to `techs/{folder}/outbox/`
+2. TechTool reads the packet, technician runs tests
+3. Technician submits — packet moves from outbox → inbox
+4. MasterDB imports the result and moves it to archive
+
 See [docs/architecture.md](docs/architecture.md) for full technical detail.
+
+---
+
+## Directory Map
+
+```
+masterdb2/          MasterDB + TechTool unified app (live)
+  app.js            App shell, role-based routing, sidebar
+  db/               Database layer (sql.js, FSA storage, schema, import)
+  screens/          MasterDB admin screens
+  vendor/           sql-wasm.js + sql-wasm.wasm (self-contained)
+
+techtool2/          TechTool field screens (loaded by masterdb2/app.js)
+  screens/          Field technician screens (schedule, test, inbox, new visit)
+
+lead-finder/        Noise-hazard lead discovery tool (separate Supabase project)
+  js/               Feature modules
+  supabase/         Edge Functions and migrations
+
+shared/             Code shared across apps
+  classification/   Province audiometric classification engine
+  rules/            Province rule JSON files
+  packet/           Packet format, import/export logic
+  components/       Shared UI widgets
+  counsel/          Counselling/referral logic
+```
 
 ---
 
