@@ -108,7 +108,7 @@ export function generateWsbcCsv(testIds) {
       te.right_500, te.right_1k, te.right_2k, te.right_3k, te.right_4k, te.right_6k, te.right_8k,
       te.questionnaire,
       e.first_name, e.middle_name, e.last_name, e.dob, e.sin_last_4, e.phone AS worker_phone, e.email AS worker_email,
-      e.wsbc_worker_id,
+      e.wsbc_worker_id, e.job_title, e.occupation_code,
       c.name AS employer_name, c.worksafebc_employer_id,
       l.name AS location_number, l.cu_code,
       tk.name AS tech_name, tk.iat_number AS wsbc_tech_id
@@ -152,8 +152,8 @@ export function generateWsbcCsv(testIds) {
       operatingLocation,
       row.cu_code ?? '',
       '',                              // CU Description
-      '',                              // Occupation Code
-      '',                              // Occupation Job Title
+      row.occupation_code ?? '',
+      row.job_title       ?? '',
       '',                              // Comment
       dbThreshold(row, 'left_500'),
       dbThreshold(row, 'left_1k'),

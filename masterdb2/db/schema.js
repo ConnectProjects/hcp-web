@@ -163,7 +163,8 @@ CREATE TABLE IF NOT EXISTS employees (
   first_name    TEXT NOT NULL,
   middle_name   TEXT,
   last_name     TEXT NOT NULL,
-  wsbc_worker_id TEXT,
+  wsbc_worker_id   TEXT,
+  occupation_code  TEXT,
   dob           TEXT,
   sin_last_4    TEXT,
   phone         TEXT,
@@ -315,4 +316,5 @@ export const PROVINCE_SEED = [
 export const MIGRATIONS_3_1 = [
   ['companies', 'worksafebc_employer_id', 'TEXT'],
   ['employees', 'wsbc_worker_id',         'TEXT'],
+  ['employees', 'occupation_code',        'TEXT'],
 ]

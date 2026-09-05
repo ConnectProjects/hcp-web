@@ -8,11 +8,13 @@
 
 import { query, run, save } from '../db/db.js'
 import { getById, getTests, getBaselines, getHpdAssessments } from '../db/workers.js'
+import { mountNocPicker } from '../../shared/components/noc-picker.js'
 
 const FREQS = ['500','1k','2k','3k','4k','6k','8k']
 
 export function mount(container, { navigate, employeeId, fromLocation, session }) {
   if (!employeeId) { navigate('workers'); return }
+  let _nocPicker = null
 
   let _editing = false
   let _status  = null
@@ -59,7 +61,7 @@ export function mount(container, { navigate, employeeId, fromLocation, session }
               ${row('SIN (last 4)',  sinDisplay)}
               ${row('Phone',        emp.phone)}
               ${row('Email',        emp.email)}
-              ${row('Job Title',    emp.job_title)}
+              ${row('Job Title',    emp.job_title ? `${emp.job_title}${emp.occupation_code ? ` (${emp.occupation_code})` : ''}` : null)}
               ${row('Hire Date',    emp.hire_date ? fmtDate(emp.hire_date) : null)}
               ${row('Location',     locDisplay)}
               ${row('Company',      emp.company_name)}
@@ -86,6 +88,14 @@ export function mount(container, { navigate, employeeId, fromLocation, session }
     })
     container.querySelector('#emp-save')?.addEventListener('click', () => saveWorker(emp))
     container.querySelector('#emp-cancel')?.addEventListener('click', () => { _editing = false; render() })
+
+    const titleWrap = container.querySelector('#ef-title-wrap')
+    if (titleWrap) {
+      _nocPicker = mountNocPicker(titleWrap, {
+        jobTitle:       emp.job_title       ?? '',
+        occupationCode: emp.occupation_code ?? '',
+      })
+    }
     container.querySelectorAll('tr.test-row').forEach(tr =>
       tr.addEventListener('click', () =>
         navigate('test', { testId: Number(tr.dataset.testId), employeeId })
@@ -103,15 +113,17 @@ export function mount(container, { navigate, employeeId, fromLocation, session }
     if (!first || !last) { if (errEl) errEl.textContent = 'First and last name are required.'; return }
 
     try {
+      const noc = _nocPicker?.getValue()
       run(
         `UPDATE employees SET first_name=?, middle_name=?, last_name=?, dob=?, job_title=?,
-         hire_date=?, phone=?, email=?, sin_last_4=?, status=?, updated_at=datetime('now')
-         WHERE employee_id=?`,
+         occupation_code=?, hire_date=?, phone=?, email=?, sin_last_4=?, status=?,
+         updated_at=datetime('now') WHERE employee_id=?`,
         [first,
          container.querySelector('#ef-middle')?.value.trim()  || null,
          last,
          container.querySelector('#ef-dob')?.value           || null,
-         container.querySelector('#ef-title')?.value.trim()  || null,
+         noc?.title || null,
+         noc?.code  || null,
          container.querySelector('#ef-hire')?.value          || null,
          container.querySelector('#ef-phone')?.value.trim()  || null,
          container.querySelector('#ef-email')?.value.trim()  || null,
@@ -151,9 +163,9 @@ function workerEditForm(emp) {
           <label class="field-label">Date of Birth</label>
           <input type="date" class="form-select" id="ef-dob" value="${esc(emp.dob ?? '')}" style="width:100%">
         </div>
-        <div>
+        <div style="grid-column:1/-1">
           <label class="field-label">Job Title</label>
-          <input class="search-input" id="ef-title" value="${esc(emp.job_title ?? '')}">
+          <div id="ef-title-wrap"></div>
         </div>
         <div>
           <label class="field-label">Hire Date</label>

@@ -172,8 +172,10 @@ export async function parseWsbcZip(arrayBuffer) {
       middle_name:    String(row['Worker Middle Name'] ?? '').trim() || null,
       last_name:      String(row['Worker Last Name']   ?? '').trim(),
       dob:            wsbcDate(row['Birth Date']),
-      sin_last_4:     String(row['4 digits SIN']       ?? '').replace(/"/g, '').trim() || null,
-      gender:         String(row['Gender']             ?? '').trim() || null,
+      sin_last_4:      String(row['4 digits SIN']       ?? '').replace(/"/g, '').trim() || null,
+      gender:          String(row['Gender']             ?? '').trim() || null,
+      job_title:       String(row['Occupation Job Title'] ?? '').trim() || null,
+      occupation_code: String(row['Occupation Code']      ?? '').trim() || null,
     })
   }
 
@@ -278,10 +280,15 @@ function resolveOrCreateEmployee(worker, locationId) {
   )
   if (candidates.length && candidates[0].score >= 3) {
     const emp = candidates[0].employee
-    // Stamp wsbc_worker_id if missing
-    if (!emp.wsbc_worker_id && worker.wsbc_worker_id) {
-      run('UPDATE employees SET wsbc_worker_id = ?, updated_at = datetime(\'now\') WHERE employee_id = ?',
-        [worker.wsbc_worker_id, emp.employee_id])
+    // Stamp WSBC fields if missing
+    const updates = []
+    const vals    = []
+    if (!emp.wsbc_worker_id && worker.wsbc_worker_id) { updates.push('wsbc_worker_id=?'); vals.push(worker.wsbc_worker_id) }
+    if (!emp.occupation_code && worker.occupation_code) { updates.push('occupation_code=?'); vals.push(worker.occupation_code) }
+    if (!emp.job_title && worker.job_title)             { updates.push('job_title=?');       vals.push(worker.job_title)       }
+    if (updates.length) {
+      run(`UPDATE employees SET ${updates.join(',')}, updated_at=datetime('now') WHERE employee_id=?`,
+        [...vals, emp.employee_id])
     }
     return { employeeId: emp.employee_id, created: false }
   }
@@ -292,12 +299,13 @@ function resolveOrCreateEmployee(worker, locationId) {
     middle_name:         worker.middle_name   ?? null,
     dob:                 worker.dob            ?? null,
     sin_last_4:          worker.sin_last_4     ?? null,
+    job_title:           worker.job_title      ?? null,
     current_location_id: locationId,
     status: 'active',
   })
-  // Stamp wsbc_worker_id
-  if (worker.wsbc_worker_id) {
-    run('UPDATE employees SET wsbc_worker_id = ? WHERE employee_id = ?', [worker.wsbc_worker_id, employeeId])
+  if (worker.wsbc_worker_id || worker.occupation_code) {
+    run('UPDATE employees SET wsbc_worker_id=?, occupation_code=? WHERE employee_id=?',
+      [worker.wsbc_worker_id || null, worker.occupation_code || null, employeeId])
   }
   return { employeeId, created: true }
 }
