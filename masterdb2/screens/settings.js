@@ -5,7 +5,7 @@
  * live here rather than in the Users screen.
  */
 
-import { query, run, scalar, save, listBackups, checkConflictCopies } from '../db/db.js'
+import { query, run, scalar, save, listBackups, checkConflictCopies, snapshotForImport } from '../db/db.js'
 import { classify } from '../../shared/classification/engine.js'
 import { mountSection as mountReconcile } from './reconcile.js'
 
@@ -36,6 +36,7 @@ export function mount(container, { session }) {
 
   let _seedMsg = null
   let _reclassMsg = null
+  let _rollbackMsg = null
 
   render()
 
@@ -155,10 +156,36 @@ export function mount(container, { session }) {
         </p>
         <button class="btn btn-secondary" id="reclass-btn">Reclassify Unclassified Tests</button>
       </div>
+
+      <div class="section-head"><h2>Rollback WSBC Import</h2></div>
+      ${_rollbackMsg ? `<div class="${_rollbackMsg.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:0.75rem">${esc(_rollbackMsg.message)}</div>` : ''}
+      <div class="info-card" style="margin-bottom:2rem">
+        <p style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:1rem">
+          Removes a previous WSBC zip import — deletes those tests, the baselines created from them,
+          and any workers who have no other test history. Existing workers who were matched are kept.
+          <strong>This cannot be undone.</strong>
+        </p>
+        ${(() => {
+          const batches = query(
+            `SELECT packet_id, COUNT(*) AS cnt FROM tests WHERE packet_id LIKE 'wsbc-%' AND deleted_at IS NULL GROUP BY packet_id ORDER BY packet_id DESC`
+          )
+          if (!batches.length) return `<p style="font-size:0.8125rem;color:var(--clr-subtle)">No WSBC imports found in this database.</p>`
+          return batches.map(b => `
+            <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">
+              <code style="font-size:0.8125rem">${esc(b.packet_id)}</code>
+              <span style="color:var(--clr-subtle);font-size:0.8125rem">${b.cnt} test${b.cnt !== 1 ? 's' : ''}</span>
+              <button class="btn btn-danger btn-sm wsbc-rollback-btn" data-pid="${esc(b.packet_id)}">Rollback</button>
+            </div>
+          `).join('')
+        })()}
+      </div>
     `
     el.querySelector('#seed-users-btn').addEventListener('click', seedUsers)
     el.querySelector('#seed-test-btn').addEventListener('click', seedTestCompany)
     el.querySelector('#reclass-btn').addEventListener('click', reclassifyTests)
+    el.querySelectorAll('.wsbc-rollback-btn').forEach(btn =>
+      btn.addEventListener('click', () => rollbackWsbcImport(btn.dataset.pid))
+    )
   }
 
   async function seedUsers() {
@@ -378,6 +405,84 @@ export function mount(container, { session }) {
       _reclassMsg = { ok: true, message: `Done: ${updated} test${updated !== 1 ? 's' : ''} classified.${skipNote}` }
     } catch (e) {
       _reclassMsg = { ok: false, message: `Reclassify failed: ${e.message}` }
+    }
+    renderSeed()
+  }
+
+  async function rollbackWsbcImport(packetId) {
+    if (!confirm(`Roll back "${packetId}"?\n\nA backup will be saved first, but this action cannot be undone from the UI.`)) return
+    const btn = container.querySelector(`.wsbc-rollback-btn[data-pid="${packetId}"]`)
+    if (btn) { btn.disabled = true; btn.textContent = 'Rolling back…' }
+    try {
+      // Snapshot the on-disk DB before any destructive changes
+      await snapshotForImport(`rollback-${packetId}`)
+
+      // Collect everything the import created
+      const importedTests = query(
+        'SELECT test_id, employee_id, test_date FROM tests WHERE packet_id = ? AND deleted_at IS NULL',
+        [packetId]
+      )
+      if (!importedTests.length) {
+        _rollbackMsg = { ok: false, message: `No tests found for packet "${packetId}". Nothing to roll back.` }
+        renderSeed(); return
+      }
+
+      const affectedEmpIds = [...new Set(importedTests.map(t => t.employee_id))]
+
+      // Delete baselines whose test_date matches an imported test for the same employee
+      // (these baselines were created by the import)
+      run(`DELETE FROM baselines WHERE rowid IN (
+        SELECT b.rowid FROM baselines b
+        JOIN tests t ON t.employee_id = b.employee_id AND t.test_date = b.test_date
+        WHERE t.packet_id = ?
+      )`, [packetId])
+
+      // Delete the imported tests
+      run('DELETE FROM tests WHERE packet_id = ?', [packetId])
+
+      // For employees who now have no active baseline but still have other tests,
+      // unarchive their most recent archived baseline
+      for (const empId of affectedEmpIds) {
+        const active = scalar(
+          'SELECT COUNT(*) FROM baselines WHERE employee_id = ? AND archived = 0 AND deleted_at IS NULL',
+          [empId]
+        )
+        if (!active) {
+          const mostRecent = query(
+            'SELECT baseline_id FROM baselines WHERE employee_id = ? AND deleted_at IS NULL ORDER BY test_date DESC LIMIT 1',
+            [empId]
+          )
+          if (mostRecent[0]) {
+            run('UPDATE baselines SET archived = 0 WHERE baseline_id = ?', [mostRecent[0].baseline_id])
+          }
+        }
+      }
+
+      // Delete employees who now have no remaining tests and were created by this import
+      // (wsbc_worker_id is set — the import always stamps this on newly-created employees)
+      const ph = affectedEmpIds.map(() => '?').join(',')
+      const deletedEmp = query(
+        `SELECT employee_id FROM employees
+         WHERE employee_id IN (${ph})
+           AND wsbc_worker_id IS NOT NULL
+           AND employee_id NOT IN (
+             SELECT DISTINCT employee_id FROM tests WHERE deleted_at IS NULL
+           )`,
+        affectedEmpIds
+      )
+      if (deletedEmp.length) {
+        const dph = deletedEmp.map(() => '?').join(',')
+        run(`DELETE FROM baselines WHERE employee_id IN (${dph})`, deletedEmp.map(r => r.employee_id))
+        run(`DELETE FROM employees WHERE employee_id IN (${dph})`, deletedEmp.map(r => r.employee_id))
+      }
+
+      await save(session.writerName)
+      _rollbackMsg = {
+        ok: true,
+        message: `Rolled back "${packetId}": ${importedTests.length} tests removed, ${deletedEmp.length} workers removed. Backup saved.`,
+      }
+    } catch (e) {
+      _rollbackMsg = { ok: false, message: `Rollback failed: ${e.message}` }
     }
     renderSeed()
   }
