@@ -20,6 +20,8 @@
 import { pickStore, recallStore, recallStoreWithPermission, loadRootHandle, StoreConcurrencyError, StoreLockError, StoreFileNotFoundError } from './fsa-store.js'
 export { StoreConcurrencyError, StoreLockError, StoreFileNotFoundError }
 
+import { MIGRATIONS_3_1 } from './schema.js'
+
 // ── Module state ──────────────────────────────────────────────────────────────
 
 let _SQL   = null   // sql.js constructor, set by loadSql()
@@ -47,6 +49,10 @@ async function _doConnect(store) {
   _store = store
   const conflicts = await store.checkConflictCopies()
   const { db, saveSeq, lastWriter, savedAt } = await store.open(_SQL)
+  // Additive migrations — try each ALTER TABLE; ignore if column already exists
+  for (const [table, col, def] of MIGRATIONS_3_1) {
+    try { db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`) } catch { /* already present */ }
+  }
   _db  = db
   _seq = saveSeq
   return { saveSeq, lastWriter, savedAt, conflicts }

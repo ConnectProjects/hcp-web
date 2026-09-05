@@ -5,10 +5,12 @@
  */
 
 import { query, run, scalar, save } from '../db/db.js'
+import { parseWsbcZip, previewWsbcImport, commitWsbcImport } from '../db/wsbc-import.js'
 
 export function mount(container, { navigate, session }) {
-  let _showForm  = false
-  let _status    = null
+  let _showForm   = false
+  let _status     = null
+  let _wsbcState  = null   // null | 'picking' | { parsed, preview } | 'importing' | 'done'
 
   render()
 
@@ -18,19 +20,23 @@ export function mount(container, { navigate, session }) {
         <h1>Companies</h1>
         <input class="search-input" id="co-search" type="search"
                placeholder="Search by company name or city…" autocomplete="off">
-        <button class="btn btn-secondary btn-sm" id="new-co-btn"
-                style="flex-shrink:0">+ New Company</button>
+        <div style="display:flex;gap:0.5rem;flex-shrink:0">
+          <button class="btn btn-secondary btn-sm" id="wsbc-import-btn">Import from WSBC</button>
+          <button class="btn btn-secondary btn-sm" id="new-co-btn">+ New Company</button>
+        </div>
       </div>
       <div class="screen-body">
         ${_status ? statusBanner(_status) : ''}
+        <div id="co-wsbc-wrap"></div>
         <div id="co-form-wrap"></div>
         <div id="co-table-wrap"></div>
       </div>
     `
 
-    const searchEl = container.querySelector('#co-search')
-    const formWrap = container.querySelector('#co-form-wrap')
+    const searchEl  = container.querySelector('#co-search')
+    const formWrap  = container.querySelector('#co-form-wrap')
     const tableWrap = container.querySelector('#co-table-wrap')
+    const wsbcWrap  = container.querySelector('#co-wsbc-wrap')
 
     if (_showForm) {
       formWrap.innerHTML = companyForm(null)
@@ -41,8 +47,16 @@ export function mount(container, { navigate, session }) {
     }
 
     container.querySelector('#new-co-btn').addEventListener('click', () => {
-      _showForm = !_showForm; _status = null; render()
+      _showForm = !_showForm; _wsbcState = null; _status = null; render()
     })
+
+    container.querySelector('#wsbc-import-btn').addEventListener('click', () => {
+      _showForm = false; _status = null
+      _wsbcState = 'picking'
+      renderWsbc(wsbcWrap)
+    })
+
+    if (_wsbcState) renderWsbc(wsbcWrap)
 
     function doLoad(q) { loadTable(tableWrap, q, navigate) }
 
@@ -79,6 +93,150 @@ export function mount(container, { navigate, session }) {
       } catch (e) {
         if (errEl) errEl.textContent = `Save failed: ${e.message}`
       }
+    }
+
+    // ── WSBC import panel ─────────────────────────────────────────────────────
+
+    function renderWsbc(wrap) {
+      if (!_wsbcState) { wrap.innerHTML = ''; return }
+
+      if (_wsbcState === 'picking') {
+        wrap.innerHTML = `
+          <div class="info-card" style="margin-bottom:1.5rem">
+            <h3 style="margin-bottom:0.5rem;font-size:0.9375rem">Import from WSBC</h3>
+            <p style="font-size:0.875rem;color:var(--clr-subtle);margin-bottom:0.75rem">
+              Select the WSBC employer zip file downloaded from the WorkSafeBC Hearing Testing Portal.
+              MasterDB will create or update the company, location, and worker records.
+            </p>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+              <label class="btn btn-primary" style="cursor:pointer">
+                Choose zip file…
+                <input type="file" id="wsbc-file-input" accept=".zip" style="display:none">
+              </label>
+              <button class="btn btn-secondary" id="wsbc-cancel">Cancel</button>
+            </div>
+            <div id="wsbc-err" style="color:var(--clr-error-text);font-size:0.875rem;margin-top:0.5rem"></div>
+          </div>
+        `
+        wrap.querySelector('#wsbc-cancel').addEventListener('click', () => {
+          _wsbcState = null; render()
+        })
+        wrap.querySelector('#wsbc-file-input').addEventListener('change', async e => {
+          const file = e.target.files?.[0]
+          if (!file) return
+          const errEl = wrap.querySelector('#wsbc-err')
+          errEl.textContent = 'Parsing zip…'
+          try {
+            const buf    = await file.arrayBuffer()
+            const parsed = await parseWsbcZip(buf)
+            const preview = previewWsbcImport(parsed)
+            _wsbcState = { parsed, preview }
+            renderWsbc(wrap)
+          } catch (err) {
+            errEl.textContent = `Error: ${err.message}`
+          }
+        })
+        return
+      }
+
+      if (_wsbcState === 'importing') {
+        wrap.innerHTML = `
+          <div class="info-card" style="margin-bottom:1.5rem">
+            <div class="spinner"></div>
+            <p class="status-text">Importing…</p>
+          </div>
+        `
+        return
+      }
+
+      if (_wsbcState === 'done') {
+        return  // result rendered by caller after navigate
+      }
+
+      // Preview state
+      const { parsed, preview } = _wsbcState
+      const p = preview
+
+      const statusBadge = (label, ok) =>
+        ok ? `<span class="badge badge-green">${esc(label)}</span>`
+           : `<span class="badge badge-gray">${esc(label)} (will create)</span>`
+
+      const workerRows = p.workerSummary.map(w =>
+        `<tr>
+          <td>${esc(w.last_name)}, ${esc(w.first_name)}${w.dob ? ` <span style="color:var(--clr-subtle);font-size:0.8rem">${esc(w.dob)}</span>` : ''}</td>
+          <td>${w.status === 'existing'
+              ? '<span class="badge badge-green">Matched by WSBC ID</span>'
+              : w.status === 'matched'
+              ? '<span class="badge badge-blue">Matched by name/DOB</span>'
+              : '<span class="badge badge-gray">New</span>'}</td>
+        </tr>`
+      ).join('')
+
+      wrap.innerHTML = `
+        <div class="info-card" style="margin-bottom:1.5rem">
+          <h3 style="margin-bottom:0.75rem;font-size:0.9375rem">WSBC Import Preview</h3>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0.5rem;margin-bottom:1rem">
+            <div>
+              <span class="field-label">Employer</span>
+              <div style="font-weight:600">${esc(p.employer.name)}</div>
+              <div style="font-size:0.8rem;color:var(--clr-subtle)">WSBC ID: ${esc(p.employer.id)}</div>
+            </div>
+            <div>
+              <span class="field-label">Location</span>
+              <div>${esc(p.location.number)}</div>
+              ${p.location.address ? `<div style="font-size:0.8rem;color:var(--clr-subtle)">${esc(p.location.address)}</div>` : ''}
+            </div>
+            <div>
+              <span class="field-label">Company in DB</span>
+              <div>${statusBadge(p.existingCompany?.name ?? 'Not found', !!p.existingCompany)}</div>
+            </div>
+            <div>
+              <span class="field-label">Location in DB</span>
+              <div>${statusBadge(p.existingLocation ? `Location ${p.location.number}` : 'Not found', !!p.existingLocation)}</div>
+            </div>
+            <div>
+              <span class="field-label">Workers</span>
+              <div>${p.workerSummary.length}</div>
+            </div>
+            <div>
+              <span class="field-label">Historical tests</span>
+              <div>${p.testCount}${p.duplicateCount ? ` <span style="color:var(--clr-subtle);font-size:0.8rem">(${p.duplicateCount} already in DB)</span>` : ''}</div>
+            </div>
+          </div>
+
+          ${p.workerSummary.length ? `
+          <div class="table-wrap" style="max-height:16rem;overflow-y:auto;margin-bottom:0.75rem">
+            <table class="data-table" style="margin:0">
+              <thead><tr><th>Worker</th><th>Match</th></tr></thead>
+              <tbody>${workerRows}</tbody>
+            </table>
+          </div>` : ''}
+
+          <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="wsbc-commit">Import →</button>
+            <button class="btn btn-secondary" id="wsbc-back">Back</button>
+            <span id="wsbc-commit-err" style="color:var(--clr-error-text);font-size:0.875rem"></span>
+          </div>
+        </div>
+      `
+      wrap.querySelector('#wsbc-back').addEventListener('click', () => {
+        _wsbcState = 'picking'; renderWsbc(wrap)
+      })
+      wrap.querySelector('#wsbc-commit').addEventListener('click', async () => {
+        _wsbcState = 'importing'; renderWsbc(wrap)
+        try {
+          const r = await commitWsbcImport(parsed, session?.writerName ?? 'admin')
+          _wsbcState = null
+          _status = { ok: true, message: `WSBC import complete: ${r.imported} test${r.imported !== 1 ? 's' : ''} imported, ${r.newPersons} new worker${r.newPersons !== 1 ? 's' : ''} created.` }
+          render()
+          navigate('company', { companyId: r.companyId })
+        } catch (err) {
+          _wsbcState = { parsed, preview }
+          renderWsbc(wrap)
+          const errEl = wrap.querySelector('#wsbc-commit-err')
+          if (errEl) errEl.textContent = `Import failed: ${err.message}`
+        }
+      })
     }
   }
 }

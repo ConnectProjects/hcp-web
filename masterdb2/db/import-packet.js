@@ -25,6 +25,7 @@ import { getById, getByUid, getActiveBaseline, create as createPerson, matchCand
 import { classify }                     from '../../shared/classification/engine.js'
 import { validatePacket }               from '../../shared/packet/schema.js'
 import { reconcileImport, countPacketCompletedTests } from '../../shared/validation/reconcile-import.js'
+import { generateWsbcCsv }              from './wsbc-export.js'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -451,7 +452,13 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
     console.warn('archivePacket failed (data was saved):', archiveWarning)
   }
 
-  return { imported, duplicates, empty: emptyTests, newPersons, backupFile, archiveWarning }
+  // Auto-generate WSBC CSV for BC imports
+  let wsbcCsv = null
+  if (province === 'BC' && insertedTestIds.length) {
+    try { wsbcCsv = generateWsbcCsv(insertedTestIds) } catch { /* non-fatal */ }
+  }
+
+  return { imported, duplicates, empty: emptyTests, newPersons, backupFile, archiveWarning, wsbcCsv }
 }
 
 // ── Auto-import ───────────────────────────────────────────────────────────────

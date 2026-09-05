@@ -137,52 +137,25 @@ shared/             Code shared across apps
 
 ---
 
-## Managed Hosting
-
-Self-hosting is free and always will be. If you'd prefer a fully managed solution — where setup, hosting, maintenance, compliance updates, and support are handled for you — managed hosting plans are available.
-
-**Managed hosting includes:**
-
-- Branded URL for your organization (e.g., `yourcompany.hcpweb.ca`)
-- Onboarding and data migration assistance
-- Ongoing hosting and maintenance
-- Province rule updates when regulations change
-- Priority support
-
-**Pricing** is simple and nominal — designed to be accessible to independent HCP providers and small safety consultancies, not just large corporations.
-
-Contact: [norm@hcpweb.ca](mailto:norm@hcpweb.ca) *(coming soon)*
-
 ---
 
 ## License
 
-HCP-Web is released under the [Business Source License 1.1](LICENSE).
+Copyright © 2026 Connect Hearing Canada. All rights reserved.
 
-**In plain language:**
+This software is the proprietary property of Connect Hearing Canada.
+Unauthorized use, reproduction, distribution, or deployment is strictly
+prohibited without express written permission.
 
-- ✅ Free to use for any non-commercial purpose
-- ✅ Free to self-host for your own organization's internal use
-- ✅ Free to inspect, modify, and contribute to
-- ✅ **Connect Hearing Canada — free use, forever, with gratitude**
-- ❌ Offering HCP-Web as a hosted service to third parties requires a commercial license
-
-After four years from each release date, that release converts automatically to the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0), becoming fully open source.
-
-For commercial licensing inquiries: [norm@hcpweb.ca](mailto:norm@hcpweb.ca) *(coming soon)*
+For licensing inquiries: [norman.robichaud@connecthearing.ca](mailto:norman.robichaud@connecthearing.ca)
 
 ---
 
 ## Contributing
 
-Contributions are welcome, particularly:
-
-- **Province rule sets** — JSON classification rules for MB, ON, QC, and other provinces
-- **Bug reports and fixes**
-- **Documentation improvements**
-- **Translations** — French language support for Quebec and bilingual workplaces
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a pull request.
+This is a proprietary internal tool for Connect Hearing Canada. The repository is
+public for development purposes only. Contributions are accepted only from Connect
+Hearing Canada staff and authorized contractors.
 
 ---
 
@@ -204,5 +177,5 @@ Connect Hearing Canada enabled the professional experience and domain knowledge 
 
 ---
 
-*© 2026 Norm Robichaud. All rights reserved under the Business Source License 1.1.*  
+*© 2026 Connect Hearing Canada. All rights reserved.*  
 *HCP-Web is not affiliated with or endorsed by WorkSafeBC, Alberta OHS, or WorkSafe Saskatchewan.*

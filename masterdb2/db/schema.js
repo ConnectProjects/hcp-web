@@ -21,7 +21,7 @@
  *    architecture no longer needs them for merging.
  */
 
-export const SCHEMA_VERSION = '3.0'
+export const SCHEMA_VERSION = '3.1'
 
 export const SCHEMA_SQL = `
 -- 0. CONCURRENCY / IDENTITY OF THE FILE ITSELF
@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS companies (
   contact_phone TEXT,
   contact_email TEXT,
   website       TEXT,
-  sticky_notes  TEXT,
+  sticky_notes           TEXT,
+  worksafebc_employer_id TEXT,
   active        INTEGER NOT NULL DEFAULT 1,
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
@@ -162,6 +163,7 @@ CREATE TABLE IF NOT EXISTS employees (
   first_name    TEXT NOT NULL,
   middle_name   TEXT,
   last_name     TEXT NOT NULL,
+  wsbc_worker_id TEXT,
   dob           TEXT,
   sin_last_4    TEXT,
   phone         TEXT,
@@ -303,4 +305,14 @@ export const PROVINCE_SEED = [
   { code: 'AB', name: 'Alberta',          ref: 'OHS Code Part 16, Schedule 3' },
   { code: 'BC', name: 'British Columbia', ref: 'WorkSafeBC Audiometric Testing Guidelines' },
   { code: 'SK', name: 'Saskatchewan',     ref: 'OHS Regulations 1996, s.113' }
+]
+
+/**
+ * Schema 3.1 additive migrations — run at DB open time via runMigrations().
+ * Each entry: [table, column, column_def]. ALTER TABLE is a no-op in a try/catch
+ * if the column already exists, so this is safe to run every open.
+ */
+export const MIGRATIONS_3_1 = [
+  ['companies', 'worksafebc_employer_id', 'TEXT'],
+  ['employees', 'wsbc_worker_id',         'TEXT'],
 ]

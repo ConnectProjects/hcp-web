@@ -483,11 +483,27 @@ export function mount(container, { navigate, session }) {
       </div>
       ${r.backupFile ? `<p style="font-size:0.8rem;color:var(--clr-subtle);margin-bottom:1rem">Pre-import snapshot: ${esc(r.backupFile)}</p>` : ''}
       ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">Packet stays in inbox (archive step failed: ${esc(r.archiveWarning)}). Data was saved — safe to delete the inbox file manually.</div>` : ''}
+      ${r.wsbcCsv ? `
+        <div class="warning-banner" style="margin-bottom:1rem;border-color:var(--clr-warning,#f59e0b)">
+          <strong>WorkSafeBC submission required</strong><br>
+          This was a BC location — you must submit the test data to the WSBC portal as soon as possible.
+          Download the file below and upload it at
+          <a href="https://www.worksafebc.com/en/health-safety/occupational-disease/hearing-loss/hearing-testing-portal"
+             target="_blank" rel="noopener">worksafebc.com → Hearing Testing Portal</a>.
+          <div style="margin-top:0.75rem">
+            <button class="btn btn-primary" id="wsbc-dl-btn">Download WSBC File_Upload CSV</button>
+          </div>
+        </div>` : ''}
       <div style="display:flex;gap:0.75rem">
         <button class="btn btn-primary"   id="another-btn">Import Another</button>
         <button class="btn btn-secondary" id="companies-btn">Go to Companies</button>
       </div>
     `
+    if (r.wsbcCsv) {
+      area.querySelector('#wsbc-dl-btn').addEventListener('click', () => {
+        triggerCsvDownload(r.wsbcCsv.csv, r.wsbcCsv.filename)
+      })
+    }
     area.querySelector('#another-btn').addEventListener('click', () => {
       _filename = null; _packet = null; _preview = null; _decisions = null; _result = null
       loadInbox()
@@ -500,6 +516,14 @@ export function mount(container, { navigate, session }) {
   function countItem(n, label) {
     return `<div class="import-count"><span class="num">${n}</span><span class="lbl">${label}</span></div>`
   }
+}
+
+function triggerCsvDownload(csv, filename) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url  = URL.createObjectURL(blob)
+  const a    = Object.assign(document.createElement('a'), { href: url, download: filename })
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 function esc(s) {

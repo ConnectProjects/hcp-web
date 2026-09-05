@@ -6,6 +6,7 @@
  */
 
 import { query } from '../db/db.js'
+import { generateWsbcCsv } from '../db/wsbc-export.js'
 
 export function mount(container) {
   const today       = new Date()
@@ -186,6 +187,9 @@ export function mount(container) {
     const totalWorkers = workerRows.length
     const totalVisits  = visits.length
 
+    // Check if any BC location is present (for WSBC export button)
+    const hasBcLocation = visits.some(v => v.province === 'BC')
+
     const blocksHTML = visits.map(v => {
       const workerRowsHTML = v.workers.map(w => `
         <tr><td>${esc(w.name)}</td><td>${esc(w.category)}</td></tr>
@@ -220,13 +224,16 @@ export function mount(container) {
     }).join('')
 
     output.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;flex-wrap:wrap;gap:0.5rem">
         <p style="font-size:0.875rem;color:var(--clr-subtle)">
           ${totalVisits} visit${totalVisits !== 1 ? 's' : ''}
           &nbsp;&mdash;&nbsp;
           <strong>${totalWorkers}</strong> worker${totalWorkers !== 1 ? 's' : ''} tested
         </p>
-        <button class="btn btn-secondary" id="r-csv">Export to Excel</button>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-secondary" id="r-csv">Export to Excel</button>
+          ${hasBcLocation ? `<button class="btn btn-secondary" id="r-wsbc-csv" title="Generate WorkSafeBC File_Upload_Template CSV">Export for WSBC</button>` : ''}
+        </div>
       </div>
       ${blocksHTML}
     `
@@ -278,6 +285,48 @@ export function mount(container) {
       ]
       downloadCSV(`connect-hearing-report-${from}-to-${to}.csv`, csvData)
     })
+
+    if (hasBcLocation) {
+      output.querySelector('#r-wsbc-csv')?.addEventListener('click', () => {
+        // Export BC tests from the selected location(s) in the date range
+        const errEl = output.querySelector('#r-wsbc-err') ?? (() => {
+          const el = document.createElement('span')
+          el.id = 'r-wsbc-err'
+          el.style.cssText = 'color:var(--clr-error-text);font-size:0.875rem;margin-left:0.5rem'
+          output.querySelector('#r-wsbc-csv').after(el)
+          return el
+        })()
+        errEl.textContent = ''
+
+        try {
+          // Gather all BC test IDs from the current query
+          const sql3 = `
+            SELECT te.test_id FROM tests te
+            JOIN  locations l ON l.location_id = te.location_id
+            JOIN  companies c ON c.company_id  = l.company_id
+            WHERE te.deleted_at IS NULL AND l.province = 'BC'
+              AND te.test_date >= ? AND te.test_date <= ?
+              ${companyId ? 'AND c.company_id = ?' : ''}
+              ${locationClause(locationIds)}
+            ORDER BY te.test_date`
+          const p3 = [from, to,
+            ...(companyId   ? [Number(companyId)] : []),
+            ...locationIds
+          ]
+          const ids = query(sql3, p3).map(r => r.test_id)
+          if (!ids.length) { errEl.textContent = 'No BC tests in selection.'; return }
+
+          const { csv, filename } = generateWsbcCsv(ids)
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+          const url  = URL.createObjectURL(blob)
+          const a    = Object.assign(document.createElement('a'), { href: url, download: filename })
+          document.body.appendChild(a); a.click(); document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+        } catch (e) {
+          errEl.textContent = e.message
+        }
+      })
+    }
   }
 }
 
