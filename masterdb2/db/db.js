@@ -53,6 +53,8 @@ async function _doConnect(store) {
   for (const [table, col, def] of MIGRATIONS_3_1) {
     try { db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`) } catch { /* already present */ }
   }
+  // Composite index for companies-list MAX(test_date) lookup — idempotent
+  try { db.run(`CREATE INDEX IF NOT EXISTS idx_tests_loc_date ON tests(location_id, test_date)`) } catch { /* ignore */ }
   _db  = db
   _seq = saveSeq
   return { saveSeq, lastWriter, savedAt, conflicts }

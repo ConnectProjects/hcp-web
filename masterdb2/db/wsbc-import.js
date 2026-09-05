@@ -5,21 +5,23 @@
  *   Unzip the WSBC employer package, parse CSVs, return a structured preview object.
  *
  * commitWsbcImport(parsed, writerName)
- *   Write the parsed data to the DB: create/update company + location + workers + tests.
- *   Returns { companyId, locationId, imported, newPersons, duplicates }.
+ *   Write the parsed data to the DB: create/update company + locations + workers + tests.
+ *   Returns { companyId, imported, newPersons, duplicates }.
  *
  * The WSBC zip contains:
  *   *_HearingTests_*.csv      — historical test records (same columns as File_Upload_Template)
- *   *_Locations_*.csv         — locations with Operating Location Number + address
- *   *_Technicians_*.csv       — tech roster (used for reference only)
- *   *_File_Upload_Template_*.csv — empty header-only CSV (returned as exportBlob after new tests)
+ *   *_Locations_*.csv         — locations with Operating Location Number + address + city
+ *   *_Technicians_*.csv       — tech roster (reference only)
+ *   *_File_Upload_Template_*.csv — empty header-only CSV
  *   *_CUs_Template_*.csv      — CU codes (not imported)
  *   *_Occupational_Classification_*.csv — job codes (not imported)
  */
 
 import { query, run, scalar, transaction, save } from './db.js'
-import { getByUid, getActiveBaseline, create as createPerson, matchCandidates } from './workers.js'
+import { getActiveBaseline, create as createPerson, matchCandidates } from './workers.js'
 import { classify } from '../../shared/classification/engine.js'
+
+const yield_ = () => new Promise(r => setTimeout(r, 0))
 
 // ── CSV parser ────────────────────────────────────────────────────────────────
 
@@ -104,21 +106,16 @@ function wsbcDate(s) {
  *
  * Returns:
  *   {
- *     employer: { id, name },
- *     location: { number, address },
- *     workers:  [{ wsbc_worker_id, first_name, middle_name, last_name, dob, sin_last_4, gender }],
- *     tests:    [{ wsbc_worker_id, test_date, wsbc_tech_id, thresholds, questionnaire }],
+ *     employer:  { id, name },
+ *     locations: [{ number, address, city }],   // one entry per Operating Location
+ *     workers:   [{ wsbc_worker_id, first_name, last_name, dob, ..., last_operating_location }],
+ *     tests:     [{ wsbc_worker_id, operating_location, test_date, thresholds, questionnaire }],
  *     techCount: N,
- *     csvHeaders: [string],   // File_Upload_Template column headers
  *   }
  */
-const yield_ = () => new Promise(r => setTimeout(r, 0))
-
 export async function parseWsbcZip(arrayBuffer) {
   if (!window.JSZip) throw new Error('JSZip not loaded — include vendor/jszip.min.js before importing this module')
 
-  // loadAsync scans the full zip binary to build the file index.
-  // Yield before and after so the browser stays responsive.
   await yield_()
   const zip = await JSZip.loadAsync(arrayBuffer)
   await yield_()
@@ -126,17 +123,14 @@ export async function parseWsbcZip(arrayBuffer) {
   let hearingTestsCsv = null
   let locationsCsv    = null
   let techniciansCsv  = null
-  let uploadTemplate  = null
 
   for (const [name, file] of Object.entries(zip.files)) {
     if (file.dir) continue
     const lc = name.toLowerCase()
-    // Skip large files we don't use (Occupational Classification can be 2.5 MB+)
     if (lc.includes('occupational') || lc.includes('cus_template')) continue
     if (lc.includes('hearingtests'))              hearingTestsCsv = await file.async('string')
     else if (lc.includes('locations_template'))   locationsCsv    = await file.async('string')
     else if (lc.includes('technicians_template')) techniciansCsv  = await file.async('string')
-    else if (lc.includes('file_upload_template')) uploadTemplate  = await file.async('string')
     await yield_()
   }
 
@@ -149,74 +143,108 @@ export async function parseWsbcZip(arrayBuffer) {
 
   if (!testRows.length && !locRows.length) throw new Error('No data found in WSBC zip')
 
+  await yield_()
+
   // Employer info from Locations CSV (or fall back to test rows)
-  const locRow = locRows[0] ?? {}
+  const locRow0  = locRows[0] ?? {}
   const employer = {
-    id:   String(locRow['Employer ID'] ?? testRows[0]?.['Employer ID'] ?? '').trim(),
-    name: String(locRow['Employer Legal Name'] ?? testRows[0]?.['Employer Name'] ?? '').trim(),
+    id:   String(locRow0['Employer ID']       ?? testRows[0]?.['Employer ID']   ?? '').trim(),
+    name: String(locRow0['Employer Legal Name'] ?? testRows[0]?.['Employer Name'] ?? '').trim(),
   }
 
-  const location = {
-    number:  String(locRow['Operating Location Number'] ?? '001').trim(),
-    address: String(locRow['Operating Location Address'] ?? '').trim(),
+  // Build a map of all operating locations from the Locations CSV
+  const locationMap = new Map()
+  for (const row of locRows) {
+    const num = String(row['Operating Location Number'] ?? '').trim()
+    if (!num) continue
+    if (!locationMap.has(num)) {
+      locationMap.set(num, {
+        number:  num,
+        address: String(row['Operating Location Address'] ?? '').trim() || null,
+        city:    String(row['City'] ?? row['City/Town'] ?? '').trim()   || null,
+      })
+    }
+  }
+  // If Locations CSV was empty, seed from the first test row
+  if (!locationMap.size) {
+    const num = String(testRows[0]?.['Operating Location'] ?? '001').trim()
+    locationMap.set(num, { number: num, address: null, city: null })
   }
 
-  // Deduplicate workers by wsbc_worker_id
+  await yield_()
+
+  // Sort testRows by test_date ascending so the oldest record = baseline candidate
+  testRows.sort((a, b) => {
+    const da = wsbcDate(a['Test Date']) ?? ''
+    const db = wsbcDate(b['Test Date']) ?? ''
+    return da < db ? -1 : da > db ? 1 : 0
+  })
+
+  await yield_()
+
+  // Build worker map — iterate sorted testRows so last_operating_location = most recent
   const workerMap = new Map()
   for (const row of testRows) {
     const wid = String(row['Worker ID'] ?? '').trim()
-    if (!wid || workerMap.has(wid)) continue
-    workerMap.set(wid, {
-      wsbc_worker_id: wid,
-      first_name:     String(row['Worker First Name']  ?? '').trim(),
-      middle_name:    String(row['Worker Middle Name'] ?? '').trim() || null,
-      last_name:      String(row['Worker Last Name']   ?? '').trim(),
-      dob:            wsbcDate(row['Birth Date']),
-      sin_last_4:      String(row['4 digits SIN']       ?? '').replace(/"/g, '').trim() || null,
-      gender:          String(row['Gender']             ?? '').trim() || null,
-      job_title:       String(row['Occupation Job Title'] ?? '').trim() || null,
-      occupation_code: String(row['Occupation Code']      ?? '').trim() || null,
-    })
+    if (!wid) continue
+    const opLoc = String(row['Operating Location'] ?? '').trim()
+    if (!workerMap.has(wid)) {
+      workerMap.set(wid, {
+        wsbc_worker_id:         wid,
+        first_name:             String(row['Worker First Name']  ?? '').trim(),
+        middle_name:            String(row['Worker Middle Name'] ?? '').trim() || null,
+        last_name:              String(row['Worker Last Name']   ?? '').trim(),
+        dob:                    wsbcDate(row['Birth Date']),
+        sin_last_4:             String(row['4 digits SIN']           ?? '').replace(/"/g, '').trim() || null,
+        gender:                 String(row['Gender']                 ?? '').trim() || null,
+        job_title:              String(row['Occupation Job Title']   ?? '').trim() || null,
+        occupation_code:        String(row['Occupation Code']        ?? '').trim() || null,
+        last_operating_location: opLoc,
+      })
+    } else {
+      // Update to the most recent operating location (testRows sorted ascending by date)
+      workerMap.get(wid).last_operating_location = opLoc
+    }
   }
 
-  // Build test list
+  await yield_()
+
+  // Build test list — each test carries its operating_location so commit assigns the right DB location_id
   const tests = testRows.map(row => {
     const th = mapThresholds(row)
     if (!hasThresholdData(th)) return null
     return {
-      wsbc_worker_id: String(row['Worker ID']      ?? '').trim(),
-      wsbc_tech_id:   String(row['Technician ID']  ?? '').trim(),
-      test_date:      wsbcDate(row['Test Date']),
-      thresholds:     th,
+      wsbc_worker_id:      String(row['Worker ID']         ?? '').trim(),
+      operating_location:  String(row['Operating Location'] ?? '').trim(),
+      wsbc_tech_id:        String(row['Technician ID']     ?? '').trim(),
+      test_date:           wsbcDate(row['Test Date']),
+      thresholds:          th,
       questionnaire: {
-        exposed_noise_last_hours:  row['ExposedToNoiseInLastHours']         || null,
-        hours_noise_exposure:      row['HowManyHoursExposedToNoise']        || null,
-        regularly_wear_hpd:        row['RegularlyWearHearingProt']          || null,
-        hpd_class:                 row['ClassOfHearingProtWornReg']         || null,
-        hpd_style:                 row['StyleOfHearingProtWornReg']         || null,
-        why_not_wear_hpd:          row['WhyNotWearHearingProtReg']          || null,
-        ear_infection:             row['HadSevereEarInfection']             || null,
-        ear_surgery:               row['HadEarSurgery']                     || null,
-        dizziness:                 row['HadDizzinessOrBalanceProblems']     || null,
-        head_injury:               row['HadSeriousHeadInjury']              || null,
-        childhood_hearing_loss:    row['HadHearingLossInChildhood']         || null,
-        tinnitus:                  row['HasRingingInEars']                  || null,
-        tinnitus_ear:              row['WhichEar']                          || null,
-        blast_exposure:            row['HadExposureToLoudBlast']            || null,
-        firearms:                  row['HasUsedFirearms']                   || null,
+        exposed_noise_last_hours:  row['ExposedToNoiseInLastHours']      || null,
+        hours_noise_exposure:      row['HowManyHoursExposedToNoise']     || null,
+        regularly_wear_hpd:        row['RegularlyWearHearingProt']       || null,
+        hpd_class:                 row['ClassOfHearingProtWornReg']      || null,
+        hpd_style:                 row['StyleOfHearingProtWornReg']      || null,
+        why_not_wear_hpd:          row['WhyNotWearHearingProtReg']       || null,
+        ear_infection:             row['HadSevereEarInfection']          || null,
+        ear_surgery:               row['HadEarSurgery']                  || null,
+        dizziness:                 row['HadDizzinessOrBalanceProblems']  || null,
+        head_injury:               row['HadSeriousHeadInjury']           || null,
+        childhood_hearing_loss:    row['HadHearingLossInChildhood']      || null,
+        tinnitus:                  row['HasRingingInEars']               || null,
+        tinnitus_ear:              row['WhichEar']                       || null,
+        blast_exposure:            row['HadExposureToLoudBlast']         || null,
+        firearms:                  row['HasUsedFirearms']                || null,
       },
     }
   }).filter(Boolean)
 
-  const csvHeaders = uploadTemplate ? uploadTemplate.split('\n')[0] : null
-
   return {
     employer,
-    location,
+    locations: Array.from(locationMap.values()),
     workers:   Array.from(workerMap.values()),
     tests,
     techCount: techRows.length,
-    csvHeaders,
   }
 }
 
@@ -225,24 +253,20 @@ export async function parseWsbcZip(arrayBuffer) {
 const queryOne = (sql, p = []) => query(sql, p)[0] ?? null
 
 function resolveOrCreateCompany(employer) {
-  // Try by worksafebc_employer_id first
   if (employer.id) {
     const row = queryOne('SELECT * FROM companies WHERE worksafebc_employer_id = ? AND active = 1', [employer.id])
     if (row) return { company: row, created: false }
   }
-  // Fall back to name match
   if (employer.name) {
     const row = queryOne('SELECT * FROM companies WHERE LOWER(name) = LOWER(?) AND active = 1', [employer.name])
     if (row) {
-      // Update worksafebc_employer_id if not yet set
       if (!row.worksafebc_employer_id && employer.id) {
-        run('UPDATE companies SET worksafebc_employer_id = ?, updated_at = datetime(\'now\') WHERE company_id = ?',
+        run("UPDATE companies SET worksafebc_employer_id = ?, updated_at = datetime('now') WHERE company_id = ?",
           [employer.id, row.company_id])
       }
       return { company: { ...row, worksafebc_employer_id: employer.id }, created: false }
     }
   }
-  // Create new
   run(
     `INSERT INTO companies (name, worksafebc_employer_id, active) VALUES (?, ?, 1)`,
     [employer.name || `WSBC Employer ${employer.id}`, employer.id || null]
@@ -251,48 +275,48 @@ function resolveOrCreateCompany(employer) {
   return { company: queryOne('SELECT * FROM companies WHERE company_id = ?', [companyId]), created: true }
 }
 
-function resolveOrCreateLocation(companyId, locationNumber, address) {
-  // Location name = Operating Location Number (e.g. "001")
+function resolveOrCreateLocation(companyId, locNumber, address, city) {
   const row = queryOne(
     'SELECT * FROM locations WHERE company_id = ? AND name = ? AND active = 1',
-    [companyId, locationNumber]
+    [companyId, locNumber]
   )
-  if (row) return { location: row, created: false }
-
+  if (row) {
+    // Backfill city if it wasn't set before
+    if (!row.city && city) {
+      run("UPDATE locations SET city = ?, updated_at = datetime('now') WHERE location_id = ?",
+        [city, row.location_id])
+    }
+    return { location: { ...row, city: city ?? row.city }, created: false }
+  }
   run(
-    `INSERT INTO locations (company_id, name, province, address, active) VALUES (?, ?, 'BC', ?, 1)`,
-    [companyId, locationNumber, address || null]
+    `INSERT INTO locations (company_id, name, province, address, city, active) VALUES (?, ?, 'BC', ?, ?, 1)`,
+    [companyId, locNumber, address || null, city || null]
   )
   const locationId = scalar('SELECT last_insert_rowid()')
   return { location: queryOne('SELECT * FROM locations WHERE location_id = ?', [locationId]), created: true }
 }
 
 function resolveOrCreateEmployee(worker, locationId) {
-  // Try by wsbc_worker_id first
   if (worker.wsbc_worker_id) {
     const row = queryOne('SELECT * FROM employees WHERE wsbc_worker_id = ? AND deleted_at IS NULL', [worker.wsbc_worker_id])
     if (row) return { employeeId: row.employee_id, created: false }
   }
-  // Score-based name+DOB match against company workers
   const candidates = matchCandidates(
     { first_name: worker.first_name, last_name: worker.last_name, dob: worker.dob, sin_last_4: worker.sin_last_4 },
-    null  // search all — WSBC workers may not be current_location_id-matched yet
+    null
   )
   if (candidates.length && candidates[0].score >= 3) {
     const emp = candidates[0].employee
-    // Stamp WSBC fields if missing
-    const updates = []
-    const vals    = []
-    if (!emp.wsbc_worker_id && worker.wsbc_worker_id) { updates.push('wsbc_worker_id=?'); vals.push(worker.wsbc_worker_id) }
+    const updates = [], vals = []
+    if (!emp.wsbc_worker_id  && worker.wsbc_worker_id)  { updates.push('wsbc_worker_id=?');  vals.push(worker.wsbc_worker_id)  }
     if (!emp.occupation_code && worker.occupation_code) { updates.push('occupation_code=?'); vals.push(worker.occupation_code) }
-    if (!emp.job_title && worker.job_title)             { updates.push('job_title=?');       vals.push(worker.job_title)       }
+    if (!emp.job_title       && worker.job_title)       { updates.push('job_title=?');       vals.push(worker.job_title)       }
     if (updates.length) {
       run(`UPDATE employees SET ${updates.join(',')}, updated_at=datetime('now') WHERE employee_id=?`,
         [...vals, emp.employee_id])
     }
     return { employeeId: emp.employee_id, created: false }
   }
-  // Create new
   const employeeId = createPerson({
     first_name:          worker.first_name,
     last_name:           worker.last_name,
@@ -320,13 +344,6 @@ const TEST_COLS = [
   'classification','triggered_rule_id','sts_flag','questionnaire','packet_id',
 ]
 
-function isDuplicate(employeeId, testDate) {
-  return !!queryOne(
-    'SELECT 1 FROM tests WHERE employee_id = ? AND test_date = ? AND deleted_at IS NULL',
-    [employeeId, testDate]
-  )
-}
-
 // ── Phase 1: preview ──────────────────────────────────────────────────────────
 
 /**
@@ -334,15 +351,13 @@ function isDuplicate(employeeId, testDate) {
  * Pure read — no writes.
  *
  * Returns:
- *   { employer, location, workerSummary, testCount, duplicateCount,
- *     existingCompany, existingLocation }
+ *   { employer, locations, workerSummary, testCount, duplicateCount,
+ *     existingCompany, existingLocations }
  */
 export async function previewWsbcImport(parsed) {
-  const { employer, location, workers, tests } = parsed
+  const { employer, locations, workers, tests } = parsed
 
-  let existingCompany  = null
-  let existingLocation = null
-
+  let existingCompany = null
   if (employer.id) {
     existingCompany = queryOne('SELECT * FROM companies WHERE worksafebc_employer_id = ? AND active = 1', [employer.id])
   }
@@ -350,14 +365,18 @@ export async function previewWsbcImport(parsed) {
     existingCompany = queryOne('SELECT * FROM companies WHERE LOWER(name) = LOWER(?) AND active = 1', [employer.name])
   }
 
+  let existingLocations = []
   if (existingCompany) {
-    existingLocation = queryOne(
-      'SELECT * FROM locations WHERE company_id = ? AND name = ? AND active = 1',
-      [existingCompany.company_id, location.number]
-    )
+    existingLocations = locations.map(loc => {
+      const row = queryOne(
+        'SELECT * FROM locations WHERE company_id = ? AND name = ? AND active = 1',
+        [existingCompany.company_id, loc.number]
+      )
+      return row ? loc.number : null
+    }).filter(Boolean)
   }
 
-  // Worker match summary — yield every worker so matchCandidates (full table scan) doesn't freeze
+  // Worker match summary — yield per worker so matchCandidates doesn't freeze the browser
   const workerSummary = []
   for (const w of workers) {
     let status = 'new'
@@ -373,27 +392,44 @@ export async function previewWsbcImport(parsed) {
     await yield_()
   }
 
-  // Test duplicate check (only reliable if we know who the workers are)
+  // Quick duplicate estimate for existing workers only (skip full scan for new workers)
   let duplicateCount = 0
-  for (const test of tests) {
-    const worker = workerSummary.find(w => w.wsbc_worker_id === test.wsbc_worker_id)
-    if (!worker || worker.status === 'new') continue
-    let empId = null
-    if (worker.wsbc_worker_id) {
-      const row = queryOne('SELECT employee_id FROM employees WHERE wsbc_worker_id = ?', [worker.wsbc_worker_id])
-      if (row) empId = row.employee_id
+  const existingWorkerIds = workerSummary
+    .filter(w => w.status !== 'new' && w.wsbc_worker_id)
+    .map(w => w.wsbc_worker_id)
+
+  if (existingWorkerIds.length) {
+    const ph = existingWorkerIds.map(() => '?').join(',')
+    const empRows = query(
+      `SELECT employee_id, wsbc_worker_id FROM employees WHERE wsbc_worker_id IN (${ph}) AND deleted_at IS NULL`,
+      existingWorkerIds
+    )
+    const wsbcToEmpId = new Map(empRows.map(r => [r.wsbc_worker_id, r.employee_id]))
+
+    // Batch load all existing test dates for these employees
+    const empIds = [...wsbcToEmpId.values()]
+    if (empIds.length) {
+      const eph = empIds.map(() => '?').join(',')
+      const testRows = query(
+        `SELECT employee_id, test_date FROM tests WHERE employee_id IN (${eph}) AND deleted_at IS NULL`,
+        empIds
+      )
+      const existingSet = new Set(testRows.map(r => `${r.employee_id}:${r.test_date}`))
+      for (const test of tests) {
+        const empId = wsbcToEmpId.get(test.wsbc_worker_id)
+        if (empId && existingSet.has(`${empId}:${test.test_date}`)) duplicateCount++
+      }
     }
-    if (empId && isDuplicate(empId, test.test_date)) duplicateCount++
   }
 
   return {
     employer,
-    location,
+    locations,
     workerSummary,
-    testCount:      tests.length,
+    testCount:       tests.length,
     duplicateCount,
     existingCompany,
-    existingLocation,
+    existingLocations,
   }
 }
 
@@ -401,57 +437,96 @@ export async function previewWsbcImport(parsed) {
 
 /**
  * Import parsed WSBC data into the DB.
- * Returns { companyId, locationId, imported, newPersons, duplicates }.
+ * Returns { companyId, imported, newPersons, duplicates }.
  */
 export async function commitWsbcImport(parsed, writerName) {
-  const { employer, location, workers, tests } = parsed
+  const { employer, locations, workers, tests } = parsed
 
   const rules = query(
     'SELECT * FROM classification_rules WHERE province_code = ? ORDER BY priority DESC', ['BC']
   )
 
-  let companyId, locationId
+  let companyId
   let imported = 0, newPersons = 0, duplicates = 0
+
+  // Tests are already sorted oldest-first from parseWsbcZip.
+  // Pre-sort defensively in case parsed object came from elsewhere.
+  const sortedTests = [...tests].sort((a, b) => (a.test_date ?? '') < (b.test_date ?? '') ? -1 : 1)
 
   await transaction(async () => {
     // 1. Company
     const { company } = resolveOrCreateCompany(employer)
     companyId = company.company_id
 
-    // 2. Location
-    const { location: loc } = resolveOrCreateLocation(companyId, location.number, location.address)
-    locationId = loc.location_id
+    // 2. All locations — build a map from WSBC Operating Location Number → DB location_id
+    const fallbackLocNum = locations[0]?.number ?? '001'
+    const locationIdByNum = new Map()
+    for (const loc of locations) {
+      const { location } = resolveOrCreateLocation(companyId, loc.number, loc.address, loc.city)
+      locationIdByNum.set(loc.number, location.location_id)
+    }
+    const fallbackLocationId = locationIdByNum.get(fallbackLocNum) ?? [...locationIdByNum.values()][0]
 
-    // 3. Worker → employee map
+    // 3. Workers → employee map
     const wsbcIdToEmpId = new Map()
     for (const worker of workers) {
-      const { employeeId, created } = resolveOrCreateEmployee(worker, locationId)
+      const workerLocId = locationIdByNum.get(worker.last_operating_location) ?? fallbackLocationId
+      const { employeeId, created } = resolveOrCreateEmployee(worker, workerLocId)
       if (created) newPersons++
       wsbcIdToEmpId.set(worker.wsbc_worker_id, employeeId)
     }
+    await yield_()
 
-    // 4. Tests — yield every 20 inserts so Edge's watchdog doesn't fire
+    // 4. Pre-load existing (employee_id, test_date) pairs to skip duplicates without per-test queries
+    const allEmpIds = [...new Set(wsbcIdToEmpId.values())]
+    const existingTestSet = new Set()
+    if (allEmpIds.length) {
+      const ph = allEmpIds.map(() => '?').join(',')
+      const rows = query(
+        `SELECT employee_id, test_date FROM tests WHERE employee_id IN (${ph}) AND deleted_at IS NULL`,
+        allEmpIds
+      )
+      for (const r of rows) existingTestSet.add(`${r.employee_id}:${r.test_date}`)
+    }
+    await yield_()
+
+    // 5. Pre-load which employees already have an active baseline
+    const hasBaselineSet = new Set()
+    if (allEmpIds.length) {
+      const ph = allEmpIds.map(() => '?').join(',')
+      const rows = query(
+        `SELECT DISTINCT employee_id FROM baselines WHERE employee_id IN (${ph}) AND archived = 0 AND deleted_at IS NULL`,
+        allEmpIds
+      )
+      for (const r of rows) hasBaselineSet.add(r.employee_id)
+    }
+    await yield_()
+
+    // 6. Insert tests (sorted oldest-first so first = baseline for new workers)
     const packetId = `wsbc-${employer.id}-import-${new Date().toISOString().slice(0, 10)}`
     let testIdx = 0
 
-    for (const test of tests) {
+    for (const test of sortedTests) {
       const employeeId = wsbcIdToEmpId.get(test.wsbc_worker_id)
-      if (!employeeId) continue
-      if (!test.test_date) continue
-      if (isDuplicate(employeeId, test.test_date)) { duplicates++; continue }
+      if (!employeeId || !test.test_date) continue
 
-      const baseline = getActiveBaseline(employeeId)
+      const key = `${employeeId}:${test.test_date}`
+      if (existingTestSet.has(key)) { duplicates++; continue }
+      existingTestSet.add(key)  // prevent self-duplication within this import batch
+
+      const locationId = locationIdByNum.get(test.operating_location) ?? fallbackLocationId
+      const hasBaseline = hasBaselineSet.has(employeeId)
+
       const cl = rules.length
-        ? classify(test.thresholds, baseline, rules)
-        : { category: null, triggered_rule_id: null, sts_calculated: false,
-            triggering_freq_hz: null, triggering_ear: null, shift_db: null }
+        ? classify(test.thresholds, hasBaseline ? getActiveBaseline(employeeId) : null, rules)
+        : { category: null, triggered_rule_id: null, sts_calculated: false }
 
       const fields = {
         employee_id:       employeeId,
         location_id:       locationId,
         test_date:         test.test_date,
         tech_id:           null,
-        test_type:         baseline ? 'Periodic' : 'Baseline',
+        test_type:         hasBaseline ? 'Periodic' : 'Baseline',
         province:          'BC',
         ...test.thresholds,
         classification:    cl.category,
@@ -466,22 +541,23 @@ export async function commitWsbcImport(parsed, writerName) {
         TEST_COLS.map(c => fields[c] ?? null)
       )
 
-      if (!baseline) {
+      if (!hasBaseline) {
         run(`UPDATE baselines SET archived = 1 WHERE employee_id = ? AND archived = 0`, [employeeId])
         run(
           `INSERT INTO baselines (employee_id, location_id, test_date, archived, ${THR_COLS.join(',')})
            VALUES (?, ?, ?, 0, ${THR_COLS.map(() => '?').join(',')})`,
           [employeeId, locationId, test.test_date, ...THR_COLS.map(k => test.thresholds[k] ?? null)]
         )
+        hasBaselineSet.add(employeeId)  // subsequent tests for this worker are Periodic
       }
 
       imported++
       testIdx++
-      if (testIdx % 20 === 0) await yield_()
+      if (testIdx % 50 === 0) await yield_()
     }
   })
 
   await save(writerName)
 
-  return { companyId, locationId, imported, newPersons, duplicates }
+  return { companyId, imported, newPersons, duplicates }
 }

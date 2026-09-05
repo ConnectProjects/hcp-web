@@ -202,17 +202,18 @@ export function mount(container, { navigate, session }) {
               <div style="font-size:0.8rem;color:var(--clr-subtle)">WSBC ID: ${esc(p.employer.id)}</div>
             </div>
             <div>
-              <span class="field-label">Location</span>
-              <div>${esc(p.location.number)}</div>
-              ${p.location.address ? `<div style="font-size:0.8rem;color:var(--clr-subtle)">${esc(p.location.address)}</div>` : ''}
+              <span class="field-label">Operating Location${p.locations.length > 1 ? 's' : ''}</span>
+              <div>${p.locations.map(l => esc(l.number) + (l.city ? ` — ${esc(l.city)}` : '')).join(', ')}</div>
             </div>
             <div>
               <span class="field-label">Company in DB</span>
               <div>${statusBadge(p.existingCompany?.name ?? 'Not found', !!p.existingCompany)}</div>
             </div>
             <div>
-              <span class="field-label">Location in DB</span>
-              <div>${statusBadge(p.existingLocation ? `Location ${p.location.number}` : 'Not found', !!p.existingLocation)}</div>
+              <span class="field-label">Locations in DB</span>
+              <div>${p.existingLocations.length
+                ? `<span class="badge badge-green">${p.existingLocations.length} of ${p.locations.length} exist</span>`
+                : `<span class="badge badge-gray">Will create ${p.locations.length}</span>`}</div>
             </div>
             <div>
               <span class="field-label">Workers</span>
@@ -273,11 +274,14 @@ function loadTable(wrap, q, navigate) {
               COUNT(DISTINCT l.location_id) AS location_count,
               COUNT(DISTINCT CASE WHEN e.status='active' AND e.deleted_at IS NULL
                              THEN e.employee_id END) AS worker_count,
-              MAX(t.test_date) AS last_test_date
+              (SELECT MAX(t.test_date)
+               FROM tests t
+               JOIN locations lz ON lz.location_id = t.location_id
+               WHERE lz.company_id = c.company_id AND lz.active = 1
+                 AND t.deleted_at IS NULL) AS last_test_date
        FROM companies c
        LEFT JOIN locations l ON l.company_id = c.company_id AND l.active = 1
        LEFT JOIN employees e ON e.current_location_id = l.location_id
-       LEFT JOIN tests    t ON t.location_id = l.location_id AND t.deleted_at IS NULL
        WHERE c.active = 1 AND c.deleted_at IS NULL
          AND (LOWER(c.name) LIKE LOWER(?)
               OR EXISTS (
