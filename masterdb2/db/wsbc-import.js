@@ -112,10 +112,16 @@ function wsbcDate(s) {
  *     csvHeaders: [string],   // File_Upload_Template column headers
  *   }
  */
+const yield_ = () => new Promise(r => setTimeout(r, 0))
+
 export async function parseWsbcZip(arrayBuffer) {
   if (!window.JSZip) throw new Error('JSZip not loaded — include vendor/jszip.min.js before importing this module')
 
+  // loadAsync scans the full zip binary to build the file index.
+  // Yield before and after so the browser stays responsive.
+  await yield_()
   const zip = await JSZip.loadAsync(arrayBuffer)
+  await yield_()
 
   let hearingTestsCsv = null
   let locationsCsv    = null
@@ -125,10 +131,13 @@ export async function parseWsbcZip(arrayBuffer) {
   for (const [name, file] of Object.entries(zip.files)) {
     if (file.dir) continue
     const lc = name.toLowerCase()
+    // Skip large files we don't use (Occupational Classification can be 2.5 MB+)
+    if (lc.includes('occupational') || lc.includes('cus_template')) continue
     if (lc.includes('hearingtests'))              hearingTestsCsv = await file.async('string')
     else if (lc.includes('locations_template'))   locationsCsv    = await file.async('string')
     else if (lc.includes('technicians_template')) techniciansCsv  = await file.async('string')
     else if (lc.includes('file_upload_template')) uploadTemplate  = await file.async('string')
+    await yield_()
   }
 
   if (!hearingTestsCsv) throw new Error('ZIP is missing HearingTests CSV — is this a valid WSBC employer package?')

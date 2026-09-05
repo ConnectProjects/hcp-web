@@ -124,16 +124,36 @@ export function mount(container, { navigate, session }) {
         wrap.querySelector('#wsbc-file-input').addEventListener('change', async e => {
           const file = e.target.files?.[0]
           if (!file) return
-          const errEl = wrap.querySelector('#wsbc-err')
-          errEl.textContent = 'Parsing zip…'
+
+          // Show loading panel immediately — replace entire wrap so the browser
+          // renders it before any blocking work starts
+          wrap.innerHTML = `
+            <div class="info-card" style="margin-bottom:1.5rem">
+              <div class="spinner"></div>
+              <p class="status-text">Reading zip file — this may take a moment…</p>
+            </div>
+          `
+          // Yield to let the browser render the loading state before heavy work
+          await new Promise(r => setTimeout(r, 80))
+
           try {
-            const buf    = await file.arrayBuffer()
-            const parsed = await parseWsbcZip(buf)
+            const buf     = await file.arrayBuffer()
+            // Yield again before JSZip scans the binary (large OCC Classification CSV inside)
+            await new Promise(r => setTimeout(r, 0))
+            const parsed  = await parseWsbcZip(buf)
             const preview = previewWsbcImport(parsed)
             _wsbcState = { parsed, preview }
             renderWsbc(wrap)
           } catch (err) {
-            errEl.textContent = `Error: ${err.message}`
+            wrap.innerHTML = `
+              <div class="info-card" style="margin-bottom:1.5rem">
+                <div class="error-banner"><strong>Failed to read zip:</strong> ${esc(err.message)}</div>
+                <button class="btn btn-secondary" id="wsbc-err-back" style="margin-top:0.75rem">Back</button>
+              </div>
+            `
+            wrap.querySelector('#wsbc-err-back').addEventListener('click', () => {
+              _wsbcState = 'picking'; render()
+            })
           }
         })
         return
