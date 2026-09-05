@@ -26,7 +26,9 @@ const yield_ = () => new Promise(r => setTimeout(r, 0))
 // ── CSV parser ────────────────────────────────────────────────────────────────
 
 function parseCSV(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  // Strip UTF-8 BOM if present — otherwise the first column header gets a ﻿ prefix
+  const clean = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text
+  const lines = clean.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   const rows = []
   for (const line of lines) {
     if (!line.trim()) continue
@@ -98,6 +100,15 @@ function wsbcDate(s) {
   return s.replace(/\//g, '-')
 }
 
+// Extract just the leading numeric location code from "Operating Location" in HearingTests CSV.
+// That column is often a composite: "003 BC HYDRO & POWER AUTHORITY".
+// The Locations CSV "Operating Location Number" is just "003".
+function extractLocNum(s) {
+  if (!s) return ''
+  const m = s.trim().match(/^(\d+)/)
+  return m ? m[1] : s.trim()
+}
+
 // ── Zip parsing ───────────────────────────────────────────────────────────────
 
 /**
@@ -161,13 +172,19 @@ export async function parseWsbcZip(arrayBuffer) {
       locationMap.set(num, {
         number:  num,
         address: String(row['Operating Location Address'] ?? '').trim() || null,
-        city:    String(row['City'] ?? row['City/Town'] ?? '').trim()   || null,
+        city: (
+          String(row['City']           ?? '').trim() ||
+          String(row['City/Town']      ?? '').trim() ||
+          String(row['City or Town']   ?? '').trim() ||
+          String(row['Municipality']   ?? '').trim() ||
+          String(row['Mailing City']   ?? '').trim()
+        ) || null,
       })
     }
   }
   // If Locations CSV was empty, seed from the first test row
   if (!locationMap.size) {
-    const num = String(testRows[0]?.['Operating Location'] ?? '001').trim()
+    const num = extractLocNum(testRows[0]?.['Operating Location'] ?? '001')
     locationMap.set(num, { number: num, address: null, city: null })
   }
 
@@ -187,7 +204,7 @@ export async function parseWsbcZip(arrayBuffer) {
   for (const row of testRows) {
     const wid = String(row['Worker ID'] ?? '').trim()
     if (!wid) continue
-    const opLoc = String(row['Operating Location'] ?? '').trim()
+    const opLoc = extractLocNum(row['Operating Location'] ?? '')
     if (!workerMap.has(wid)) {
       workerMap.set(wid, {
         wsbc_worker_id:         wid,
@@ -215,7 +232,7 @@ export async function parseWsbcZip(arrayBuffer) {
     if (!hasThresholdData(th)) return null
     return {
       wsbc_worker_id:      String(row['Worker ID']         ?? '').trim(),
-      operating_location:  String(row['Operating Location'] ?? '').trim(),
+      operating_location:  extractLocNum(row['Operating Location'] ?? ''),
       wsbc_tech_id:        String(row['Technician ID']     ?? '').trim(),
       test_date:           wsbcDate(row['Test Date']),
       thresholds:          th,
