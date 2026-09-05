@@ -337,7 +337,7 @@ function isDuplicate(employeeId, testDate) {
  *   { employer, location, workerSummary, testCount, duplicateCount,
  *     existingCompany, existingLocation }
  */
-export function previewWsbcImport(parsed) {
+export async function previewWsbcImport(parsed) {
   const { employer, location, workers, tests } = parsed
 
   let existingCompany  = null
@@ -357,19 +357,21 @@ export function previewWsbcImport(parsed) {
     )
   }
 
-  // Worker match summary
-  const workerSummary = workers.map(w => {
+  // Worker match summary — yield every worker so matchCandidates (full table scan) doesn't freeze
+  const workerSummary = []
+  for (const w of workers) {
     let status = 'new'
     if (w.wsbc_worker_id) {
       const row = queryOne('SELECT employee_id FROM employees WHERE wsbc_worker_id = ? AND deleted_at IS NULL', [w.wsbc_worker_id])
-      if (row) { status = 'existing'; return { ...w, status } }
+      if (row) { workerSummary.push({ ...w, status: 'existing' }); await yield_(); continue }
     }
     const candidates = matchCandidates(
       { first_name: w.first_name, last_name: w.last_name, dob: w.dob, sin_last_4: w.sin_last_4 }, null
     )
     if (candidates.length && candidates[0].score >= 3) status = 'matched'
-    return { ...w, status }
-  })
+    workerSummary.push({ ...w, status })
+    await yield_()
+  }
 
   // Test duplicate check (only reliable if we know who the workers are)
   let duplicateCount = 0
@@ -428,8 +430,9 @@ export async function commitWsbcImport(parsed, writerName) {
       wsbcIdToEmpId.set(worker.wsbc_worker_id, employeeId)
     }
 
-    // 4. Tests
+    // 4. Tests — yield every 20 inserts so Edge's watchdog doesn't fire
     const packetId = `wsbc-${employer.id}-import-${new Date().toISOString().slice(0, 10)}`
+    let testIdx = 0
 
     for (const test of tests) {
       const employeeId = wsbcIdToEmpId.get(test.wsbc_worker_id)
@@ -473,6 +476,8 @@ export async function commitWsbcImport(parsed, writerName) {
       }
 
       imported++
+      testIdx++
+      if (testIdx % 20 === 0) await yield_()
     }
   })
 

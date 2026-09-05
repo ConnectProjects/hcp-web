@@ -141,7 +141,7 @@ export function mount(container, { navigate, session }) {
             // Yield again before JSZip scans the binary (large OCC Classification CSV inside)
             await new Promise(r => setTimeout(r, 0))
             const parsed  = await parseWsbcZip(buf)
-            const preview = previewWsbcImport(parsed)
+            const preview = await previewWsbcImport(parsed)
             _wsbcState = { parsed, preview }
             renderWsbc(wrap)
           } catch (err) {
@@ -163,7 +163,7 @@ export function mount(container, { navigate, session }) {
         wrap.innerHTML = `
           <div class="info-card" style="margin-bottom:1.5rem">
             <div class="spinner"></div>
-            <p class="status-text">Importing…</p>
+            <p class="status-text">Importing — please wait. Large files with years of history may take a minute or two.</p>
           </div>
         `
         return
@@ -244,6 +244,8 @@ export function mount(container, { navigate, session }) {
       })
       wrap.querySelector('#wsbc-commit').addEventListener('click', async () => {
         _wsbcState = 'importing'; renderWsbc(wrap)
+        // Flush spinner to screen before commit blocks the thread
+        await new Promise(r => setTimeout(r, 80))
         try {
           const r = await commitWsbcImport(parsed, session?.writerName ?? 'admin')
           _wsbcState = null
