@@ -169,17 +169,12 @@ export async function parseWsbcZip(arrayBuffer) {
     const num = String(row['Operating Location Number'] ?? '').trim()
     if (!num) continue
     if (!locationMap.has(num)) {
-      locationMap.set(num, {
-        number:  num,
-        address: String(row['Operating Location Address'] ?? '').trim() || null,
-        city: (
-          String(row['City']           ?? '').trim() ||
-          String(row['City/Town']      ?? '').trim() ||
-          String(row['City or Town']   ?? '').trim() ||
-          String(row['Municipality']   ?? '').trim() ||
-          String(row['Mailing City']   ?? '').trim()
-        ) || null,
-      })
+      // "Operating Location Address" is formatted "110 - GALIANO ISLAND B C"
+      // The part after the first " - " is the location name/city; no separate city column exists.
+      const addrRaw = String(row['Operating Location Address'] ?? '').trim()
+      const dashIdx = addrRaw.indexOf(' - ')
+      const city    = dashIdx >= 0 ? addrRaw.slice(dashIdx + 3).trim() || null : addrRaw || null
+      locationMap.set(num, { number: num, address: null, city })
     }
   }
   // If Locations CSV was empty, seed from the first test row
