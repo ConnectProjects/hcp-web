@@ -105,7 +105,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const skipped = !!emp.skipped_at
       const inSlot  = slotOf[idx]
       const name    = `${emp.last_name ?? ''}, ${emp.first_name ?? ''}`
-      let badge, action
+      let badge, action, printBtns = ''
 
       const canCheck = inSlot == null && !tested && !skipped
 
@@ -116,6 +116,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       } else if (tested) {
         badge  = `<span class="badge badge-green">Tested</span>`
         action = `<button class="btn btn-secondary btn-sm" data-idx="${idx}">View / Edit</button>`
+        printBtns = `<button class="btn btn-secondary btn-sm print-btn" data-pidx="${idx}" data-mode="worker">🖨 Worker</button>
+                     <button class="btn btn-secondary btn-sm print-btn" data-pidx="${idx}" data-mode="office">🖨 Office</button>`
       } else if (skipped) {
         badge  = `<span class="badge badge-gray">Skipped</span>`
         action = `<button class="btn btn-secondary btn-sm" data-idx="${idx}">Re-test</button>`
@@ -140,10 +142,11 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           : '<span style="color:var(--clr-subtle)">None</span>'}</td>
         <td>${badge}</td>
         <td>${action}</td>
+        <td style="white-space:nowrap">${printBtns}</td>
       </tr>`
     }).join('') || (_workerSearch.trim()
-      ? `<tr><td colspan="6" class="table-empty">No workers match your search.</td></tr>`
-      : `<tr><td colspan="6" class="table-empty">No workers in this packet.</td></tr>`)
+      ? `<tr><td colspan="7" class="table-empty">No workers match your search.</td></tr>`
+      : `<tr><td colspan="7" class="table-empty">No workers in this packet.</td></tr>`)
 
     const boothSel = `
       <div class="booth-mini-bar">
@@ -180,7 +183,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         <div class="table-card">
           <div class="table-wrap">
             <table class="data-table">
-              <thead><tr><th style="width:2rem;text-align:center"><input type="checkbox" id="select-all-check" title="Select all"></th><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th></tr></thead>
+              <thead><tr><th style="width:2rem;text-align:center"><input type="checkbox" id="select-all-check" title="Select all"></th><th>Worker</th><th>DOB</th><th>Baseline</th><th>Status</th><th></th><th>Print</th></tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -277,6 +280,13 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         _mode   = 'test'
         _status = null
         render()
+      })
+    })
+    container.querySelectorAll('.print-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const emp  = _packet.employees[Number(btn.dataset.pidx)]
+        const mode = btn.dataset.mode
+        if (emp) printResult(_packet, emp, mode)
       })
     })
     const checkboxes = [...container.querySelectorAll('.worker-check')]
@@ -1175,6 +1185,187 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
     const coSlug = (p.company?.name ?? 'export').replace(/[^a-z0-9]/gi, '_').slice(0, 20)
     downloadCsv(`WorkSafeBC_${coSlug}_${p.visit?.visit_date ?? 'unknown'}.csv`, rows)
+  }
+
+  // ── Print ──────────────────────────────────────────────────────────────────
+
+  function printResult(p, emp, mode) {
+    const test    = emp.completed_tests?.slice(-1)[0]
+    if (!test) return
+    const th      = test.thresholds ?? {}
+    const q       = test.questionnaire ?? {}
+    const isBC    = (p.visit?.province ?? p.company?.province) === 'BC'
+    const refThr  = isBC
+      ? (emp.prior_tests?.[0]?.thresholds ?? null)
+      : (emp.baseline?.thresholds ?? null)
+    const refLabel = isBC ? 'Prior test' : 'Baseline'
+    const refDate  = isBC
+      ? (emp.prior_tests?.[0]?.test_date ?? null)
+      : (emp.baseline?.test_date ?? null)
+
+    const FREQS  = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
+    const thrRow = ear => FREQS.map(f => {
+      const v = th[`${ear}_${f}`]
+      return `<td>${v != null ? v : '—'}</td>`
+    }).join('')
+
+    const techName = p.tech?.tech_name ?? session.user?.name ?? ''
+    const company  = p.company?.name ?? ''
+    const locLine  = [p.location?.name, p.location?.city ?? p.location?.address,
+                      p.visit?.province ?? p.company?.province].filter(Boolean).join(' · ')
+    const copyLabel = mode === 'worker' ? 'Worker Copy' : 'Office Copy'
+
+    const workerName = `${emp.last_name ?? ''}, ${emp.first_name ?? ''}${emp.middle_name ? ' ' + emp.middle_name : ''}`
+
+    // Audiogram SVGs (call the module-level helper)
+    const svgLeft  = audiogramSVG('left',  th, refThr)
+    const svgRight = audiogramSVG('right', th, refThr)
+
+    // Pre/post questionnaire for office copy
+    function yn(val) { return val === true ? 'Yes' : val === false ? 'No' : '—' }
+    function qRow(label, val) {
+      if (!val || val === '—') return ''
+      return `<tr><td style="padding:0.2rem 0.5rem;color:#555;width:65%">${label}</td>
+                  <td style="padding:0.2rem 0.5rem;font-weight:600">${val}</td></tr>`
+    }
+
+    const preQHtml = `
+      ${qRow('Exposed to noise in last 2 hrs?', yn(q.noise_2h))}
+      ${q.noise_2h ? qRow('How long?', q.noise_2h_duration) : ''}
+      ${qRow('Regularly wears hearing protection?', yn(q.wear_hpd))}
+      ${q.wear_hpd === true  ? qRow('HPD class', q.hpd_class) : ''}
+      ${q.wear_hpd === true  ? qRow('HPD style', q.hpd_style) : ''}
+      ${q.wear_hpd === false ? qRow('Why not?', q.hpd_no_reason) : ''}
+      ${qRow('Received noise education in last year?', yn(q.employer_info))}
+      ${isBC ? qRow('Years in occupation', q.years_in_occupation ?? '') : ''}
+    `
+    const postQHtml = `
+      ${qRow('Severe ear infection?', yn(q.ear_infection))}
+      ${qRow('Ear surgery?', yn(q.ear_surgery))}
+      ${qRow('Dizziness or balance problems?', yn(q.dizziness))}
+      ${qRow('Serious head injury?', yn(q.head_injury))}
+      ${qRow('Hearing loss in childhood?', yn(q.childhood_loss))}
+      ${qRow('Ringing in ears (tinnitus)?', yn(q.tinnitus))}
+      ${q.tinnitus ? qRow('Which ear?', q.tinnitus_ear) : ''}
+      ${q.tinnitus ? qRow('How long?', q.tinnitus_duration) : ''}
+      ${qRow('Exposure to loud blast?', yn(q.blast_exposure))}
+      ${qRow('Used a firearm?', yn(q.firearms))}
+      ${q.firearms ? qRow('Firearm type', q.firearms_type) : ''}
+      ${q.firearms ? qRow('Shooting shoulder', q.firearms_shoulder) : ''}
+      ${q.firearms ? qRow('Years shooting', q.firearms_duration) : ''}
+    `
+
+    const officeExtra = mode === 'office' ? `
+      ${isBC ? `
+      <div class="section">
+        <div class="section-title">Worker Details</div>
+        <table><tbody>
+          ${qRow('Gender', emp.gender)}
+          ${qRow('SIN last 4', emp.sin_last_4)}
+          ${qRow('Occupation code', emp.occupation_code)}
+          ${qRow('CU code', p.location?.cu_code)}
+          ${qRow('WorkSafeBC Employer ID', p.company?.worksafebc_employer_id)}
+        </tbody></table>
+      </div>` : ''}
+      <div class="section">
+        <div class="section-title">Pre-Test Questionnaire</div>
+        <table><tbody>${preQHtml}</tbody></table>
+      </div>
+      <div class="section">
+        <div class="section-title">Post-Test Questionnaire</div>
+        <table><tbody>${postQHtml}</tbody></table>
+      </div>
+      ${test.notes ? `
+      <div class="section">
+        <div class="section-title">Tech Notes</div>
+        <p style="margin:0;font-size:10pt">${esc(test.notes)}</p>
+      </div>` : ''}
+    ` : ''
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hearing Test — ${esc(workerName)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11pt; margin: 1.25cm 1.5cm; color: #000; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 0.5rem; margin-bottom: 0.875rem; }
+  .header-left h1 { font-size: 13pt; font-weight: 700; margin: 0 0 0.125rem; }
+  .header-left p  { margin: 0; font-size: 9pt; color: #555; }
+  .copy-label { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; border: 1.5px solid #000; padding: 0.2rem 0.5rem; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 0.125rem 2rem; margin-bottom: 0.875rem; font-size: 10pt; }
+  .meta-row { display: flex; gap: 0.4rem; }
+  .meta-label { color: #555; min-width: 5rem; }
+  .meta-val   { font-weight: 600; }
+  .section { margin-bottom: 0.875rem; }
+  .section-title { font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #444; border-bottom: 1px solid #ccc; margin-bottom: 0.375rem; padding-bottom: 0.125rem; }
+  .audiograms { display: flex; gap: 1rem; margin-bottom: 0.75rem; }
+  .audiogram  { flex: 1; }
+  table.thr { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  table.thr th, table.thr td { border: 1px solid #ccc; padding: 0.2rem 0.3rem; text-align: center; }
+  table.thr th { background: #f0f0f0; font-weight: 600; font-size: 9pt; }
+  table.thr td:first-child { text-align: left; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  .ref-note { font-size: 8pt; color: #777; margin-bottom: 0.375rem; }
+  .footer { margin-top: 1rem; border-top: 1px solid #ccc; padding-top: 0.375rem; font-size: 8.5pt; color: #555; display: flex; justify-content: space-between; }
+  @media print {
+    body { margin: 0.75cm 1cm; }
+    @page { margin: 0.75cm 1cm; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Hearing Test Results</h1>
+    <p>Connect Hearing · Hearing Conservation Program</p>
+  </div>
+  <div class="copy-label">${copyLabel}</div>
+</div>
+
+<div class="meta">
+  <div class="meta-row"><span class="meta-label">Worker</span><span class="meta-val">${esc(workerName)}</span></div>
+  <div class="meta-row"><span class="meta-label">Test date</span><span class="meta-val">${esc(test.test_date ?? '—')}</span></div>
+  <div class="meta-row"><span class="meta-label">DOB</span><span class="meta-val">${esc(emp.dob ?? '—')}</span></div>
+  <div class="meta-row"><span class="meta-label">Test type</span><span class="meta-val">${esc(test.test_type ?? '—')}</span></div>
+  <div class="meta-row"><span class="meta-label">Job title</span><span class="meta-val">${esc(emp.job_title ?? '—')}</span></div>
+  <div class="meta-row"><span class="meta-label">Technician</span><span class="meta-val">${esc(techName)}</span></div>
+  <div class="meta-row"><span class="meta-label">Company</span><span class="meta-val">${esc(company)}</span></div>
+  ${locLine ? `<div class="meta-row"><span class="meta-label">Location</span><span class="meta-val">${esc(locLine)}</span></div>` : ''}
+</div>
+
+<div class="section">
+  <div class="section-title">Audiogram</div>
+  ${refDate ? `<div class="ref-note">Solid line = today's test &nbsp;·&nbsp; Dashed line = ${refLabel} (${esc(refDate)})</div>` : ''}
+  <div class="audiograms">
+    <div class="audiogram">${svgLeft}</div>
+    <div class="audiogram">${svgRight}</div>
+  </div>
+  <table class="thr">
+    <thead><tr><th></th>${FREQS.map(f => `<th>${f}</th>`).join('')}</tr></thead>
+    <tbody>
+      <tr><td style="color:#2563eb">Left</td>${thrRow('left')}</tr>
+      <tr><td style="color:#dc2626">Right</td>${thrRow('right')}</tr>
+    </tbody>
+  </table>
+</div>
+
+${officeExtra}
+
+<div class="footer">
+  <span>Connect Hearing · Hearing Conservation Program</span>
+  <span>Printed ${new Date().toLocaleDateString('en-CA')}</span>
+</div>
+
+<script>window.onload = () => { window.focus(); window.print() }<\/script>
+</body>
+</html>`
+
+    const win = window.open('', '_blank', 'width=900,height=700')
+    win.document.write(html)
+    win.document.close()
   }
 
   load()
