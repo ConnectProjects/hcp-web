@@ -15,6 +15,10 @@
 </head>
 <body>
   <div class="print-header" aria-hidden="true">Connect Hearing — Hearing Conservation Program</div>
+  <div id="sw-update-banner" class="sw-update-banner" hidden>
+    A new version of TechTool is ready.
+    <button onclick="location.reload()">Reload to update</button>
+  </div>
   <div id="app" class="app">
     <aside id="sidebar" class="sidebar" hidden>
       <div class="sidebar-logo">
@@ -29,5 +33,16 @@
     </div>
   </div>
   <script type="module" src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/hcp-web/masterdb2/sw.js', { scope: '/hcp-web/masterdb2/' })
+        .catch(err => console.warn('SW registration failed:', err))
+
+      // When a new SW activates and takes control, show the update banner
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        document.getElementById('sw-update-banner').hidden = false
+      })
+    }
+  </script>
 </body>
 </html>
