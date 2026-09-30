@@ -1268,12 +1268,17 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         </tbody></table>
       </div>` : ''}
       <div class="section">
-        <div class="section-title">Pre-Test Questionnaire</div>
-        <table><tbody>${preQHtml}</tbody></table>
-      </div>
-      <div class="section">
-        <div class="section-title">Post-Test Questionnaire</div>
-        <table><tbody>${postQHtml}</tbody></table>
+        <div class="section-title">Questionnaire</div>
+        <div style="display:flex;gap:1.5rem;align-items:flex-start">
+          <div style="flex:1">
+            <div style="font-size:8.5pt;font-weight:700;margin-bottom:0.25rem;color:#444">Pre-Test</div>
+            <table><tbody>${preQHtml}</tbody></table>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:8.5pt;font-weight:700;margin-bottom:0.25rem;color:#444">Post-Test</div>
+            <table><tbody>${postQHtml}</tbody></table>
+          </div>
+        </div>
       </div>
       ${test.notes ? `
       <div class="section">
