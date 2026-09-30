@@ -777,34 +777,6 @@ ul { list-style: none; }
 /* ── Print ─────────────────────────────────────────────────────────────────── */
 .print-header { display: none; }
 
-/* ── SW update banner ───────────────────────────────────────────────────────── */
-.sw-update-banner {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 9999;
-  background: var(--clr-primary);
-  color: #fff;
-  text-align: center;
-  padding: 0.625rem 1rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-}
-.sw-update-banner[hidden] { display: none; }
-.sw-update-banner button {
-  background: #fff;
-  color: var(--clr-primary);
-  border: none;
-  border-radius: var(--radius);
-  padding: 0.3rem 0.875rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.sw-update-banner button:hover { background: #f0fde4; }
 
 /* 1 cm margins — small enough that most browsers drop their own
    URL/date/title header lines, maximizing usable page area.       */

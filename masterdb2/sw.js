@@ -74,25 +74,23 @@ const ASSETS = [
   '/hcp-web/favicon.ico',
 ]
 
-// ── Install: cache all assets, then activate immediately ──────────────────────
+// ── Install: cache all assets ─────────────────────────────────────────────────
+// No skipWaiting — the new SW waits until all tabs are closed before activating.
+// On next open the tech silently gets the latest version with zero disruption.
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE)
-      .then(c => c.addAll(ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(ASSETS))
   )
 })
 
-// ── Activate: delete old caches, take control of open tabs ───────────────────
+// ── Activate: delete old caches ───────────────────────────────────────────────
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
-      ))
-      .then(() => self.clients.claim())
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+    ))
   )
 })
 
