@@ -84,13 +84,17 @@ self.addEventListener('install', e => {
   )
 })
 
-// ── Activate: delete old caches ───────────────────────────────────────────────
+// ── Activate: delete old caches, then claim open tabs ────────────────────────
+// clients.claim() lets the SW serve the already-open page from cache immediately.
+// Safe without skipWaiting — only runs after normal activation (no mid-session takeover).
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys.filter(k => k !== CACHE).map(k => caches.delete(k))
-    ))
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== CACHE).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   )
 })
 
