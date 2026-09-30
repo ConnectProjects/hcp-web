@@ -70,7 +70,8 @@ shared/             Code shared across apps
 
 - **No worker data on any server.** Health records live in `masterdb.sqlite` on the user's OneDrive only.
 - **No build pipeline.** All JS is vanilla ES modules — no bundler, no transpiler.
-- **Offline-first.** TechTool must function with no connectivity after packet download. No service workers — offline relies on the locally-synced OneDrive folder being available on disk.
+- **Offline-first via service worker.** `masterdb2/sw.js` precaches all app assets on first load. TechTool works offline cold-start after that. The SW uses no `skipWaiting`/`clients.claim` — updates activate silently on the tech's next cold open after all tabs are closed.
+- **Bump SW version on every deploy.** Change `VERSION` in `masterdb2/sw.js` (e.g. `hcp-v1` → `hcp-v2`) with every push that changes app code. This is the only way techs get the updated cache. Forgetting means they stay on the old version indefinitely.
 - **Province rules are data, not code.** Adding a province = adding a JSON rule file under `shared/rules/`, no JS changes.
 
 ## Active Work Context
