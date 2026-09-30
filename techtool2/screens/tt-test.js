@@ -1161,7 +1161,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           boolToYN(q.wear_hpd),
           q.hpd_class      ?? '',
           q.hpd_style      ?? '',
-          q.hpd_no_reason  ?? '',
+          q.wear_hpd === true ? 'N/A' : (q.hpd_no_reason ?? ''),
           boolToYN(q.employer_info),
           boolToYN(q.ear_infection),
           boolToYN(q.ear_surgery),
