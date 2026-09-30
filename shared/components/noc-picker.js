@@ -54,7 +54,7 @@ export function mountNocPicker(containerEl, { jobTitle = '', occupationCode = ''
     <div class="noc-picker" style="position:relative">
       <input class="search-input" id="noc-input" type="text"
              value="${_esc(_title)}"
-             placeholder="Type to search job titles…"
+             placeholder="Type 3+ characters to search…"
              autocomplete="off" spellcheck="false">
       ${_code ? `<span class="noc-code-badge" id="noc-code" style="
         position:absolute;right:0.5rem;top:50%;transform:translateY(-50%);
@@ -121,7 +121,7 @@ export function mountNocPicker(containerEl, { jobTitle = '', occupationCode = ''
   }
 
   async function search(q) {
-    if (!q.trim()) { close(); return }
+    if (q.trim().length < 3) { close(); return }
     let data
     try {
       data = await loadNoc()

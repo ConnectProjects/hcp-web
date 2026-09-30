@@ -44,10 +44,12 @@ export function mount(container, { navigate, session, filename, techFolder }) {
   let _status      = null     // { ok, msg }
   let _selected    = new Set()
   let _skipConfirm = false
+  let _scrollPositions = [0, 0]
   let _addMode     = false
   let _addSearch   = ''
   let _addResults  = []
   let _addForm     = null   // { first_name, last_name, middle_name, dob } when entering new
+  let _workerSearch = ''
 
   // ── Boot ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +100,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     _slots.forEach((s, i) => { if (s.empIdx != null) slotOf[s.empIdx] = i })
 
     const rows = emps.map((emp, idx) => {
+      if (_workerSearch.trim() && !matchesWorkerSearch(emp, _workerSearch)) return ''
       const tested  = (emp.completed_tests?.length ?? 0) > 0
       const skipped = !!emp.skipped_at
       const inSlot  = slotOf[idx]
@@ -138,7 +141,9 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         <td>${badge}</td>
         <td>${action}</td>
       </tr>`
-    }).join('') || `<tr><td colspan="6" class="table-empty">No workers in this packet.</td></tr>`
+    }).join('') || (_workerSearch.trim()
+      ? `<tr><td colspan="6" class="table-empty">No workers match your search.</td></tr>`
+      : `<tr><td colspan="6" class="table-empty">No workers in this packet.</td></tr>`)
 
     const boothSel = `
       <div class="booth-mini-bar">
@@ -166,6 +171,12 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         ${(p.company?.sticky_notes ?? '').trim()
           ? `<div class="packet-note" style="margin-bottom:1rem">${esc(p.company.sticky_notes.trim())}</div>` : ''}
         ${boothSel}
+        <div style="margin-bottom:0.75rem">
+          <input class="search-input" id="worker-search" type="search"
+                 placeholder="Search by name, DOB, or last 4 SIN…"
+                 value="${esc(_workerSearch)}"
+                 style="width:100%;max-width:28rem">
+        </div>
         <div class="table-card">
           <div class="table-wrap">
             <table class="data-table">
@@ -241,6 +252,16 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       </div>`
 
     container.querySelector('#back-btn')?.addEventListener('click', () => navigate('tt-inbox'))
+
+    const wsEl = container.querySelector('#worker-search')
+    wsEl?.addEventListener('input', e => {
+      const pos = e.target.selectionStart
+      _workerSearch = e.target.value
+      render()
+      const el = container.querySelector('#worker-search')
+      if (el) { el.focus(); el.setSelectionRange(pos, pos) }
+    })
+
     container.querySelectorAll('.booth-mini-tab[data-slot]').forEach(btn =>
       btn.addEventListener('click', () => { _activeSlot = Number(btn.dataset.slot); render() })
     )
@@ -459,7 +480,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     }
 
     const emp          = p.employees[slot.empIdx]
-    const lastTestDate = emp.prior_tests?.[0]?.test_date ?? null
+    const lastTest     = emp.prior_tests?.[0] ?? null
+    const lastTestDate = lastTest?.test_date ?? null
     const isBC         = (p.visit?.province ?? p.company?.province) === 'BC'
 
     container.innerHTML = `
@@ -482,8 +504,6 @@ export function mount(container, { navigate, session, filename, techFolder }) {
                 <input class="search-input" id="ef-middle" value="${esc(emp.middle_name ?? '')}" style="width:100%"></div>
               <div><label class="field-label">Date of birth${isBC ? ' *' : ''}</label>
                 <input class="search-input" id="ef-dob" type="date" value="${esc(emp.dob ?? '')}" style="width:100%"></div>
-              <div><label class="field-label">Last test</label>
-                <div class="search-input" style="width:100%;background:var(--clr-surface);color:${lastTestDate ? 'inherit' : 'var(--clr-subtle)'}">${lastTestDate ? esc(lastTestDate) : 'None on file'}</div></div>
               <div style="grid-column:1/-1"><label class="field-label">Job title${isBC ? ' *' : ''}</label>
                 <div id="ef-job-wrap" style="width:100%"></div></div>
               ${isBC ? `
@@ -516,14 +536,25 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         </div>
 
         <div class="q-section">
+          <div class="q-section-title">Post-Test Questions</div>
+          <div class="info-card" style="padding:1rem">${postQHTML(slot.post)}</div>
+        </div>
+
+        <div class="q-section">
           <div class="q-section-title">Thresholds
-            ${emp.baseline
-              ? `<span style="font-size:0.75rem;font-weight:400;color:var(--clr-subtle);margin-left:0.5rem">Baseline: ${esc(emp.baseline.test_date ?? '')} shown faint</span>`
-              : ''}</div>
+            ${isBC
+              ? (lastTest ? `<span style="font-size:0.75rem;font-weight:400;color:var(--clr-subtle);margin-left:0.5rem">Prior test: ${esc(lastTest.test_date ?? '')} shown faint</span>` : '')
+              : (emp.baseline ? `<span style="font-size:0.75rem;font-weight:400;color:var(--clr-subtle);margin-left:0.5rem">Baseline: ${esc(emp.baseline.test_date ?? '')} shown faint</span>` : '')}</div>
           <div class="info-card" style="padding:1rem">
-            <div style="display:flex;gap:0.75rem;margin-bottom:1rem">
+            <div style="display:flex;gap:0.75rem;margin-bottom:0.5rem">
               <div id="aud-left" style="flex:1;min-width:0"></div>
               <div id="aud-right" style="flex:1;min-width:0"></div>
+            </div>
+            <div style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:0.75rem">
+              ${lastTestDate
+                ? `Last test: <strong style="color:var(--clr-text)">${esc(lastTestDate)}</strong>`
+                : 'No prior tests on file'}
+              ${isBC && lastTest?.thresholds ? miniThrTable(lastTest.thresholds) : ''}
             </div>
             <div style="display:flex;gap:1rem;margin-bottom:1rem;flex-wrap:wrap">
               <div><label class="field-label">Type</label>
@@ -545,11 +576,6 @@ export function mount(container, { navigate, session, filename, techFolder }) {
               </table>
             </div>
           </div>
-        </div>
-
-        <div class="q-section">
-          <div class="q-section-title">Post-Test Questions</div>
-          <div class="info-card" style="padding:1rem">${postQHTML(slot.post)}</div>
         </div>
 
         <div class="q-section">
@@ -606,8 +632,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const slot = _slots[_activeSlot]
       const emp  = slot.empIdx != null ? _packet.employees[slot.empIdx] : null
       _nocPicker = mountNocPicker(jobWrap, {
-        jobTitle:       slot.empEdits?.job_title       ?? emp?.job_title       ?? '',
-        occupationCode: slot.empEdits?.occupation_code ?? emp?.occupation_code ?? '',
+        jobTitle:       slot.empEdits?.job_title       ?? '',
+        occupationCode: slot.empEdits?.occupation_code ?? '',
         onChange: ({ title, code }) => {
           if (!slot.empEdits) slot.empEdits = {}
           slot.empEdits.job_title       = title
@@ -630,14 +656,16 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const raw = sel.value
       thr[`${sel.dataset.ear}_${sel.dataset.freq}`] = raw === 'NR' ? 'NR' : (raw !== '' ? Number(raw) : null)
     })
-    const slot     = _slots[_activeSlot]
-    const baseline = slot.empIdx != null
-      ? _packet.employees[slot.empIdx]?.baseline?.thresholds ?? null
-      : null
+    const slot   = _slots[_activeSlot]
+    const emp    = slot.empIdx != null ? _packet.employees[slot.empIdx] : null
+    const isBC   = (_packet.visit?.province ?? _packet.company?.province) === 'BC'
+    const refThr = isBC
+      ? (emp?.prior_tests?.[0]?.thresholds ?? null)
+      : (emp?.baseline?.thresholds ?? null)
     const leftEl  = container.querySelector('#aud-left')
     const rightEl = container.querySelector('#aud-right')
-    if (leftEl)  leftEl.innerHTML  = audiogramSVG('left',  thr, baseline)
-    if (rightEl) rightEl.innerHTML = audiogramSVG('right', thr, baseline)
+    if (leftEl)  leftEl.innerHTML  = audiogramSVG('left',  thr, refThr)
+    if (rightEl) rightEl.innerHTML = audiogramSVG('right', thr, refThr)
   }
 
   function bindBoothTabs() {
@@ -871,9 +899,14 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
   function switchBooth(toSlot) {
     if (toSlot === _activeSlot) return
+    const screen = container.closest('.screen')
+    _scrollPositions[_activeSlot] = screen?.scrollTop ?? 0
     if (_slots[_activeSlot].empIdx != null) captureSlot()
     _activeSlot = toSlot
     render()
+    requestAnimationFrame(() => {
+      if (screen) screen.scrollTop = _scrollPositions[toSlot]
+    })
   }
 
   function backToList() {
@@ -1143,6 +1176,17 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function matchesWorkerSearch(emp, q) {
+  const parts = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (!parts.length) return true
+  return parts.every(p =>
+    (emp.first_name  ?? '').toLowerCase().includes(p) ||
+    (emp.last_name   ?? '').toLowerCase().includes(p) ||
+    (emp.dob         ?? '').includes(p) ||
+    (emp.sin_last_4  ?? '').includes(p)
+  )
+}
 
 function audiogramSVG(ear, thr, baseline) {
   const FKEYS   = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
