@@ -1161,7 +1161,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           boolToYN(q.wear_hpd),
           q.hpd_class      ?? '',
           q.hpd_style      ?? '',
-          q.wear_hpd === true ? 'N/A' : (q.hpd_no_reason ?? ''),
+          q.wear_hpd === true ? '' : wsbcHpdNoReason(q.hpd_no_reason),
           boolToYN(q.employer_info),
           boolToYN(q.ear_infection),
           boolToYN(q.ear_surgery),
@@ -1556,6 +1556,17 @@ function boolToYN(val) {
   if (val === true)  return 'Yes'
   if (val === false) return 'No'
   return ''
+}
+
+function wsbcHpdNoReason(val) {
+  return {
+    'Not Comfortable':   'NOCOMFORT',
+    "Can't Communicate": 'NOCOMMUN',
+    'Blocks Sounds':     'NOHEARING',
+    'Not that noisy':    'NONOISE',
+    'Wrong Size':        'NOSIZE',
+    'Other':             'OTHER',
+  }[val] ?? ''
 }
 
 function downloadCsv(filename, rows) {
