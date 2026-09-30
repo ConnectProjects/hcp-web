@@ -199,6 +199,12 @@ function mapFirearmsDuration(v) {
   return ''
 }
 
+// HasUsedFirearms: N if not used; B/HG/RS based on type if used
+function wsbcFirearmsCode(used, type) {
+  if (!used || mapYN(used) !== 'Yes') return 'N'
+  return mapFirearmsType(type) || ''
+}
+
 
 /**
  * Validate that all required WSBC fields are present for the given test IDs.
@@ -444,7 +450,7 @@ export function generateWsbcCsv(testIds) {
       mapSide(q.tinnitus_ear),
       mapWhenNoticed(q.tinnitus_duration ?? q.when_first_noticed),
       mapYN(q.blast_exposure),
-      mapYN(q.firearms),
+      wsbcFirearmsCode(q.firearms, q.firearms_type ?? q.firearms_used_type),
       mapSide(q.firearms_shoulder),
       mapFirearmsDuration(q.firearms_duration ?? q.num_years_shooting),
       'Yes',                           // confirm tech determined category

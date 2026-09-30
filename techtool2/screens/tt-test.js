@@ -1157,10 +1157,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           th.right_500 ?? '', th.right_1k ?? '', th.right_2k ?? '', th.right_3k ?? '',
           th.right_4k  ?? '', th.right_6k ?? '', th.right_8k ?? '',
           boolToYN(q.noise_2h),
-          q.noise_2h_duration ?? '',
+          q.noise_2h ? wsbcNoiseHours(q.noise_2h_duration) : '',
           boolToYN(q.wear_hpd),
-          q.hpd_class      ?? '',
-          q.hpd_style      ?? '',
+          wsbcHpdClass(q.hpd_class),
+          wsbcHpdStyle(q.hpd_style),
           q.wear_hpd === true ? '' : wsbcHpdNoReason(q.hpd_no_reason),
           boolToYN(q.employer_info),
           boolToYN(q.ear_infection),
@@ -1169,12 +1169,12 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           boolToYN(q.head_injury),
           boolToYN(q.childhood_loss),
           boolToYN(q.tinnitus),
-          q.tinnitus_ear      ?? '',
-          q.tinnitus_duration ?? '',
+          wsbcSide(q.tinnitus_ear),
+          wsbcWhenNoticed(q.tinnitus_duration),
           boolToYN(q.blast_exposure),
-          boolToYN(q.firearms),
-          q.firearms_shoulder ?? '',
-          q.firearms_duration ?? '',
+          wsbcFirearmsCode(q.firearms, q.firearms_type),
+          wsbcSide(q.firearms_shoulder),
+          wsbcFirearmsDuration(q.firearms_duration),
           'Yes',                                     // Confirmation: test category determined
           'Yes',                                     // Confirmation: counselled
           emp.email ?? '',
@@ -1567,6 +1567,72 @@ function wsbcHpdNoReason(val) {
     'Wrong Size':        'NOSIZE',
     'Other':             'OTHER',
   }[val] ?? ''
+}
+
+function wsbcNoiseHours(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (s === '1' || s.startsWith('less') || s.startsWith('< 2')) return '1'
+  if (s === '2' || s.includes('2-4') || s.includes('2–4'))      return '2'
+  if (s === '3' || s.startsWith('over') || s.startsWith('> 4')) return '3'
+  return ''
+}
+
+function wsbcHpdClass(v) {
+  if (!v) return ''
+  const s = String(v).toUpperCase()
+  if (s === 'A' || s === 'B' || s === 'C' || s === 'DUAL') return s
+  if (s.includes('DUAL')) return 'DUAL'
+  if (/\bA\b/.test(s)) return 'A'
+  if (/\bB\b/.test(s)) return 'B'
+  if (/\bC\b/.test(s)) return 'C'
+  return ''
+}
+
+function wsbcHpdStyle(v) {
+  if (!v) return ''
+  const s = String(v).toUpperCase()
+  if (s === 'EM' || s === 'EP' || s === 'EPM' || s === 'DUAL') return s
+  if (s.includes('DUAL')) return 'DUAL'
+  if (s.includes('BOTH') && (s.includes('MUFF') || s.includes('PLUG'))) return 'DUAL'
+  if (s.includes('MOULD') || s.includes('MOLDED') || s.includes('CUSTOM')) return 'EPM'
+  if (s.includes('EARMUFF') || s.includes('MUFF')) return 'EM'
+  if (s.includes('PLUG')) return 'EP'
+  return ''
+}
+
+function wsbcSide(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (s === 'both' || s === 'b') return 'B'
+  if (s === 'left'  || s === 'l') return 'L'
+  if (s === 'right' || s === 'r') return 'R'
+  return ''
+}
+
+function wsbcWhenNoticed(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (s.includes('< 5') || s.includes('lt5'))       return 'LT5'
+  if (s.includes('5-10') || s.includes('5to10'))    return '5TO10'
+  if (s.includes('11-15') || s.includes('11to15'))  return '11TO15'
+  if (s.includes('> 15') || s.includes('gt15'))     return 'GT15'
+  return ''
+}
+
+function wsbcFirearmsCode(used, type) {
+  if (!used || used === false) return 'N'
+  const typeMap = { both: 'B', handguns: 'HG', rifles: 'RS' }
+  return typeMap[type] ?? ''
+}
+
+function wsbcFirearmsDuration(v) {
+  if (!v) return ''
+  const s = String(v).toLowerCase()
+  if (s === 'lt10' || s.includes('less')) return 'LT10'
+  if (s === '10to20' || s.includes('10-20')) return '10TO20'
+  if (s === 'mt20'  || s.includes('more'))  return 'MT20'
+  return ''
 }
 
 function downloadCsv(filename, rows) {
