@@ -903,10 +903,15 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     _scrollPositions[_activeSlot] = screen?.scrollTop ?? 0
     if (_slots[_activeSlot].empIdx != null) captureSlot()
     _activeSlot = toSlot
-    render()
-    requestAnimationFrame(() => {
-      if (screen) screen.scrollTop = _scrollPositions[toSlot]
-    })
+    if (_slots[toSlot].empIdx == null) {
+      _mode = 'list'
+      render()
+    } else {
+      render()
+      requestAnimationFrame(() => {
+        if (screen) screen.scrollTop = _scrollPositions[toSlot]
+      })
+    }
   }
 
   function backToList() {
