@@ -16,6 +16,7 @@ import { query, readTechPacket, saveTechPacket, submitTechPacket } from '../../m
 import { search as searchWorkers } from '../../masterdb2/db/workers.js'
 import { appendTestResult, markEmployeeSkipped, markSubmitted } from '../../shared/packet/schema.js'
 import { mountNocPicker } from '../../shared/components/noc-picker.js'
+import { classify, calculateShifts, calculateSTS } from '../../shared/classification/engine.js'
 
 const FREQS = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
 const THR_OPTIONS = ['--', 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 'NR']
@@ -1189,12 +1190,13 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
   // ── Print ──────────────────────────────────────────────────────────────────
 
-  function printResult(p, emp, mode) {
+  async function printResult(p, emp, mode) {
     const test    = emp.completed_tests?.slice(-1)[0]
     if (!test) return
     const th      = test.thresholds ?? {}
     const q       = test.questionnaire ?? {}
-    const isBC    = (p.visit?.province ?? p.company?.province) === 'BC'
+    const province = p.visit?.province ?? p.company?.province ?? ''
+    const isBC    = province === 'BC'
     const refThr  = isBC
       ? (emp.prior_tests?.[0]?.thresholds ?? null)
       : (emp.baseline?.thresholds ?? null)
@@ -1202,6 +1204,37 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     const refDate  = isBC
       ? (emp.prior_tests?.[0]?.test_date ?? null)
       : (emp.baseline?.test_date ?? null)
+
+    // Classification and STS — fetch province rules and run engine
+    const CODE_LABELS = { N: 'Normal', EW: 'Early Warning', A: 'Abnormal',
+                          NC: 'Normal', EWC: 'Early Warning Concern', AC: 'Audiometric Concern' }
+    let clResult  = null
+    let stsPerEar = null
+    if (province) {
+      try {
+        const rulesUrl = new URL(`../../shared/rules/${province}.json`, import.meta.url)
+        const resp     = await fetch(rulesUrl)
+        if (resp.ok) {
+          const data = await resp.json()
+          const rules = data.rules ?? []
+          clResult = classify(th, refThr, rules)
+          if (refThr) {
+            const shifts = calculateShifts(th, refThr)
+            stsPerEar    = calculateSTS(shifts)
+          }
+        }
+      } catch { /* non-fatal — no rules for this province */ }
+    }
+
+    function clLabel(cl) {
+      if (!cl) return '—'
+      return CODE_LABELS[cl.category] ?? cl.category ?? '—'
+    }
+    function fmtSts(val) {
+      if (val === null || val === undefined) return '—'
+      const sign = val >= 0 ? '+' : ''
+      return `${sign}${Number(val).toFixed(1)} dB`
+    }
 
     const FREQS  = ['500', '1k', '2k', '3k', '4k', '6k', '8k']
     const thrRow = ear => FREQS.map(f => {
@@ -1360,6 +1393,27 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     </tbody>
   </table>
 </div>
+
+${clResult ? `
+<div class="section">
+  <div class="section-title">Classification &amp; STS</div>
+  <table><tbody>
+    <tr>
+      <td style="padding:0.2rem 0.5rem;color:#555;width:50%">Classification</td>
+      <td style="padding:0.2rem 0.5rem;font-weight:700;font-size:11pt">${esc(clLabel(clResult))}</td>
+    </tr>
+    ${clResult.no_baseline ? `<tr><td style="padding:0.2rem 0.5rem;color:#555" colspan="2">No baseline on file — baseline test</td></tr>` : ''}
+    ${stsPerEar ? `
+    <tr>
+      <td style="padding:0.2rem 0.5rem;color:#555">STS Left (2k–4k avg shift)</td>
+      <td style="padding:0.2rem 0.5rem;font-weight:600">${fmtSts(stsPerEar.left)}</td>
+    </tr>
+    <tr>
+      <td style="padding:0.2rem 0.5rem;color:#555">STS Right (2k–4k avg shift)</td>
+      <td style="padding:0.2rem 0.5rem;font-weight:600">${fmtSts(stsPerEar.right)}</td>
+    </tr>` : ''}
+  </tbody></table>
+</div>` : ''}
 
 ${officeExtra}
 
