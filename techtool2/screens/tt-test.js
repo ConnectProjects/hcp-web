@@ -1255,18 +1255,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       ${q.firearms ? qRow('Years shooting', q.firearms_duration) : ''}
     `
 
-    const officeExtra = mode === 'office' ? `
-      ${isBC ? `
-      <div class="section">
-        <div class="section-title">Worker Details</div>
-        <table><tbody>
-          ${qRow('Gender', emp.gender)}
-          ${qRow('SIN last 4', emp.sin_last_4)}
-          ${qRow('Occupation code', emp.occupation_code)}
-          ${qRow('CU code', p.location?.cu_code)}
-          ${qRow('WorkSafeBC Employer ID', p.company?.worksafebc_employer_id)}
-        </tbody></table>
-      </div>` : ''}
+    const questionnaireSection = `
       <div class="section">
         <div class="section-title">Questionnaire</div>
         <div style="display:flex;gap:1.5rem;align-items:flex-start">
@@ -1280,12 +1269,27 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           </div>
         </div>
       </div>
+    `
+
+    const officeExtra = `
+      ${isBC ? `
+      <div class="section">
+        <div class="section-title">Worker Details</div>
+        <table><tbody>
+          ${qRow('Gender', emp.gender)}
+          ${qRow('SIN last 4', emp.sin_last_4)}
+          ${qRow('Occupation code', emp.occupation_code)}
+          ${qRow('CU code', p.location?.cu_code)}
+          ${qRow('WorkSafeBC Employer ID', p.company?.worksafebc_employer_id)}
+        </tbody></table>
+      </div>` : ''}
+      ${questionnaireSection}
       ${test.notes ? `
       <div class="section">
         <div class="section-title">Tech Notes</div>
         <p style="margin:0;font-size:10pt">${esc(test.notes)}</p>
       </div>` : ''}
-    ` : ''
+    `
 
     const html = `<!DOCTYPE html>
 <html>
