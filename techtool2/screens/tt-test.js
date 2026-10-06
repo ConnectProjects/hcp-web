@@ -1352,8 +1352,19 @@ export function mount(container, { navigate, session, filename, techFolder }) {
   .ref-note { font-size: 8pt; color: #777; margin-bottom: 0.375rem; }
   .footer { margin-top: 1rem; border-top: 1px solid #ccc; padding-top: 0.375rem; font-size: 8.5pt; color: #555; display: flex; justify-content: space-between; }
   @media print {
-    body { margin: 0.75cm 1cm; }
-    @page { margin: 0.75cm 1cm; }
+    @page { size: letter portrait; margin: 0.6cm 0.9cm; }
+    body  { margin: 0; font-size: 9pt; }
+    .header { padding-bottom: 0.2rem; margin-bottom: 0.35rem; }
+    .header-left h1 { font-size: 11pt; }
+    .meta { font-size: 9pt; gap: 0.05rem 1.5rem; margin-bottom: 0.35rem; }
+    .section { margin-bottom: 0.35rem; }
+    .section-title { margin-bottom: 0.2rem; padding-bottom: 0.05rem; }
+    .audiogram svg { height: 115px !important; width: auto !important; }
+    .audiograms { gap: 0.5rem; margin-bottom: 0.3rem; }
+    .ref-note { margin-bottom: 0.15rem; }
+    table.thr th, table.thr td { padding: 0.1rem 0.2rem; font-size: 8pt; }
+    table td, table th { padding: 0.08rem 0.35rem !important; font-size: 8.5pt; }
+    .footer { margin-top: 0.35rem; padding-top: 0.2rem; }
   }
 </style>
 </head>
