@@ -15,6 +15,7 @@
 import { query, readTechPacket, saveTechPacket, submitTechPacket } from '../../masterdb2/db/db.js'
 import { search as searchWorkers } from '../../masterdb2/db/workers.js'
 import { appendTestResult, markEmployeeSkipped, markSubmitted } from '../../shared/packet/schema.js'
+import { wsbcThreshold, wsbcOccupationTitle } from '../../shared/wsbc-export-values.js'
 import { mountNocPicker } from '../../shared/components/noc-picker.js'
 import { classify, calculateShifts, calculateSTS } from '../../shared/classification/engine.js'
 
@@ -1151,18 +1152,18 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           p.location?.cu_code ?? '',
           '',                                        // CU Description — not captured
           emp.occupation_code ?? '',
-          emp.job_title       ?? '',
+          wsbcOccupationTitle(emp.job_title, emp.occupation_code),
           test.notes      ?? '',
-          th.left_500  ?? '', th.left_1k  ?? '', th.left_2k  ?? '', th.left_3k  ?? '',
-          th.left_4k   ?? '', th.left_6k  ?? '', th.left_8k  ?? '',
-          th.right_500 ?? '', th.right_1k ?? '', th.right_2k ?? '', th.right_3k ?? '',
-          th.right_4k  ?? '', th.right_6k ?? '', th.right_8k ?? '',
+          wsbcThreshold(th.left_500), wsbcThreshold(th.left_1k), wsbcThreshold(th.left_2k), wsbcThreshold(th.left_3k),
+          wsbcThreshold(th.left_4k), wsbcThreshold(th.left_6k), wsbcThreshold(th.left_8k),
+          wsbcThreshold(th.right_500), wsbcThreshold(th.right_1k), wsbcThreshold(th.right_2k), wsbcThreshold(th.right_3k),
+          wsbcThreshold(th.right_4k), wsbcThreshold(th.right_6k), wsbcThreshold(th.right_8k),
           boolToYN(q.noise_2h),
           q.noise_2h ? wsbcNoiseHours(q.noise_2h_duration) : '',
           boolToYN(q.wear_hpd),
           wsbcHpdClass(q.hpd_class),
           wsbcHpdStyle(q.hpd_style),
-          q.wear_hpd === true ? '' : wsbcHpdNoReason(q.hpd_no_reason),
+          q.wear_hpd === true ? 'N/A' : wsbcHpdNoReason(q.hpd_no_reason),
           boolToYN(q.employer_info),
           boolToYN(q.ear_infection),
           boolToYN(q.ear_surgery),
