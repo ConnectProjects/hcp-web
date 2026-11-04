@@ -12,6 +12,7 @@
  */
 
 import { query } from './db.js'
+import { wsbcThreshold, wsbcOccupationTitle } from '../../shared/wsbc-export-values.js'
 
 const WSBC_HEADERS = [
   'Submitted by user',
@@ -87,7 +88,7 @@ function isoToWsbc(d) {
 
 function dbThreshold(row, col) {
   const v = row[col]
-  return v != null ? String(v) : ''
+  return wsbcThreshold(v)
 }
 
 // WSBC CSV expects Yes/No for boolean fields
@@ -226,7 +227,7 @@ export function validateWsbcExport(testIds) {
     SELECT
       te.test_id, te.test_date, te.questionnaire,
       e.first_name, e.last_name, e.dob, e.gender,
-      e.wsbc_worker_id, e.occupation_code,
+      e.wsbc_worker_id, e.occupation_code, e.job_title,
       c.name AS employer_name, c.worksafebc_employer_id,
       l.name AS location_number, l.cu_code,
       COALESCE(te.tech_iat, tk.iat_number, tkn.iat_number) AS wsbc_tech_id
@@ -274,6 +275,7 @@ export function validateWsbcExport(testIds) {
     if (!row.dob)             addWorkerIssue(row, 'Date of birth')
     if (!row.gender)          addWorkerIssue(row, 'Gender')
     if (!row.occupation_code) addWorkerIssue(row, 'Occupation code')
+    if (!wsbcOccupationTitle(row.job_title, row.occupation_code)) addWorkerIssue(row, 'Occupation job title')
 
     // Test / questionnaire
     let q = {}
@@ -291,7 +293,7 @@ export function validateWsbcExport(testIds) {
     // WhyNotWear is required only when the worker does not wear HPD.
     // Use yesNo() so the check exactly mirrors what the export outputs.
     const notWearing = mapYN(q.wear_hpd ?? q.regularly_wear_hpd) === 'No'
-    if (notWearing && !(q.hpd_no_reason || q.why_not_wear_hpd)) {
+    if (notWearing && !mapHpdReason(q.hpd_no_reason || q.why_not_wear_hpd)) {
       testIssues.push(`${dateLbl} — Worker does not wear HPD but no reason was recorded (WhyNotWearHearingProtReg)`)
     }
     if (q.employer_info == null) {
@@ -411,7 +413,7 @@ export function generateWsbcCsv(testIds) {
       row.cu_code ?? '',
       '',                              // CU Description
       row.occupation_code ?? '',
-      row.job_title       ?? '',
+      wsbcOccupationTitle(row.job_title, row.occupation_code),
       '',                              // Comment
       dbThreshold(row, 'left_500'),
       dbThreshold(row, 'left_1k'),
@@ -438,7 +440,7 @@ export function generateWsbcCsv(testIds) {
       mapHpdClass(q.hpd_class          ?? q.hpd_protection_class),
       mapHpdStyle(q.hpd_style          ?? q.hearing_prot_style),
       mapYN(q.wear_hpd ?? q.regularly_wear_hpd) === 'Yes'
-        ? ''
+        ? 'N/A'
         : mapHpdReason(q.hpd_no_reason || q.why_not_wear_hpd),
       mapYN(q.employer_info),
       mapYN(q.ear_infection),
