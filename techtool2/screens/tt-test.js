@@ -15,7 +15,7 @@
 import { query, readTechPacket, saveTechPacket, submitTechPacket } from '../../masterdb2/db/db.js'
 import { search as searchWorkers } from '../../masterdb2/db/workers.js'
 import { appendTestResult, markEmployeeSkipped, markSubmitted } from '../../shared/packet/schema.js'
-import { wsbcThreshold, wsbcOccupationTitle } from '../../shared/wsbc-export-values.js'
+import { wsbcThreshold, wsbcOccupationTitle, wsbcDate, wsbcGender, wsbcOperatingLocation } from '../../shared/wsbc-export-values.js'
 import { mountNocPicker } from '../../shared/components/noc-picker.js'
 import { classify, calculateShifts, calculateSTS } from '../../shared/classification/engine.js'
 
@@ -1044,6 +1044,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       entry = {
         employee_id:  emp.employee_id,
         uid:          emp.uid         ?? null,
+        wsbc_worker_id: emp.wsbc_worker_id ?? null,
+        occupation_code: emp.occupation_code ?? null,
         first_name:   emp.first_name,
         middle_name:  emp.middle_name ?? null,
         last_name:    emp.last_name,
@@ -1101,6 +1103,12 @@ export function mount(container, { navigate, session, filename, techFolder }) {
   function exportWorksafeBCCsv() {
     const p       = _packet
     const tech    = p.tech ?? {}
+    const iat = String(tech.tech_iat ?? '').trim()
+    if (!/^\d+$/.test(iat)) {
+      _status = { ok: false, msg: 'Cannot export to WSBC: the packet is missing a valid technician IAT number. Set the IAT number in MasterDB and regenerate the packet, or export the imported tests from MasterDB.' }
+      render()
+      return
+    }
     const parts   = (tech.tech_name ?? '').trim().split(/\s+/)
     const techFirst = parts[0] ?? ''
     const techLast  = parts.length > 1 ? parts.slice(1).join(' ') : techFirst
@@ -1133,22 +1141,22 @@ export function mount(container, { navigate, session, filename, techFolder }) {
         const abbr = ((emp.first_name?.[0] ?? '') + (emp.last_name ?? '')).trim()
         rows.push([
           session.user?.name ?? '',
-          test.test_date ?? '',
-          tech.tech_id   ?? '',
+          wsbcDate(test.test_date),
+          iat,
           techFirst,
           techLast,
-          '',                                        // Worker ID — not captured
+          emp.wsbc_worker_id ?? '',                   // Blank only when unavailable
           emp.first_name  ?? '',
           emp.middle_name ?? '',
           emp.last_name   ?? '',
           abbr,
-          emp.dob         ?? '',
-          emp.gender      ?? '',
+          wsbcDate(emp.dob),
+          wsbcGender(emp.gender),
           emp.sin_last_4  ?? '',
           q.years_in_occupation ?? '',
           p.company?.worksafebc_employer_id ?? '',
           p.company?.name     ?? '',
-          p.location?.name    ?? '',
+          wsbcOperatingLocation(p.location?.name, p.company?.name),
           p.location?.cu_code ?? '',
           '',                                        // CU Description — not captured
           emp.occupation_code ?? '',
