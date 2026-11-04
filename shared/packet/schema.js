@@ -110,6 +110,8 @@ export function createPacket({ company, location, employees, rules, counselTempl
     // Employee roster with baselines and prior test history
     employees: employees.map(emp => ({
       employee_id:    emp.employee_id,
+      wsbc_worker_id: emp.wsbc_worker_id ?? null,
+      occupation_code: emp.occupation_code ?? null,
       first_name:     emp.first_name,
       middle_name:    emp.middle_name    ?? null,
       last_name:      emp.last_name,

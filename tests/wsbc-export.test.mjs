@@ -105,20 +105,51 @@ test('TechTool actual CSV builder uses the same upload conversions', async () =>
   const start = source.indexOf('  function exportWorksafeBCCsv()')
   const end = source.indexOf('  // ── Print', start)
   const support = source.slice(source.indexOf('function boolToYN('))
-  const packet = { employees: [{ first_name: 'Sample', occupation_code: '93100',
-    completed_tests: [{ questionnaire, thresholds }] }] }
+  const packet = { tech: { tech_id: 'internal_123', tech_iat: '123456' },
+    company: { name: 'Fictional Employer' }, location: { name: '001' },
+    employees: [{ first_name: 'Sample', occupation_code: '93100',
+    wsbc_worker_id: '987654', dob: '1990-01-01', gender: 'Female',
+    completed_tests: [{ test_date: '2026-11-04', questionnaire, thresholds }] }] }
   const before = JSON.stringify(packet)
   let exported
   const sandbox = vm.createContext({ _packet: packet, session: {},
-    ...Object.fromEntries(['wsbcThreshold', 'wsbcOccupationTitle'].map(k => [k, helpers[k]])),
+    ...Object.fromEntries(['wsbcThreshold', 'wsbcOccupationTitle', 'wsbcDate', 'wsbcGender', 'wsbcOperatingLocation'].map(k => [k, helpers[k]])),
     captureCsv: (_, rows) => { exported = rows } })
   vm.runInContext(`${support}\ndownloadCsv = captureCsv\n${source.slice(start, end)}\nexportWorksafeBCCsv()`, sandbox)
   const [h, v] = exported
   assert.equal(v.length, 59)
+  assert.equal(v[h.indexOf('Technician ID')], '123456')
+  assert.equal(v[h.indexOf('Worker ID')], '987654')
+  assert.equal(v[h.indexOf('Test Date')], '2026/11/04')
+  assert.equal(v[h.indexOf('Birth Date')], '1990/01/01')
+  assert.equal(v[h.indexOf('Gender')], 'F')
+  assert.equal(v[h.indexOf('Operating Location')], '001 Fictional Employer')
   assert.equal(v[h.indexOf('WhyNotWearHearingProtReg')], 'N/A')
   assert.equal(v[h.indexOf('Occupation Job Title')],
     'Central control and process operators, mineral and metal processing')
   for (const ear of ['Left', 'Right']) for (const f of ['6', '8'])
     assert.equal(v[h.indexOf(`${ear}Ear${f}khz`)], '90')
   assert.equal(JSON.stringify(packet), before)
+  packet.tech.tech_iat = null
+  exported = null
+  sandbox.render = () => {}
+  vm.runInContext('exportWorksafeBCCsv()', sandbox)
+  assert.equal(exported, null)
+  assert.match(sandbox._status.msg, /IAT number/)
+})
+
+
+test('outbound packets preserve known WSBC worker IDs and occupation codes', async () => {
+  const schema = await load('shared/packet/schema.js')
+  await schema.evaluate()
+  const packet = schema.namespace.createPacket({
+    company: { name: 'Fictional Employer', province: 'BC' },
+    employees: [{ employee_id: 1, wsbc_worker_id: '987654', occupation_code: '72401' },
+      { employee_id: 2 }], techId: 'internal_123', techIat: '123456',
+    techInitials: 'ST', visitDate: '2026-11-04',
+  })
+  assert.equal(packet.employees[0].wsbc_worker_id, '987654')
+  assert.equal(packet.employees[0].occupation_code, '72401')
+  assert.equal(packet.employees[1].wsbc_worker_id, null)
+  assert.equal(packet.tech.tech_iat, '123456')
 })
