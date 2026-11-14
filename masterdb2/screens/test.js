@@ -116,7 +116,6 @@ export function mount(container, { navigate, testId, employeeId }) {
             ${row('Tech',           test.tech_name)}
             ${row('Location',       test.location_name)}
             ${row('Company',        test.company_name)}
-            ${row('Packet ID',      test.packet_id)}
             ${row('Referral given', test.referral_given_to_worker ? 'Yes' : null)}
           </dl>
         </div>
