@@ -42,6 +42,13 @@ test('dashboard processes clean returned results only while owning the Office lo
   assert.match(resultProcessor, /\.finally\(\(\) => \{ _autoImportInFlight = null \}\)/)
 })
 
+test('login surfaces filesystem lock failures instead of silently opening read-only', async () => {
+  const login = await source('masterdb2/screens/login.js')
+  assert.match(login, /if \(!\(e instanceof StoreLockError\)\)/)
+  assert.match(login, /Could not start a writable Office session/)
+  assert.doesNotMatch(login, /catch \{ \/\* StoreLockError handled in dashboard \*\//)
+})
+
 test('primary workflows use visit and results language instead of file-transfer language', async () => {
   const officeApp = await source('masterdb2/app.js')
   const results = await source('masterdb2/screens/import.js')
