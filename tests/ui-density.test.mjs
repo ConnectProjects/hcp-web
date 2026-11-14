@@ -30,6 +30,18 @@ test('dashboard uses the shared dense workspace layout', async () => {
   assert.doesNotMatch(dashboard, /grid-template-columns:1fr 1fr/)
 })
 
+test('dashboard processes clean returned results only while owning the Office lock', async () => {
+  const dashboard = await source('masterdb2/screens/dashboard.js')
+  const resultProcessor = await source('masterdb2/db/import-packet.js')
+  assert.match(dashboard, /lock = await readLock\(\)/)
+  assert.match(dashboard, /lock\.owner === session\.writerName/)
+  assert.match(dashboard, /if \(ownsLock && techs\.length\)/)
+  assert.match(dashboard, /await autoImportClean\(techs, session\.writerName\)/)
+  assert.match(dashboard, /Ambiguous records remain untouched for review/)
+  assert.match(resultProcessor, /if \(_autoImportInFlight\) return _autoImportInFlight/)
+  assert.match(resultProcessor, /\.finally\(\(\) => \{ _autoImportInFlight = null \}\)/)
+})
+
 test('primary workflows use visit and results language instead of file-transfer language', async () => {
   const officeApp = await source('masterdb2/app.js')
   const results = await source('masterdb2/screens/import.js')
