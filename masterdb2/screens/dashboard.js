@@ -67,7 +67,7 @@ export function mount(container, { navigate, session }) {
       </div>
 
       <div>
-        <div class="section-head"><h2>Inbox Queue</h2></div>
+        <div class="section-head"><h2>Returned Results</h2></div>
         <div id="inbox-queue"><p style="color:var(--clr-subtle);font-size:0.875rem">Loading…</p></div>
       </div>
 
@@ -80,7 +80,7 @@ export function mount(container, { navigate, session }) {
     if (el) el.innerHTML = html
   }).catch(() => {
     const el = container.querySelector('#inbox-queue')
-    if (el) el.innerHTML = `<p style="color:var(--clr-subtle);font-size:0.875rem">Could not read inbox folders.</p>`
+    if (el) el.innerHTML = `<p style="color:var(--clr-subtle);font-size:0.875rem">Could not check returned results.</p>`
   })
 }
 
@@ -101,7 +101,7 @@ async function loadInboxQueue(techs) {
 
   const totalFiles = results.reduce((n, r) => n + (r.packets?.length ?? 0), 0)
   if (!totalFiles) {
-    return `<div class="table-card"><div class="table-empty">All inboxes are empty.</div></div>`
+    return `<div class="table-card"><div class="table-empty">No returned results are waiting.</div></div>`
   }
 
   const rows = results.flatMap(({ tech, packets }) => {
@@ -109,7 +109,7 @@ async function loadInboxQueue(techs) {
     return packets.map(f => `
       <tr>
         <td style="color:var(--clr-subtle);font-size:0.8rem">${esc(tech.initials ?? tech.name.slice(0,2))}</td>
-        <td style="font-size:0.8125rem">${esc(f.name)}</td>
+        <td style="font-size:0.8125rem">Completed field visit</td>
         <td style="font-size:0.75rem;color:var(--clr-subtle)">${f.lastModified ? fmtTs(f.lastModified) : ''}</td>
       </tr>
     `)
@@ -119,13 +119,13 @@ async function loadInboxQueue(techs) {
     <div class="table-card">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Tech</th><th>File</th><th>Received</th></tr></thead>
+          <thead><tr><th>Tech</th><th>Returned item</th><th>Received</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
     <p style="font-size:0.8rem;color:var(--clr-subtle);margin-top:0.375rem">
-      ${totalFiles} packet${totalFiles !== 1 ? 's' : ''} waiting to import.
+      ${totalFiles} returned visit${totalFiles !== 1 ? 's' : ''} waiting to process.
     </p>
   `
 }
