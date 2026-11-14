@@ -11,22 +11,8 @@ export function mount(container, { navigate, session }) {
   const or = session.openResult
 
   // ── Sync data (instant) ──────────────────────────────────────────────────
-  const companies = scalar('SELECT COUNT(*) FROM companies WHERE active = 1') ?? 0
-  const locations = scalar('SELECT COUNT(*) FROM locations WHERE active = 1') ?? 0
-  const workers   = scalar("SELECT COUNT(*) FROM employees WHERE status='active' AND deleted_at IS NULL") ?? 0
-  const tests     = scalar('SELECT COUNT(*) FROM tests WHERE deleted_at IS NULL') ?? 0
-
-  const upcoming = query(
-    `SELECT p.packet_id, p.visit_date, p.filename, p.status,
-            c.name AS company_name, l.name AS location_name, l.province,
-            tk.initials AS tech_initials, tk.name AS tech_name
-     FROM packets p
-     JOIN  companies c ON c.company_id  = p.company_id
-     LEFT JOIN locations l  ON l.location_id = p.location_id
-     LEFT JOIN techs    tk ON tk.tech_id     = p.tech_id
-     WHERE p.status = 'pending' AND p.visit_date >= date('now')
-     ORDER BY p.visit_date LIMIT 10`
-  )
+  const stats = loadDashboardStats()
+  const upcoming = loadUpcomingVisits()
 
   const techs = query(`SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
 
@@ -42,17 +28,17 @@ export function mount(container, { navigate, session }) {
     <div id="lock-status"></div>
 
     <div class="kpi-bar">
-      ${kpi(companies, 'Companies')}
-      ${kpi(locations, 'Locations')}
-      ${kpi(workers,   'Workers')}
-      ${kpi(tests,     'Tests')}
+      ${kpi(stats.companies, 'Companies', 'companies')}
+      ${kpi(stats.locations, 'Locations', 'locations')}
+      ${kpi(stats.workers,   'Workers',   'workers')}
+      ${kpi(stats.tests,     'Tests',     'tests')}
     </div>
 
     <div class="screen-body workspace-grid">
 
       <div>
         <div class="section-head"><h2>Upcoming Visits</h2></div>
-        ${upcomingTable(upcoming, navigate)}
+        <div id="upcoming-visits">${upcomingTable(upcoming)}</div>
       </div>
 
       <div>
@@ -98,6 +84,7 @@ async function initializeReturnedResults(container, techs, session) {
     try {
       const { results } = await autoImportClean(techs, session.writerName)
       if (statusEl) statusEl.innerHTML = results.length ? processingSummary(results) : ''
+      refreshDashboardSummary(container)
     } catch (e) {
       if (statusEl) {
         statusEl.innerHTML = `<div class="warning-banner" style="margin-bottom:0.75rem">
@@ -113,6 +100,40 @@ async function initializeReturnedResults(container, techs, session) {
 
   await refreshInboxQueue(container, techs)
   if (reviewBtn) reviewBtn.disabled = false
+}
+
+function loadDashboardStats() {
+  return {
+    companies: scalar('SELECT COUNT(*) FROM companies WHERE active = 1') ?? 0,
+    locations: scalar('SELECT COUNT(*) FROM locations WHERE active = 1') ?? 0,
+    workers: scalar("SELECT COUNT(*) FROM employees WHERE status='active' AND deleted_at IS NULL") ?? 0,
+    tests: scalar('SELECT COUNT(*) FROM tests WHERE deleted_at IS NULL') ?? 0,
+  }
+}
+
+function loadUpcomingVisits() {
+  return query(
+    `SELECT p.packet_id, p.visit_date, p.filename, p.status,
+            c.name AS company_name, l.name AS location_name, l.province,
+            tk.initials AS tech_initials, tk.name AS tech_name
+     FROM packets p
+     JOIN  companies c ON c.company_id  = p.company_id
+     LEFT JOIN locations l  ON l.location_id = p.location_id
+     LEFT JOIN techs    tk ON tk.tech_id     = p.tech_id
+     WHERE p.status = 'pending' AND p.visit_date >= date('now')
+     ORDER BY p.visit_date LIMIT 10`
+  )
+}
+
+function refreshDashboardSummary(container) {
+  const stats = loadDashboardStats()
+  for (const [key, value] of Object.entries(stats)) {
+    const el = container.querySelector(`[data-kpi="${key}"]`)
+    if (el) el.textContent = Number(value).toLocaleString()
+  }
+
+  const upcomingEl = container.querySelector('#upcoming-visits')
+  if (upcomingEl) upcomingEl.innerHTML = upcomingTable(loadUpcomingVisits())
 }
 
 async function refreshInboxQueue(container, techs) {
@@ -195,7 +216,7 @@ async function loadInboxQueue(techs) {
   `
 }
 
-function upcomingTable(rows, navigate) {
+function upcomingTable(rows) {
   if (!rows.length) {
     return `<div class="table-card"><div class="table-empty">No upcoming visits scheduled.</div></div>`
   }
@@ -225,8 +246,8 @@ function upcomingTable(rows, navigate) {
   `
 }
 
-function kpi(n, label) {
-  return `<div class="kpi-item"><span class="kpi-num">${n.toLocaleString()}</span><span class="kpi-label">${label}</span></div>`
+function kpi(n, label, key) {
+  return `<div class="kpi-item"><span class="kpi-num" data-kpi="${key}">${Number(n).toLocaleString()}</span><span class="kpi-label">${label}</span></div>`
 }
 
 function esc(s) {
