@@ -136,7 +136,7 @@ for (const [first, last, dob, title, occupation] of workers) {
     `INSERT INTO employees
        (current_location_id, first_name, last_name, dob, job_title,
         occupation_code, gender, status)
-     VALUES (?, ?, ?, ?, ?, ?, 'X', 'active')`,
+     VALUES (?, ?, ?, ?, ?, ?, 'Other', 'active')`,
     [locationId, first, last, dob, title, occupation]
   )
 }
