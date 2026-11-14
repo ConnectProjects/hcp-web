@@ -561,14 +561,14 @@ export function mount(container, { navigate, session }) {
         visitDate:        today,
       })
     } catch (e) {
-      _saving = false; _saveErr = `Packet build failed: ${e.message}`
+      _saving = false; _saveErr = `Could not prepare visit: ${e.message}`
       render(); return
     }
 
     try {
       await writePacket(techRow.folder_name, packet.filename, packet)
     } catch (e) {
-      _saving = false; _saveErr = `Could not write packet: ${e.message}`
+      _saving = false; _saveErr = `Could not create visit: ${e.message}`
       render(); return
     }
 
