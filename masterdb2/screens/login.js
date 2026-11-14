@@ -17,7 +17,10 @@
  * No imports from app.js — receives navigate + session via params.
  */
 
-import { loadSql, tryConnect, connectWithPicker, reconnect, hasStoredFolder, query, run, save, claimLock, StoreFileNotFoundError } from '../db/db.js'
+import {
+  loadSql, tryConnect, connectWithPicker, reconnect, hasStoredFolder,
+  query, run, save, claimLock, StoreFileNotFoundError, StoreLockError,
+} from '../db/db.js'
 
 const WASM = new URL('../vendor/sql-wasm.wasm', import.meta.url).href
 
@@ -102,9 +105,18 @@ export function mount(container, { navigate, session }) {
     session.user       = user
     session.writerName = user.name
 
-    // Claim the write lock for this session (best-effort — if another session
-    // holds it, the dashboard will show the lock banner from readLock())
-    try { await claimLock(session.writerName) } catch { /* StoreLockError handled in dashboard */ }
+    // A competing Office session is a valid read-only state. Any other failure
+    // means this browser cannot save safely, so stop here and surface the real
+    // browser/filesystem error instead of silently opening a broken session.
+    try {
+      await claimLock(session.writerName)
+    } catch (e) {
+      if (!(e instanceof StoreLockError)) {
+        const detail = e?.message || e?.name || String(e) || 'Unknown filesystem error'
+        render('error', { message: `Could not start a writable Office session: ${detail}` })
+        return
+      }
+    }
 
     navigate(user.role === 'aud_tech' ? 'tt-schedule' : 'dashboard')
   }
