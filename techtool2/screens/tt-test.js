@@ -67,10 +67,10 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     } catch (e) {
       container.innerHTML = `
         <div class="screen-header-row">
-          <button class="back-link" id="back">← Inbox</button><h1>Error</h1>
+          <button class="back-link" id="back">← Visits</button><h1>Error</h1>
         </div>
         <div class="screen-body">
-          <div class="error-banner"><strong>Could not load packet:</strong> ${esc(e.message)}</div>
+          <div class="error-banner"><strong>Could not load visit:</strong> ${esc(e.message)}</div>
         </div>`
       container.querySelector('#back')?.addEventListener('click', () => navigate('tt-inbox'))
     }
@@ -148,7 +148,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       </tr>`
     }).join('') || (_workerSearch.trim()
       ? `<tr><td colspan="7" class="table-empty">No workers match your search.</td></tr>`
-      : `<tr><td colspan="7" class="table-empty">No workers in this packet.</td></tr>`)
+      : `<tr><td colspan="7" class="table-empty">No workers are assigned to this visit.</td></tr>`)
 
     const boothSel = `
       <div class="booth-mini-bar">
@@ -164,7 +164,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
     container.innerHTML = `
       <div class="screen-header-row">
-        <button class="back-link" id="back-btn">← Inbox</button>
+        <button class="back-link" id="back-btn">← Visits</button>
         <div style="flex:1;overflow:hidden">
           <h1 style="font-size:1.0625rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(company)}</h1>
           ${locLine ? `<div class="screen-subtitle">${esc(locLine)}</div>` : ''}
@@ -205,7 +205,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
 
         ${_addMode ? `
           <div class="info-card" style="margin-top:1rem">
-            <div style="font-size:0.875rem;font-weight:600;margin-bottom:0.625rem">Add worker to packet</div>
+            <div style="font-size:0.875rem;font-weight:600;margin-bottom:0.625rem">Add worker to visit</div>
             <div style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:0.5rem">
               Search to add an existing worker, or fill in the fields below for a new one.
             </div>
@@ -251,7 +251,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
             ${province === 'BC' && allDone
               ? `<button class="btn btn-secondary" id="wbc-export-btn">Export WorkSafeBC CSV</button>`
               : ''}
-            <button class="btn btn-primary" id="submit-btn" ${allDone ? '' : 'disabled'}>Submit Packet →</button>
+            <button class="btn btn-primary" id="submit-btn" ${allDone ? '' : 'disabled'}>Complete visit</button>
           </div>
         </div>
       </div>`
@@ -475,7 +475,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       container.innerHTML = `
         <div class="screen-header-row">
           <button class="back-link" id="back-list">← Worker list</button>
-          <h1>${esc(p.company?.name ?? 'Packet')}</h1>
+          <h1>${esc(p.company?.name ?? 'Visit')}</h1>
         </div>
         <div class="screen-body">
           ${boothBar}
@@ -1093,7 +1093,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     try {
       await saveTechPacket(techFolder, filename, _packet)
       _addMode = false; _addSearch = ''; _addResults = []; _addForm = null
-      _status = { ok: true, msg: `${entry.last_name}, ${entry.first_name} added to packet.` }
+      _status = { ok: true, msg: `${entry.last_name}, ${entry.first_name} added to this visit.` }
     } catch (e) {
       _status = { ok: false, msg: `Could not save: ${e.message}` }
     }
@@ -1105,7 +1105,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     const tech    = p.tech ?? {}
     const iat = String(tech.tech_iat ?? '').trim()
     if (!/^\d+$/.test(iat)) {
-      _status = { ok: false, msg: 'Cannot export to WSBC: the packet is missing a valid technician IAT number. Set the IAT number in MasterDB and regenerate the packet, or export the imported tests from MasterDB.' }
+      _status = { ok: false, msg: 'Cannot export to WSBC: this visit is missing a valid technician IAT number. Ask the office to update the technician record and prepare the visit again, or export the accepted tests from the Office application.' }
       render()
       return
     }
