@@ -67,8 +67,11 @@ test('primary workflows use visit and results language instead of file-transfer 
   assert.doesNotMatch(location, /Generate Packet|Write to Outbox|Packet written|<th>File<\/th>/)
 })
 
-test('Field test form preserves the assigned worker occupation values', async () => {
+test('Field test form preserves worker-information drafts across booth switches', async () => {
   const testFlow = await source('techtool2/screens/tt-test.js')
-  assert.match(testFlow, /slot\.empEdits\?\.job_title\s+\?\? emp\?\.job_title/)
-  assert.match(testFlow, /slot\.empEdits\?\.occupation_code\s+\?\? emp\?\.occupation_code/)
+  assert.match(testFlow, /const draftField\s+= key => slot\.empEdits && Object\.hasOwn/)
+  for (const field of ['last_name', 'first_name', 'middle_name', 'dob', 'gender',
+    'sin_last_4', 'email', 'phone', 'job_title', 'occupation_code']) {
+    assert.match(testFlow, new RegExp(`draftField\\('${field}'\\)`))
+  }
 })
