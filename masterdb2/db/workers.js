@@ -18,6 +18,7 @@ const norm = s => (s ?? '').toLowerCase().trim().replace(/\s+/g, ' ')
 const PERSON_COLS = `
   e.employee_id, e.first_name, e.middle_name, e.last_name, e.dob,
   e.sin_last_4, e.phone, e.email, e.hire_date, e.job_title,
+  e.wsbc_worker_id, e.occupation_code, e.gender,
   e.status, e.current_location_id, e.uid, e.created_at, e.updated_at,
   l.name  AS location_name,
   l.province AS location_province,
