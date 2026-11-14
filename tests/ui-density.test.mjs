@@ -66,3 +66,9 @@ test('primary workflows use visit and results language instead of file-transfer 
   assert.doesNotMatch(officeSchedule, /Packet detail|Cancel Packet|row\('File'/)
   assert.doesNotMatch(location, /Generate Packet|Write to Outbox|Packet written|<th>File<\/th>/)
 })
+
+test('Field test form preserves the assigned worker occupation values', async () => {
+  const testFlow = await source('techtool2/screens/tt-test.js')
+  assert.match(testFlow, /slot\.empEdits\?\.job_title\s+\?\? emp\?\.job_title/)
+  assert.match(testFlow, /slot\.empEdits\?\.occupation_code\s+\?\? emp\?\.occupation_code/)
+})
