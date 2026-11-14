@@ -75,3 +75,15 @@ test('Field test form preserves worker-information drafts across booth switches'
     assert.match(testFlow, new RegExp(`draftField\\('${field}'\\)`))
   }
 })
+
+test('prepared visits carry WSBC worker fields and default first tests to Baseline', async () => {
+  const workers = await source('masterdb2/db/workers.js')
+  const newVisit = await source('techtool2/screens/tt-new-visit.js')
+  const testFlow = await source('techtool2/screens/tt-test.js')
+
+  assert.match(workers, /e\.wsbc_worker_id, e\.occupation_code, e\.gender/)
+  for (const field of ['gender', 'occupation_code', 'wsbc_worker_id']) {
+    assert.match(newVisit, new RegExp(`${field}:`))
+  }
+  assert.match(testFlow, /s\.testType = emp\.baseline \? 'Periodic' : 'Baseline'/)
+})
