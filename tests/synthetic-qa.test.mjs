@@ -4,29 +4,30 @@ import { createRequire } from 'node:module'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import test from 'node:test'
 
 const execFileAsync = promisify(execFile)
 const require = createRequire(import.meta.url)
 const initSqlJs = require('../masterdb2/vendor/sql-wasm.js')
-const repoRoot = new URL('../', import.meta.url)
-const generator = new URL('../masterdb2/tools/create-synthetic-qa.mjs', import.meta.url)
-const wasm = new URL('../masterdb2/vendor/sql-wasm.wasm', import.meta.url)
+const repoRoot = fileURLToPath(new URL('../', import.meta.url))
+const generator = fileURLToPath(new URL('../masterdb2/tools/create-synthetic-qa.mjs', import.meta.url))
+const wasm = fileURLToPath(new URL('../masterdb2/vendor/sql-wasm.wasm', import.meta.url))
 
 test('synthetic Windows QA generator creates an isolated and reusable test workspace', async () => {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'hcp-web-qa-'))
   const workspace = join(temporaryRoot, 'workspace')
 
   try {
-    await execFileAsync(process.execPath, [generator.pathname, workspace], {
-      cwd: repoRoot.pathname,
+    await execFileAsync(process.execPath, [generator, workspace], {
+      cwd: repoRoot,
     })
 
     const marker = await readFile(join(workspace, 'SYNTHETIC-QA-ONLY.txt'), 'utf8')
     assert.match(marker, /All records are fictional/)
 
-    const SQL = await initSqlJs({ locateFile: () => wasm.pathname })
+    const SQL = await initSqlJs({ locateFile: () => wasm })
     const db = new SQL.Database(await readFile(join(workspace, 'db', 'masterdb.sqlite')))
 
     const count = table => db.exec(`SELECT COUNT(*) FROM ${table}`)[0].values[0][0]
@@ -47,7 +48,7 @@ test('synthetic Windows QA generator creates an isolated and reusable test works
     db.close()
 
     await assert.rejects(
-      execFileAsync(process.execPath, [generator.pathname, workspace], { cwd: repoRoot.pathname }),
+      execFileAsync(process.execPath, [generator, workspace], { cwd: repoRoot }),
       /Refusing to replace existing QA database/
     )
   } finally {
