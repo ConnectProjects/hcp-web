@@ -341,17 +341,17 @@ export function mount(container, { navigate, session }) {
         <div style="font-size:0.75rem;color:var(--clr-subtle);margin-bottom:0.625rem">Visit detail</div>
         ${rows}
         ${hasFile
-          ? `<button class="btn btn-primary" id="open-file-btn" style="margin-top:1rem;width:100%">Open packet →</button>`
+          ? `<button class="btn btn-primary" id="open-file-btn" style="margin-top:1rem;width:100%">Open visit →</button>`
           : ev.status === 'submitted'
             ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 Submitted — your LC will import this when they&apos;re back in the office.
+                 Results returned — the office will process them when synchronization completes.
                </div>`
             : ev.status === 'imported'
             ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 Imported into MasterDB. Results are on file.
+                 Results accepted by the office and stored on file.
                </div>`
             : `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 This packet hasn&apos;t been pushed to your OneDrive folder yet.
+                 This visit is not ready on this device yet. Refresh after synchronization completes.
                  Check back later or ask your LC.
                </div>`}
       </div>`
