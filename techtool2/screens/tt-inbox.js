@@ -72,7 +72,7 @@ export function mount(container, { navigate, session }) {
 
     if (_error) {
       container.innerHTML = `
-        <div class="screen-header-row"><h1>Inbox</h1></div>
+        <div class="screen-header-row"><h1>Visits</h1></div>
         <div class="screen-body">
           <div class="error-banner"><strong>Error:</strong> ${esc(_error)}</div>
         </div>`
@@ -81,11 +81,11 @@ export function mount(container, { navigate, session }) {
 
     if (!_tech?.folder_name) {
       container.innerHTML = `
-        <div class="screen-header-row"><h1>Inbox</h1></div>
+        <div class="screen-header-row"><h1>Visits</h1></div>
         <div class="screen-body">
           <div class="warning-banner">
-            No OneDrive folder is configured for your account.
-            Ask your LC to set your folder name in Settings.
+            Synchronization is not configured for your account.
+            Ask the office administrator to enable access for this device.
           </div>
         </div>`
       return
@@ -98,8 +98,8 @@ export function mount(container, { navigate, session }) {
       bodyHTML = `
         <div style="text-align:center;padding:4rem 1rem;color:var(--clr-subtle)">
           <div style="font-size:2.5rem;margin-bottom:0.75rem">✓</div>
-          <div style="font-size:1rem;font-weight:500">Inbox is empty</div>
-          <div style="font-size:0.875rem;margin-top:0.25rem">No packets waiting — you're all caught up.</div>
+          <div style="font-size:1rem;font-weight:500">No visits waiting</div>
+          <div style="font-size:0.875rem;margin-top:0.25rem">No visits are waiting — you're all caught up.</div>
         </div>`
     } else {
       bodyHTML = _packets.map(p => packetCard(p)).join('')
@@ -107,7 +107,7 @@ export function mount(container, { navigate, session }) {
 
     container.innerHTML = `
       <div class="screen-header-row">
-        <h1>Inbox</h1>
+        <h1>Visits</h1>
         <span class="screen-subtitle">${esc(techName)}</span>
         <button class="btn btn-secondary btn-sm" id="refresh-btn" style="margin-left:auto">↺ Refresh</button>
       </div>
@@ -128,8 +128,8 @@ export function mount(container, { navigate, session }) {
     if (badRead || !packet) {
       return `
         <div class="packet-card packet-card-error">
-          <div class="packet-company">${esc(filename)}</div>
-          <div class="packet-loc" style="color:var(--clr-danger)">Could not read this packet file.</div>
+          <div class="packet-company">Unavailable visit</div>
+          <div class="packet-loc" style="color:var(--clr-danger)">Could not load this visit.</div>
         </div>`
     }
 
