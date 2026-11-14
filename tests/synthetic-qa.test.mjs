@@ -39,6 +39,10 @@ test('synthetic Windows QA generator creates an isolated and reusable test works
     assert.equal(count('classification_rules'), 6)
     assert.equal(count('counsel_templates'), 6)
     assert.deepEqual(
+      db.exec('SELECT job_title, occupation_code, gender FROM employees WHERE first_name = \'Winona\'')[0].values[0],
+      ['Synthetic Equipment Operator', '7452', 'Other']
+    )
+    assert.deepEqual(
       db.exec('SELECT name, role FROM users ORDER BY name')[0].values,
       [
         ['Windows QA Office', 'super_admin'],
