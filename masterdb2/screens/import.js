@@ -38,7 +38,7 @@ export function mount(container, { navigate, session }) {
 
   function renderError(msg) {
     container.innerHTML = `
-      <div class="screen-header-row"><h1>Import</h1></div>
+      <div class="screen-header-row"><h1>Results</h1></div>
       <div class="screen-body">
         <div class="error-banner"><strong>Error:</strong> ${esc(msg)}</div>
       </div>
@@ -66,16 +66,16 @@ export function mount(container, { navigate, session }) {
 
     container.innerHTML = `
       <div class="screen-header-row">
-        <h1>Import</h1>
+        <h1>Results</h1>
         ${techSel}
       </div>
       <div class="screen-body">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
           <p style="margin:0;color:var(--clr-subtle)">
-            Auto-import scans all techs&apos; inboxes and commits every clean packet.
-            Packets needing manual attention are left behind.
+            Process returned field results that can be matched safely.
+            Anything needing a decision stays here for review.
           </p>
-          <button class="btn btn-primary" id="auto-all-btn">Auto-import all →</button>
+          <button class="btn btn-primary" id="auto-all-btn">Process ready results</button>
         </div>
         ${noTechsWarning}
         <div id="inbox-area"></div>
@@ -99,7 +99,7 @@ export function mount(container, { navigate, session }) {
       const entries = await listInbox(_tech.folder_name)
       _files = entries.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
     } catch (e) {
-      area.innerHTML = `<div class="error-banner"><strong>Error reading inbox:</strong> ${esc(e.message)}</div>`
+      area.innerHTML = `<div class="error-banner"><strong>Could not check returned results:</strong> ${esc(e.message)}</div>`
       return
     }
     renderInbox()
@@ -108,26 +108,25 @@ export function mount(container, { navigate, session }) {
   function renderInbox() {
     const area = container.querySelector('#inbox-area')
     if (!_files.length) {
-      area.innerHTML = `<div class="table-card"><div class="table-empty">Inbox is empty for ${esc(_tech.name)}.</div></div>`
+      area.innerHTML = `<div class="table-card"><div class="table-empty">No returned results are waiting for ${esc(_tech.name)}.</div></div>`
       return
     }
 
     const rows = _files.map(f => `
       <tr class="clickable" data-name="${esc(f.name)}">
-        <td><strong>${esc(f.name)}</strong></td>
+        <td><strong>Completed field visit</strong></td>
         <td style="color:var(--clr-subtle)">${f.lastModified ? fmtTs(f.lastModified) : '—'}</td>
-        <td style="text-align:right;color:var(--clr-subtle)">${f.size != null ? fmtSize(f.size) : ''}</td>
       </tr>
     `).join('')
 
     area.innerHTML = `
       <div class="section-head">
-        <h2>${esc(_tech.name)} — inbox (${_files.length})</h2>
+        <h2>${esc(_tech.name)} — returned results (${_files.length})</h2>
       </div>
       <div class="table-card">
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>File</th><th>Modified</th><th style="text-align:right">Size</th></tr></thead>
+            <thead><tr><th>Returned item</th><th>Received</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -142,14 +141,14 @@ export function mount(container, { navigate, session }) {
   async function loadPreview(filename) {
     _filename = filename
     const area = container.querySelector('#inbox-area')
-    area.innerHTML = `<div class="spinner"></div><p class="status-text">Analysing ${esc(filename)}…</p>`
+    area.innerHTML = `<div class="spinner"></div><p class="status-text">Checking returned visit…</p>`
 
     try {
       _packet  = await readPacket(_tech.folder_name, filename)
       _preview = previewImport(_packet)
     } catch (e) {
       area.innerHTML = `
-        <button class="back-link" id="back-inbox">&larr; Back to inbox</button>
+        <button class="back-link" id="back-inbox">&larr; Back to returned results</button>
         <div class="error-banner" style="margin:1rem 0"><strong>Preview failed:</strong> ${esc(e.message)}</div>
       `
       area.querySelector('#back-inbox').addEventListener('click', renderInbox)
@@ -273,7 +272,7 @@ export function mount(container, { navigate, session }) {
     const c = p.counts
     const countsBar = `
       <div class="import-counts">
-        ${countItem(c.toImport,   'To Import')}
+        ${countItem(c.toImport,   'Ready')}
         ${countItem(c.duplicates, 'Duplicates')}
         ${countItem(c.empty,      'Empty Tests')}
         ${countItem(c.newPersons, 'New Workers')}
@@ -297,13 +296,13 @@ export function mount(container, { navigate, session }) {
     const companyOk = !!p.company.id
 
     area.innerHTML = `
-      <button class="back-link" id="back-inbox">&larr; Back to inbox</button>
+        <button class="back-link" id="back-inbox">&larr; Back to returned results</button>
       <div style="margin:0.75rem 0">
         <strong>${esc(p.company.name ?? 'Unknown company')}</strong>
         &nbsp;&mdash;&nbsp;
         ${p.visitDate ? fmtDate(p.visitDate) : 'No date'}
         &nbsp;&mdash;&nbsp;
-        <span style="color:var(--clr-subtle)">${esc(_filename)}</span>
+        <span style="color:var(--clr-subtle)">Completed field visit</span>
       </div>
       ${warnHTML}
       ${locBar}
@@ -325,10 +324,10 @@ export function mount(container, { navigate, session }) {
           </table>
         </div>
       </div>
-      ${!companyOk ? `<div class="error-banner" style="margin-bottom:1rem">Company not found in DB — cannot import.</div>` : ''}
+      ${!companyOk ? `<div class="error-banner" style="margin-bottom:1rem">Company not found — these results cannot be accepted.</div>` : ''}
       <div style="display:flex;gap:0.75rem">
         <button class="btn btn-primary" id="commit-btn" ${canCommit && companyOk ? '' : 'disabled'}>
-          Commit Import
+          Accept results
         </button>
         <button class="btn btn-secondary" id="cancel-btn">Cancel</button>
       </div>
@@ -362,7 +361,7 @@ export function mount(container, { navigate, session }) {
 
   async function runCommit() {
     const area = container.querySelector('#inbox-area')
-    area.innerHTML = `<div class="spinner"></div><p class="status-text">Importing…</p>`
+    area.innerHTML = `<div class="spinner"></div><p class="status-text">Accepting results…</p>`
     try {
       _result = await commitImport(_packet, _decisions, session.writerName, {
         techFolder: _tech.folder_name,
@@ -374,7 +373,7 @@ export function mount(container, { navigate, session }) {
       area.innerHTML = `
         <button class="back-link" id="back-preview">&larr; Back to preview</button>
         <div class="error-banner" style="margin:1rem 0">
-          <strong>Import failed:</strong> ${esc(msg)}
+          <strong>Results could not be accepted:</strong> ${esc(msg)}
         </div>
       `
       area.querySelector('#back-preview').addEventListener('click', renderPreview)
@@ -383,14 +382,14 @@ export function mount(container, { navigate, session }) {
 
   async function runAutoAll() {
     const area = container.querySelector('#inbox-area')
-    area.innerHTML = `<div class="spinner"></div><p class="status-text">Scanning all inboxes…</p>`
+    area.innerHTML = `<div class="spinner"></div><p class="status-text">Checking returned results…</p>`
 
     let outcome
     try {
       outcome = await autoImportClean(_techs, session.writerName)
     } catch (e) {
       const msg = e?.message || e?.toString() || 'Unknown error'
-      area.innerHTML = `<div class="error-banner"><strong>Auto-import failed:</strong> ${esc(msg)}</div>`
+      area.innerHTML = `<div class="error-banner"><strong>Result processing failed:</strong> ${esc(msg)}</div>`
       return
     }
 
@@ -430,7 +429,7 @@ export function mount(container, { navigate, session }) {
     area.innerHTML = `
       ${imported.length
         ? `<div class="success-banner" style="margin-bottom:1rem">
-             <strong>${imported.length} packet${imported.length !== 1 ? 's' : ''} imported</strong>
+             <strong>${imported.length} returned visit${imported.length !== 1 ? 's' : ''} processed</strong>
              — ${imported.reduce((s, r) => s + r.imported, 0)} tests,
              ${imported.reduce((s, r) => s + r.newPersons, 0)} new workers
            </div>
@@ -439,7 +438,7 @@ export function mount(container, { navigate, session }) {
                <table class="data-table">${thead}<tbody>${importedRows}</tbody></table>
              </div>
            </div>`
-        : `<div class="warning-banner" style="margin-bottom:1rem">No clean packets found to auto-import. Use manual review below.</div>`}
+        : `<div class="warning-banner" style="margin-bottom:1rem">No returned visits could be accepted automatically. Review the remaining items below.</div>`}
 
       ${skipped.length
         ? `<div class="section-head"><h3>Needs review (${skipped.length})</h3></div>
@@ -476,13 +475,12 @@ export function mount(container, { navigate, session }) {
     const area = container.querySelector('#inbox-area')
     area.innerHTML = `
       <div class="success-banner">
-        <strong>Import complete</strong>
-        ${r.imported} test${r.imported !== 1 ? 's' : ''} imported
+        <strong>Results accepted</strong>
+        ${r.imported} test${r.imported !== 1 ? 's' : ''} stored
         &mdash; ${r.newPersons} new worker${r.newPersons !== 1 ? 's' : ''} created
         &mdash; ${r.duplicates} duplicate${r.duplicates !== 1 ? 's' : ''} skipped.
       </div>
-      ${r.backupFile ? `<p style="font-size:0.8rem;color:var(--clr-subtle);margin-bottom:1rem">Pre-import snapshot: ${esc(r.backupFile)}</p>` : ''}
-      ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">Packet stays in inbox (archive step failed: ${esc(r.archiveWarning)}). Data was saved — safe to delete the inbox file manually.</div>` : ''}
+      ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">The results were saved, but automatic cleanup did not finish (${esc(r.archiveWarning)}). The item may appear again; duplicate tests will be skipped safely.</div>` : ''}
       ${r.wsbcCsv ? `
         <div class="warning-banner" style="margin-bottom:1rem;border-color:var(--clr-warning,#f59e0b)">
           <strong>WorkSafeBC submission required</strong><br>
@@ -495,7 +493,7 @@ export function mount(container, { navigate, session }) {
           </div>
         </div>` : ''}
       <div style="display:flex;gap:0.75rem">
-        <button class="btn btn-primary"   id="another-btn">Import Another</button>
+        <button class="btn btn-primary"   id="another-btn">Process another</button>
         <button class="btn btn-secondary" id="companies-btn">Go to Companies</button>
       </div>
     `
