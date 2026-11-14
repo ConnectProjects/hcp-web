@@ -29,3 +29,21 @@ test('dashboard uses the shared dense workspace layout', async () => {
   assert.match(dashboard, /class="screen-body workspace-grid"/)
   assert.doesNotMatch(dashboard, /grid-template-columns:1fr 1fr/)
 })
+
+test('primary workflows use visit and results language instead of file-transfer language', async () => {
+  const officeApp = await source('masterdb2/app.js')
+  const results = await source('masterdb2/screens/import.js')
+  const visits = await source('techtool2/screens/tt-inbox.js')
+  const testFlow = await source('techtool2/screens/tt-test.js')
+  const schedule = await source('techtool2/screens/tt-schedule.js')
+  const officeSchedule = await source('masterdb2/screens/schedule.js')
+  const location = await source('masterdb2/screens/location.js')
+
+  assert.match(officeApp, /name: 'import',\s+label: 'Results'/)
+  assert.doesNotMatch(results, /<h1>Import<\/h1>|Auto-import all|Back to inbox|Pre-import snapshot/)
+  assert.doesNotMatch(visits, /<h1>Inbox<\/h1>|Inbox is empty|No packets waiting/)
+  assert.doesNotMatch(testFlow, />Submit Packet|>Add worker to packet|← Inbox/)
+  assert.doesNotMatch(schedule, />Open packet|Imported into MasterDB|will import this/)
+  assert.doesNotMatch(officeSchedule, /Packet detail|Cancel Packet|row\('File'/)
+  assert.doesNotMatch(location, /Generate Packet|Write to Outbox|Packet written|<th>File<\/th>/)
+})
