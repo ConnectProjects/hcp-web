@@ -34,7 +34,7 @@ export function mount(container, { navigate, session }) {
   try {
     const lock = readLock()
     if (lock && !lock.stale && lock.owner && lock.owner !== session.writerName) {
-      lockBanner = `<div class="warning-banner" style="margin-bottom:1rem">
+      lockBanner = `<div class="warning-banner screen-alert">
         <strong>Write lock held by ${esc(lock.owner)}</strong>
         — MasterDB is read-only until they sign out.
       </div>`
@@ -59,7 +59,7 @@ export function mount(container, { navigate, session }) {
       ${kpi(tests,     'Tests')}
     </div>
 
-    <div class="screen-body" style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start">
+    <div class="screen-body workspace-grid">
 
       <div>
         <div class="section-head"><h2>Upcoming Visits</h2></div>
