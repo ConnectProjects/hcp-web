@@ -1,10 +1,11 @@
 /**
  * masterdb2/screens/dashboard.js — home screen
  *
- * KPI bar + upcoming visits + inbox queue (async).
+ * KPI bar + upcoming visits + returned-result processing (async).
  */
 
 import { query, scalar, readLock, listInbox } from '../db/db.js'
+import { autoImportClean } from '../db/import-packet.js'
 
 export function mount(container, { navigate, session }) {
   const or = session.openResult
@@ -29,18 +30,6 @@ export function mount(container, { navigate, session }) {
 
   const techs = query(`SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
 
-  // Lock banner
-  let lockBanner = ''
-  try {
-    const lock = readLock()
-    if (lock && !lock.stale && lock.owner && lock.owner !== session.writerName) {
-      lockBanner = `<div class="warning-banner screen-alert">
-        <strong>Write lock held by ${esc(lock.owner)}</strong>
-        — MasterDB is read-only until they sign out.
-      </div>`
-    }
-  } catch { /* ignore */ }
-
   // ── Render shell ─────────────────────────────────────────────────────────
   container.innerHTML = `
     <div class="screen-header-row">
@@ -50,7 +39,7 @@ export function mount(container, { navigate, session }) {
       </span>
     </div>
 
-    ${lockBanner}
+    <div id="lock-status"></div>
 
     <div class="kpi-bar">
       ${kpi(companies, 'Companies')}
@@ -67,21 +56,97 @@ export function mount(container, { navigate, session }) {
       </div>
 
       <div>
-        <div class="section-head"><h2>Returned Results</h2></div>
+        <div class="section-head">
+          <h2>Returned Results</h2>
+          <button class="btn btn-secondary btn-sm" id="review-results-btn" disabled>Review</button>
+        </div>
+        <div id="result-processing-status"></div>
         <div id="inbox-queue"><p style="color:var(--clr-subtle);font-size:0.875rem">Loading…</p></div>
       </div>
 
     </div>
   `
 
-  // ── Async: inbox queue ───────────────────────────────────────────────────
-  loadInboxQueue(techs).then(html => {
-    const el = container.querySelector('#inbox-queue')
-    if (el) el.innerHTML = html
-  }).catch(() => {
-    const el = container.querySelector('#inbox-queue')
-    if (el) el.innerHTML = `<p style="color:var(--clr-subtle);font-size:0.875rem">Could not check returned results.</p>`
-  })
+  container.querySelector('#review-results-btn')?.addEventListener('click', () => navigate('import'))
+
+  // Result processing is deliberately non-blocking. The dashboard renders
+  // immediately, then clean returns are accepted only when this session owns
+  // the Office write lock. Ambiguous records remain untouched for review.
+  initializeReturnedResults(container, techs, session)
+}
+
+async function initializeReturnedResults(container, techs, session) {
+  const lockEl = container.querySelector('#lock-status')
+  const statusEl = container.querySelector('#result-processing-status')
+  const reviewBtn = container.querySelector('#review-results-btn')
+
+  let lock = null
+  try { lock = await readLock() } catch { /* processing remains paused */ }
+
+  const ownsLock = !!lock && !lock.stale && lock.owner === session.writerName
+  if (lock && !lock.stale && lock.owner && !ownsLock && lockEl) {
+    lockEl.innerHTML = `<div class="warning-banner screen-alert">
+      <strong>Office is open by ${esc(lock.owner)}</strong>
+      — changes and automatic result processing are paused in this session.
+    </div>`
+  }
+
+  if (ownsLock && techs.length) {
+    if (statusEl) {
+      statusEl.innerHTML = `<p class="status-text" style="margin:0 0 0.5rem">Checking for completed field visits…</p>`
+    }
+    try {
+      const { results } = await autoImportClean(techs, session.writerName)
+      if (statusEl) statusEl.innerHTML = results.length ? processingSummary(results) : ''
+    } catch (e) {
+      if (statusEl) {
+        statusEl.innerHTML = `<div class="warning-banner" style="margin-bottom:0.75rem">
+          Automatic result processing paused: ${esc(e?.message || e)}
+        </div>`
+      }
+    }
+  } else if (statusEl) {
+    statusEl.innerHTML = ownsLock
+      ? ''
+      : `<p style="color:var(--clr-subtle);font-size:0.8rem;margin:0 0 0.5rem">Automatic processing is paused in this session.</p>`
+  }
+
+  await refreshInboxQueue(container, techs)
+  if (reviewBtn) reviewBtn.disabled = false
+}
+
+async function refreshInboxQueue(container, techs) {
+  const el = container.querySelector('#inbox-queue')
+  if (!el) return
+  try {
+    el.innerHTML = await loadInboxQueue(techs)
+  } catch {
+    el.innerHTML = `<p style="color:var(--clr-subtle);font-size:0.875rem">Could not check returned results.</p>`
+  }
+}
+
+function processingSummary(results) {
+  const accepted = results.filter(r => r.ok)
+  const review = results.filter(r => r.skipped)
+  const failed = results.filter(r => !r.ok && !r.skipped)
+  const tests = accepted.reduce((total, r) => total + (r.imported ?? 0), 0)
+  const wsbc = accepted.filter(r => r.wsbcCsv).length
+
+  return `
+    ${accepted.length ? `<div class="success-banner" style="margin-bottom:0.5rem">
+      ${accepted.length} returned visit${accepted.length !== 1 ? 's' : ''} accepted automatically
+      &mdash; ${tests} test${tests !== 1 ? 's' : ''} stored.
+    </div>` : ''}
+    ${review.length ? `<div class="warning-banner" style="margin-bottom:0.5rem">
+      ${review.length} returned visit${review.length !== 1 ? 's need' : ' needs'} review before acceptance.
+    </div>` : ''}
+    ${failed.length ? `<div class="warning-banner" style="margin-bottom:0.5rem">
+      ${failed.length} returned visit${failed.length !== 1 ? 's need' : ' needs'} attention.
+    </div>` : ''}
+    ${wsbc ? `<p style="color:var(--clr-subtle);font-size:0.8rem;margin:0 0 0.5rem">
+      WorkSafeBC export is required for ${wsbc} accepted visit${wsbc !== 1 ? 's' : ''}; use Reports when ready to submit.
+    </p>` : ''}
+  `
 }
 
 async function loadInboxQueue(techs) {
