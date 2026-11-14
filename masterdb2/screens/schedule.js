@@ -123,7 +123,7 @@ export function mount(container, { navigate, session }) {
 
     // Cancel chip
     container.querySelector('#cancel-btn')?.addEventListener('click', async () => {
-      if (!confirm(`Cancel this packet? This cannot be undone.`)) return
+      if (!confirm(`Cancel this visit? This cannot be undone.`)) return
       const errEl = container.querySelector('#reschedule-err')
       try {
         run(`UPDATE packets SET status = 'cancelled', updated_at = datetime('now') WHERE packet_id = ?`,
@@ -231,7 +231,7 @@ function buildCalendar(year, month, byDay, filters, techColor) {
 function detailPanel({ packet: p, tech }) {
   return `
     <div class="info-card" style="position:sticky;top:1rem">
-      <div style="font-size:0.75rem;color:var(--clr-subtle);margin-bottom:0.5rem">Packet detail</div>
+      <div style="font-size:0.75rem;color:var(--clr-subtle);margin-bottom:0.5rem">Visit detail</div>
       <dl>
         ${row('Company',   p.company_name)}
         ${row('Location',  p.location_name)}
@@ -239,7 +239,6 @@ function detailPanel({ packet: p, tech }) {
         ${row('Visit',     fmtDate(p.visit_date))}
         ${row('Tech',      p.tech_name)}
         ${row('Status',    p.status)}
-        ${row('File',      p.filename)}
         ${row('Created',   fmtDate(p.created_at?.slice(0,10)))}
       </dl>
 
@@ -254,7 +253,7 @@ function detailPanel({ packet: p, tech }) {
       </div>
 
       <div style="margin-top:0.75rem">
-        <button class="btn btn-danger btn-sm" id="cancel-btn">Cancel Packet</button>
+        <button class="btn btn-danger btn-sm" id="cancel-btn">Cancel Visit</button>
       </div>
     </div>
   `
