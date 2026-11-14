@@ -431,6 +431,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     _slots[slotIdx] = emptySlot(vd)
     const s = _slots[slotIdx]
     s.empIdx = empIdx
+    s.testType = emp.baseline ? 'Periodic' : 'Baseline'
 
     if (last) {
       s.thresholds = { ...last.thresholds }
