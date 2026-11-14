@@ -495,6 +495,9 @@ export function mount(container, { navigate, session, filename, techFolder }) {
     const lastTest     = emp.prior_tests?.[0] ?? null
     const lastTestDate = lastTest?.test_date ?? null
     const isBC         = (p.visit?.province ?? p.company?.province) === 'BC'
+    const draftField   = key => slot.empEdits && Object.hasOwn(slot.empEdits, key)
+      ? (slot.empEdits[key] ?? '')
+      : (emp[key] ?? '')
 
     container.innerHTML = `
       <div class="screen-header-row">
@@ -509,13 +512,13 @@ export function mount(container, { navigate, session, filename, techFolder }) {
           <div class="info-card" style="padding:1rem">
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.625rem">
               <div><label class="field-label">Last name *</label>
-                <input class="search-input" id="ef-last" value="${esc(emp.last_name ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-last" value="${esc(draftField('last_name'))}" style="width:100%"></div>
               <div><label class="field-label">First name *</label>
-                <input class="search-input" id="ef-first" value="${esc(emp.first_name ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-first" value="${esc(draftField('first_name'))}" style="width:100%"></div>
               <div><label class="field-label">Middle name</label>
-                <input class="search-input" id="ef-middle" value="${esc(emp.middle_name ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-middle" value="${esc(draftField('middle_name'))}" style="width:100%"></div>
               <div><label class="field-label">Date of birth${isBC ? ' *' : ''}</label>
-                <input class="search-input" id="ef-dob" type="date" value="${esc(emp.dob ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-dob" type="date" value="${esc(draftField('dob'))}" style="width:100%"></div>
               <div style="grid-column:1/-1"><label class="field-label">Job title${isBC ? ' *' : ''}</label>
                 <div id="ef-job-wrap" style="width:100%"></div></div>
               ${isBC ? `
@@ -523,7 +526,7 @@ export function mount(container, { navigate, session, filename, techFolder }) {
                 <select class="form-select" id="ef-gender" style="width:100%">
                   <option value="">—</option>
                   ${['Male','Female','Other'].map(g =>
-                    `<option value="${g}"${(emp.gender ?? '') === g ? ' selected' : ''}>${g}</option>`
+                    `<option value="${g}"${draftField('gender') === g ? ' selected' : ''}>${g}</option>`
                   ).join('')}
                 </select></div>
               <div><label class="field-label">Yrs in occupation *</label>
@@ -532,11 +535,11 @@ export function mount(container, { navigate, session, filename, techFolder }) {
               <div><label class="field-label">Location CU Code</label>
                 <input class="search-input" id="loc-cu-code" value="${esc(p.location?.cu_code ?? '')}" style="width:100%"></div>
               <div><label class="field-label">SIN last 4</label>
-                <input class="search-input" id="ef-sin" maxlength="4" value="${esc(emp.sin_last_4 ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-sin" maxlength="4" value="${esc(draftField('sin_last_4'))}" style="width:100%"></div>
               <div><label class="field-label">Email</label>
-                <input class="search-input" id="ef-email" type="email" value="${esc(emp.email ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-email" type="email" value="${esc(draftField('email'))}" style="width:100%"></div>
               <div><label class="field-label">Phone</label>
-                <input class="search-input" id="ef-phone" value="${esc(emp.phone ?? '')}" style="width:100%"></div>
+                <input class="search-input" id="ef-phone" value="${esc(draftField('phone'))}" style="width:100%"></div>
               ` : ''}
             </div>
           </div>
@@ -644,8 +647,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const slot = _slots[_activeSlot]
       const emp  = slot.empIdx != null ? _packet.employees[slot.empIdx] : null
       _nocPicker = mountNocPicker(jobWrap, {
-        jobTitle:       slot.empEdits?.job_title        ?? emp?.job_title       ?? '',
-        occupationCode: slot.empEdits?.occupation_code  ?? emp?.occupation_code ?? '',
+        jobTitle:       draftField('job_title'),
+        occupationCode: draftField('occupation_code'),
         onChange: ({ title, code }) => {
           if (!slot.empEdits) slot.empEdits = {}
           slot.empEdits.job_title       = title
