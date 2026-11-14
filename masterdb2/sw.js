@@ -5,7 +5,7 @@
  * causes browsers to install the new SW and re-fetch all cached assets.
  */
 
-const VERSION = 'hcp-v11'
+const VERSION = 'hcp-v12'
 const CACHE   = `hcp-${VERSION}`
 
 const ASSETS = [
