@@ -644,8 +644,8 @@ export function mount(container, { navigate, session, filename, techFolder }) {
       const slot = _slots[_activeSlot]
       const emp  = slot.empIdx != null ? _packet.employees[slot.empIdx] : null
       _nocPicker = mountNocPicker(jobWrap, {
-        jobTitle:       slot.empEdits?.job_title       ?? '',
-        occupationCode: slot.empEdits?.occupation_code ?? '',
+        jobTitle:       slot.empEdits?.job_title        ?? emp?.job_title       ?? '',
+        occupationCode: slot.empEdits?.occupation_code  ?? emp?.occupation_code ?? '',
         onChange: ({ title, code }) => {
           if (!slot.empEdits) slot.empEdits = {}
           slot.empEdits.job_title       = title
