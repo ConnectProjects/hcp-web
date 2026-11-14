@@ -484,6 +484,8 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
 
 // ── Auto-import ───────────────────────────────────────────────────────────────
 
+let _autoImportInFlight = null
+
 /**
  * Import all "clean" packets from all active techs with a folder configured.
  * A packet is clean when: company resolves, location resolves, and no worker
@@ -497,7 +499,16 @@ export async function commitImport(packet, decisions = {}, writerName, { techFol
  *
  * Returns { results: [{ tech, filename, ok, imported?, duplicates?, skipped?, reason? }] }
  */
-export async function autoImportClean(techs, writerName) {
+export function autoImportClean(techs, writerName) {
+  if (_autoImportInFlight) return _autoImportInFlight
+
+  _autoImportInFlight = runAutoImportClean(techs, writerName)
+    .finally(() => { _autoImportInFlight = null })
+
+  return _autoImportInFlight
+}
+
+async function runAutoImportClean(techs, writerName) {
   const results = []
 
   for (const tech of techs) {
