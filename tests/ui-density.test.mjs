@@ -42,6 +42,17 @@ test('dashboard processes clean returned results only while owning the Office lo
   assert.match(resultProcessor, /\.finally\(\(\) => \{ _autoImportInFlight = null \}\)/)
 })
 
+test('dashboard refreshes stored-test and upcoming-visit summaries after automatic acceptance', async () => {
+  const dashboard = await source('masterdb2/screens/dashboard.js')
+  const resultProcessor = await source('masterdb2/db/import-packet.js')
+
+  assert.match(dashboard, /refreshDashboardSummary\(container\)/)
+  assert.match(dashboard, /data-kpi="\$\{key\}"/)
+  assert.match(dashboard, /id="upcoming-visits"/)
+  assert.match(dashboard, /upcomingEl\.innerHTML = upcomingTable\(loadUpcomingVisits\(\)\)/)
+  assert.match(resultProcessor, /VALUES \(\?, \?, \?, \?, \?, \?, 'imported'/)
+})
+
 test('login surfaces filesystem lock failures instead of silently opening read-only', async () => {
   const login = await source('masterdb2/screens/login.js')
   assert.match(login, /if \(!\(e instanceof StoreLockError\)\)/)
