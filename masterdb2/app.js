@@ -15,6 +15,7 @@
  */
 
 import { releaseLock } from './db/db.js'
+import { APP_VERSION } from '../shared/app-version.js'
 
 // ── Session (shared mutable object — screens receive it via params) ────────────
 export const session = {
@@ -102,6 +103,8 @@ function _setSidebar(visible, active) {
   sidebar.hidden = !visible
   if (brand) brand.hidden = !visible || session.user?.role === 'aud_tech'
   app.classList.toggle('has-sidebar', visible)
+  const version = document.getElementById('app-version')
+  if (version) version.textContent = `v${APP_VERSION}`
   if (visible) _renderSidebar(active)
 }
 
