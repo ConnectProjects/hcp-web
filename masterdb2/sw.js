@@ -5,7 +5,7 @@
  * causes browsers to install the new SW and re-fetch all cached assets.
  */
 
-const VERSION = 'hcp-v14'
+const VERSION = 'hcp-v15'
 const CACHE   = `hcp-${VERSION}`
 
 const ASSETS = [
@@ -57,6 +57,7 @@ const ASSETS = [
   '/hcp-web/shared/classification/engine.js',
   '/hcp-web/shared/components/noc-picker.js',
   '/hcp-web/shared/components/brand-logo.js',
+  '/hcp-web/shared/app-version.js',
   '/hcp-web/shared/validation/thresholds.js',
   '/hcp-web/shared/validation/reconcile-import.js',
   '/hcp-web/shared/time-utils.js',
