@@ -24,6 +24,19 @@ test('small screens retain touch-sized controls and single-column workspaces', a
   assert.match(css, /\.workspace-grid\s*\{\s*grid-template-columns:\s*1fr/)
 })
 
+test('Office and Field display one shared human-readable application version', async () => {
+  const html = await source('masterdb2/index.html')
+  const app = await source('masterdb2/app.js')
+  const css = await source('masterdb2/app.css')
+  const version = await source('shared/app-version.js')
+
+  assert.match(html, /id="app-version"/)
+  assert.match(app, /import \{ APP_VERSION \} from '\.\.\/shared\/app-version\.js'/)
+  assert.match(app, /version\.textContent = `v\$\{APP_VERSION\}`/)
+  assert.match(css, /\.app-version\s*\{/)
+  assert.match(version, /APP_VERSION = '0\.9\.0-dev'/)
+})
+
 test('dashboard uses the shared dense workspace layout', async () => {
   const dashboard = await source('masterdb2/screens/dashboard.js')
   assert.match(dashboard, /class="screen-body workspace-grid"/)
