@@ -393,10 +393,10 @@ export function mount(container, { navigate, session }) {
 
   // Automatic refresh while the tab is open — no manual Sync button.
   _timer = setInterval(() => {
-    if (document.visibilityState === 'visible') loadFiles()
+    if (!detail && document.visibilityState === 'visible') loadFiles()
   }, 60_000)
   _onVisible = () => {
-    if (document.visibilityState === 'visible') loadFiles()
+    if (!detail && document.visibilityState === 'visible') loadFiles()
   }
   document.addEventListener('visibilitychange', _onVisible)
 
