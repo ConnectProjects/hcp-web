@@ -150,12 +150,13 @@ function mapHpdReason(v) {
   if (s === 'n/a') return ''
   const codes = ['nocomfort', 'nocommun', 'nohearing', 'nonoise', 'nosize', 'other']
   if (codes.includes(s)) return s.toUpperCase()
-  if (s.includes('comfort'))                        return 'NOCOMFORT'
-  if (s.includes('commun'))                         return 'NOCOMMUN'
-  if (s.includes('block') || s.includes('sound'))  return 'NOHEARING'
-  if (s.includes('nois'))                           return 'NONOISE'
-  if (s.includes('size'))                           return 'NOSIZE'
-  return 'OTHER'
+  if (s === 'not comfortable') return 'NOCOMFORT'
+  if (s === "can't communicate" || s === 'cannot communicate') return 'NOCOMMUN'
+  if (s === 'blocks sounds' || s === 'blocks sounds i want to hear') return 'NOHEARING'
+  if (s === 'not that noisy' || s === "it's not that noisy") return 'NONOISE'
+  if (s === 'wrong size') return 'NOSIZE'
+  // Unknown wording must be corrected rather than silently exported as OTHER.
+  return ''
 }
 
 // WhichEar / FromWhichShoulderShoot: B/L/R
@@ -437,8 +438,10 @@ export function generateWsbcCsv(testIds) {
         ? (q.noise_2h ? mapNoiseHours(q.noise_2h_duration ?? '') : '')
         : mapNoiseHours(q.hours_noise_exposure ?? ''),
       mapYN(q.wear_hpd                 ?? q.regularly_wear_hpd),
-      mapHpdClass(q.hpd_class          ?? q.hpd_protection_class),
-      mapHpdStyle(q.hpd_style          ?? q.hearing_prot_style),
+      mapYN(q.wear_hpd ?? q.regularly_wear_hpd) === 'Yes'
+        ? mapHpdClass(q.hpd_class ?? q.hpd_protection_class) : '',
+      mapYN(q.wear_hpd ?? q.regularly_wear_hpd) === 'Yes'
+        ? mapHpdStyle(q.hpd_style ?? q.hearing_prot_style) : '',
       mapYN(q.wear_hpd ?? q.regularly_wear_hpd) === 'Yes'
         ? 'N/A'
         : mapHpdReason(q.hpd_no_reason || q.why_not_wear_hpd),
