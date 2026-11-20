@@ -83,6 +83,54 @@ test('existing titles and actual non-use reasons are retained', () => {
   assert.equal(validateWsbcExport([1]).valid, true)
 })
 
+test('HTS hearing-protection branches and exact non-use codes', () => {
+  const reasons = {
+    NOCOMFORT: 'Not comfortable',
+    NOCOMMUN: "Can't communicate",
+    NOHEARING: 'Blocks sounds I want to hear',
+    NONOISE: "It's not that noisy",
+    NOSIZE: 'Wrong size',
+    OTHER: 'Other',
+  }
+  for (const [code, label] of Object.entries(reasons)) {
+    for (const answer of [code, label]) {
+      dbRows = [fixture({ questionnaire: JSON.stringify({
+        ...questionnaire, wear_hpd: false, hpd_class: 'A',
+        hpd_style: 'EP', hpd_no_reason: answer,
+      }) })]
+      const [h, v] = parseCsv(generateWsbcCsv([1]).csv)
+      const row = Object.fromEntries(h.map((k, i) => [k, v[i]]))
+      assert.equal(row.RegularlyWearHearingProt, 'No')
+      assert.equal(row.ClassOfHearingProtWornReg, '')
+      assert.equal(row.StyleOfHearingProtWornReg, '')
+      assert.equal(row.WhyNotWearHearingProtReg, code)
+      assert.equal(validateWsbcExport([1]).valid, true)
+    }
+  }
+})
+
+test('unrecognized non-use reason fails validation instead of becoming OTHER', () => {
+  dbRows = [fixture({ questionnaire: JSON.stringify({
+    ...questionnaire, wear_hpd: false, hpd_no_reason: 'unrecognized response',
+  }) })]
+  assert.equal(validateWsbcExport([1]).valid, false)
+})
+
+test('TechTool supports exact HTS text for noise hours and hearing-protection reasons', async () => {
+  const source = await readFile(new URL('techtool2/screens/tt-test.js', root), 'utf8')
+  const start = source.indexOf('function wsbcHpdNoReason(')
+  const end = source.indexOf('function wsbcHpdClass(', start)
+  const snippet = source.slice(start, end)
+  assert.ok(start >= 0 && end > start)
+  const sandbox = vm.createContext({})
+  vm.runInContext(snippet, sandbox)
+  assert.equal(vm.runInContext('wsbcNoiseHours("More than 4")', sandbox), '3')
+  assert.equal(vm.runInContext('wsbcHpdNoReason("Blocks sounds I want to hear")', sandbox), 'NOHEARING')
+  assert.equal(vm.runInContext('wsbcHpdNoReason("It\\'s not that noisy")', sandbox), 'NONOISE')
+  assert.equal(vm.runInContext('wsbcHpdNoReason("NOCOMMUN")', sandbox), 'NOCOMMUN')
+  assert.equal(vm.runInContext('wsbcHpdNoReason("unrecognized response")', sandbox), '')
+})
+
 test('unresolved titles and missing non-use reasons require correction', () => {
   dbRows = [fixture({ occupation_code: 'unknown', questionnaire:
     JSON.stringify({ ...questionnaire, wear_hpd: false, hpd_no_reason: 'N/A' }) })]
