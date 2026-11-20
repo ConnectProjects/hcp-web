@@ -38,7 +38,6 @@ const ASSETS = [
 
   // TechTool screens
   '/hcp-web/techtool2/screens/tt-schedule.js',
-  '/hcp-web/techtool2/screens/tt-inbox.js',
   '/hcp-web/techtool2/screens/tt-test.js',
   '/hcp-web/techtool2/screens/tt-new-visit.js',
   '/hcp-web/techtool2/screens/tt-settings.js',
