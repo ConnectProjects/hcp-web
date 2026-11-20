@@ -126,7 +126,7 @@ test('TechTool supports exact HTS text for noise hours and hearing-protection re
   vm.runInContext(snippet, sandbox)
   assert.equal(vm.runInContext('wsbcNoiseHours("More than 4")', sandbox), '3')
   assert.equal(vm.runInContext('wsbcHpdNoReason("Blocks sounds I want to hear")', sandbox), 'NOHEARING')
-  assert.equal(vm.runInContext('wsbcHpdNoReason("It\\'s not that noisy")', sandbox), 'NONOISE')
+  assert.equal(vm.runInContext(`wsbcHpdNoReason("It's not that noisy")`, sandbox), 'NONOISE')
   assert.equal(vm.runInContext('wsbcHpdNoReason("NOCOMMUN")', sandbox), 'NOCOMMUN')
   assert.equal(vm.runInContext('wsbcHpdNoReason("unrecognized response")', sandbox), '')
 })
