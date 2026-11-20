@@ -116,7 +116,7 @@ export function mount(container, { session }) {
       <div class="info-card" style="margin-bottom:1.5rem">
         <p style="font-size:0.8125rem;color:var(--clr-subtle);margin-bottom:0.5rem">
           Conflict copies appear when OneDrive syncs from two machines simultaneously.
-          Resolve them in OneDrive before running an import.
+          Ask your administrator to resolve them before starting another visit.
         </p>
         ${conflictHTML}
       </div>

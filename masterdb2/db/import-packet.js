@@ -508,28 +508,32 @@ export async function autoImportClean(techs, writerName) {
 
     for (const f of jsons) {
       let packet
+      // Human-readable context for the "Needs Review" UI — no raw filenames shown there.
+      let meta = { company: null, visitDate: null }
       try { packet = await readPacket(tech.folder_name, f.name) } catch (e) {
-        results.push({ tech: tech.name, filename: f.name, ok: false, reason: `Read failed: ${e?.message || e}` })
+        results.push({ tech: tech.name, filename: f.name, ...meta, ok: false, reason: `Read failed: ${e?.message || e}` })
         continue
       }
 
+      meta = { company: packet.company?.name ?? null, visitDate: packet.visit?.visit_date ?? null }
+
       let preview
       try { preview = previewImport(packet) } catch (e) {
-        results.push({ tech: tech.name, filename: f.name, ok: false, reason: `Preview failed: ${e?.message || e}` })
+        results.push({ tech: tech.name, filename: f.name, ...meta, ok: false, reason: `Preview failed: ${e?.message || e}` })
         continue
       }
 
       // Skip if anything needs LC judgment
       if (!preview.company.id) {
-        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `Company not found: ${preview.company.name}` })
+        results.push({ tech: tech.name, filename: f.name, ...meta, skipped: true, reason: `Company not found: ${preview.company.name}` })
         continue
       }
       if (preview.location.status !== 'resolved') {
-        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `Location not resolved: ${preview.location.packetLocationName ?? '?'}` })
+        results.push({ tech: tech.name, filename: f.name, ...meta, skipped: true, reason: `Location not resolved: ${preview.location.packetLocationName ?? '?'}` })
         continue
       }
       if (preview.counts.unconfirmed > 0) {
-        results.push({ tech: tech.name, filename: f.name, skipped: true, reason: `${preview.counts.unconfirmed} worker(s) need manual match confirmation` })
+        results.push({ tech: tech.name, filename: f.name, ...meta, skipped: true, reason: `${preview.counts.unconfirmed} worker(s) need manual match confirmation` })
         continue
       }
 
@@ -549,9 +553,9 @@ export async function autoImportClean(techs, writerName) {
           techFolder: tech.folder_name,
           filename:   f.name,
         })
-        results.push({ tech: tech.name, filename: f.name, ok: true, ...r })
+        results.push({ tech: tech.name, filename: f.name, ...meta, ok: true, ...r })
       } catch (e) {
-        results.push({ tech: tech.name, filename: f.name, ok: false, reason: e?.message || e?.toString() || 'Unknown error' })
+        results.push({ tech: tech.name, filename: f.name, ...meta, ok: false, reason: e?.message || e?.toString() || 'Unknown error' })
       }
     }
   }

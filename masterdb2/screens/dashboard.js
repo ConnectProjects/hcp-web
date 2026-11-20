@@ -1,10 +1,11 @@
 /**
  * masterdb2/screens/dashboard.js — home screen
  *
- * KPI bar + upcoming visits + inbox queue (async).
+ * KPI bar + upcoming visits + needs-review queue (background auto-import).
  */
 
-import { query, scalar, readLock, listInbox } from '../db/db.js'
+import { query, scalar, readLock } from '../db/db.js'
+import { getLastResult, subscribe, refreshNow } from '../db/background-sync.js'
 
 export function mount(container, { navigate, session }) {
   const or = session.openResult
@@ -26,8 +27,6 @@ export function mount(container, { navigate, session }) {
      WHERE p.status = 'pending' AND p.visit_date >= date('now')
      ORDER BY p.visit_date LIMIT 10`
   )
-
-  const techs = query(`SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`)
 
   // Lock banner
   let lockBanner = ''
@@ -67,66 +66,76 @@ export function mount(container, { navigate, session }) {
       </div>
 
       <div>
-        <div class="section-head"><h2>Inbox Queue</h2></div>
-        <div id="inbox-queue"><p style="color:var(--clr-subtle);font-size:0.875rem">Loading…</p></div>
+        <div class="section-head"><h2>Needs Review</h2></div>
+        <div id="review-queue"><p style="color:var(--clr-subtle);font-size:0.875rem">Checking…</p></div>
       </div>
 
     </div>
   `
 
-  // ── Async: inbox queue ───────────────────────────────────────────────────
-  loadInboxQueue(techs).then(html => {
-    const el = container.querySelector('#inbox-queue')
-    if (el) el.innerHTML = html
-  }).catch(() => {
-    const el = container.querySelector('#inbox-queue')
-    if (el) el.innerHTML = `<p style="color:var(--clr-subtle);font-size:0.875rem">Could not read inbox folders.</p>`
-  })
-}
-
-async function loadInboxQueue(techs) {
-  if (!techs.length) return `<p style="color:var(--clr-subtle);font-size:0.875rem">No techs configured.</p>`
-
-  const results = await Promise.all(
-    techs.map(async t => {
-      try {
-        const files = await listInbox(t.folder_name)
-        const packets = files.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
-        return { tech: t, packets }
-      } catch {
-        return { tech: t, packets: null }
-      }
+  // ── Review queue (background sync state) ─────────────────────────────────
+  const render = result => {
+    const el = container.querySelector('#review-queue')
+    if (!el) return
+    el.innerHTML = reviewQueue(result)
+    el.querySelector('#retry-import')?.addEventListener('click', e => {
+      e.preventDefault()
+      refreshNow()
     })
-  )
-
-  const totalFiles = results.reduce((n, r) => n + (r.packets?.length ?? 0), 0)
-  if (!totalFiles) {
-    return `<div class="table-card"><div class="table-empty">All inboxes are empty.</div></div>`
+    el.querySelectorAll('[data-review]').forEach(btn =>
+      btn.addEventListener('click', () => navigate('import'))
+    )
   }
 
-  const rows = results.flatMap(({ tech, packets }) => {
-    if (!packets?.length) return []
-    return packets.map(f => `
-      <tr>
-        <td style="color:var(--clr-subtle);font-size:0.8rem">${esc(tech.initials ?? tech.name.slice(0,2))}</td>
-        <td style="font-size:0.8125rem">${esc(f.name)}</td>
-        <td style="font-size:0.75rem;color:var(--clr-subtle)">${f.lastModified ? fmtTs(f.lastModified) : ''}</td>
-      </tr>
-    `)
-  }).join('')
+  render(getLastResult())
+  const unsubscribe = subscribe(render)
+  return { unmount: unsubscribe }
+}
+
+function reviewQueue(result) {
+  const checked = result?.at ? fmtTs(result.at) : null
+
+  const status = result?.error
+    ? `<div class="warning-banner" style="margin-bottom:0.75rem">
+         <strong>Auto-import needs attention:</strong> ${esc(result.error)}
+         <a href="#" id="retry-import" style="margin-left:0.5rem">Retry</a>
+       </div>`
+    : `<p style="font-size:0.8rem;color:var(--clr-subtle);margin:0 0 0.75rem">
+         Auto-import on${checked ? ` &middot; last checked ${esc(checked)}` : ' &middot; checking…'}
+         &middot; <a href="#" id="retry-import">Run now</a>
+       </p>`
+
+  if (!result) {
+    return `${status}<div class="table-card"><div class="table-empty">Checking for completed visits…</div></div>`
+  }
+
+  const reviews = result.results.filter(r => r.skipped || !r.ok)
+  if (!reviews.length) {
+    return `${status}<div class="table-card"><div class="table-empty">
+      No visits need review. Completed visits import automatically.
+    </div></div>`
+  }
+
+  const rows = reviews.map(r => `
+    <tr>
+      <td style="font-size:0.8125rem">${esc(r.company ?? '—')}</td>
+      <td style="font-size:0.8125rem">${esc(r.tech ?? '—')}</td>
+      <td style="font-size:0.8125rem">${esc(r.visitDate ?? '—')}</td>
+      <td style="font-size:0.8125rem">${esc(r.reason ?? 'Import failed')}</td>
+      <td><button class="btn btn-secondary btn-sm" data-review="1">Review</button></td>
+    </tr>
+  `).join('')
 
   return `
+    ${status}
     <div class="table-card">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Tech</th><th>File</th><th>Received</th></tr></thead>
+          <thead><tr><th>Company</th><th>Tech</th><th>Visit</th><th>Why</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
     </div>
-    <p style="font-size:0.8rem;color:var(--clr-subtle);margin-top:0.375rem">
-      ${totalFiles} packet${totalFiles !== 1 ? 's' : ''} waiting to import.
-    </p>
   `
 }
 
