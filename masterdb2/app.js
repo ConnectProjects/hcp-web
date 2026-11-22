@@ -15,7 +15,7 @@
  */
 
 import { releaseLock, claimLock } from './db/db.js'
-import { startAutoImport, stopAutoImport, refreshNow } from './db/background-sync.js'
+import { startAutoImport, stopAutoImport, refreshNow, shouldAutoImport } from './db/background-sync.js'
 
 // ── Session (shared mutable object — screens receive it via params) ────────────
 export const session = {
@@ -78,14 +78,25 @@ export async function navigate(name, params = {}) {
     }
   }
 
-  if (session.user && name !== 'login') _ensureAutoImport()
+  if (session.user && name !== 'login') _syncAutoImport(name)
+  else if (name === 'login') _stopAutoImport()
 }
 
-function _ensureAutoImport() {
-  // Field techs must not import their own submitted packets.
-  if (_autoImportStarted || session.user?.role === 'aud_tech') return
-  _autoImportStarted = true
-  startAutoImport(session)
+function _syncAutoImport(screenName) {
+  // Gate on the screen, not the role: a person can hold both an aud_tech and an
+  // admin user row (same person, two roles). Only MasterDB screens import.
+  const shouldRun = shouldAutoImport(screenName)
+  if (shouldRun && !_autoImportStarted) {
+    _autoImportStarted = true
+    startAutoImport(session)
+  } else if (!shouldRun && _autoImportStarted) {
+    _stopAutoImport()
+  }
+}
+
+function _stopAutoImport() {
+  stopAutoImport()
+  _autoImportStarted = false
 }
 
 function _isModuleNotFound(e) {
@@ -156,8 +167,7 @@ function _roleLabel(role) {
 
 // ── Sign out ──────────────────────────────────────────────────────────────────
 async function _signOut() {
-  stopAutoImport()
-  _autoImportStarted = false
+  _stopAutoImport()
   if (session.writerName) {
     await releaseLock(session.writerName).catch(() => {})
   }

@@ -21,6 +21,15 @@ import { autoImportClean } from './import-packet.js'
 const DEFAULT_INTERVAL_MS = 60_000
 const WEB_LOCK_NAME = 'masterdb-auto-import'
 
+/**
+ * Only MasterDB screens import packets. A person may hold both an aud_tech and
+ * an admin user row, so the route — not the role — decides.
+ */
+export function shouldAutoImport(screenName) {
+  if (!screenName || screenName === 'login') return false
+  return !String(screenName).startsWith('tt-')
+}
+
 let _running  = false
 let _timer    = null
 let _session  = null

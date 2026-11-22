@@ -64,6 +64,16 @@ function nextResult(ns) {
   return promise
 }
 
+test('auto-import is gated by screen, not by role', async () => {
+  const { ns } = await loadModule()
+  assert.equal(ns.shouldAutoImport('dashboard'), true)
+  assert.equal(ns.shouldAutoImport('import'), true)
+  assert.equal(ns.shouldAutoImport('tt-schedule'), false)
+  assert.equal(ns.shouldAutoImport('tt-test'), false)
+  assert.equal(ns.shouldAutoImport('login'), false)
+  assert.equal(ns.shouldAutoImport(null), false)
+})
+
 test('clean packets are committed automatically', async () => {
   const { ns, context } = await loadModule()
   let captured = null
