@@ -14,7 +14,8 @@
  *   comes through params or their own imports from db/*.js.
  */
 
-import { releaseLock } from './db/db.js'
+import { releaseLock, claimLock } from './db/db.js'
+import { startAutoImport, stopAutoImport, refreshNow, shouldAutoImport } from './db/background-sync.js'
 
 // ── Session (shared mutable object — screens receive it via params) ────────────
 export const session = {
@@ -36,7 +37,7 @@ const MASTERDB_NAV = [
 ]
 
 const TECHTOOL_NAV = [
-  { name: 'tt-schedule', label: 'Schedule' },
+  { name: 'tt-schedule', label: 'Visits' },
   { name: 'tt-settings', label: 'Settings' },
 ]
 
@@ -47,6 +48,7 @@ function _activeNav() {
 // ── Router ────────────────────────────────────────────────────────────────────
 let _currentScreen = null
 let _unmount       = null
+let _autoImportStarted = false
 
 export async function navigate(name, params = {}) {
   // Clean up the current screen
@@ -75,6 +77,26 @@ export async function navigate(name, params = {}) {
       container.innerHTML = `<div class="error-card"><h2>Screen error</h2><pre>${_esc(e.message)}</pre></div>`
     }
   }
+
+  if (session.user && name !== 'login') _syncAutoImport(name)
+  else if (name === 'login') _stopAutoImport()
+}
+
+function _syncAutoImport(screenName) {
+  // Gate on the screen, not the role: a person can hold both an aud_tech and an
+  // admin user row (same person, two roles). Only MasterDB screens import.
+  const shouldRun = shouldAutoImport(screenName)
+  if (shouldRun && !_autoImportStarted) {
+    _autoImportStarted = true
+    startAutoImport(session)
+  } else if (!shouldRun && _autoImportStarted) {
+    _stopAutoImport()
+  }
+}
+
+function _stopAutoImport() {
+  stopAutoImport()
+  _autoImportStarted = false
 }
 
 function _isModuleNotFound(e) {
@@ -145,6 +167,7 @@ function _roleLabel(role) {
 
 // ── Sign out ──────────────────────────────────────────────────────────────────
 async function _signOut() {
+  _stopAutoImport()
   if (session.writerName) {
     await releaseLock(session.writerName).catch(() => {})
   }
@@ -160,6 +183,9 @@ async function _signOut() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && session.writerName) {
     releaseLock(session.writerName).catch(() => {})
+  } else if (document.visibilityState === 'visible' && _autoImportStarted && session.writerName) {
+    // Re-claim the write lock we dropped on hide, then run one cycle.
+    claimLock(session.writerName).catch(() => {}).then(() => refreshNow())
   }
 })
 window.addEventListener('beforeunload', () => {

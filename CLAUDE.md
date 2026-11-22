@@ -45,7 +45,7 @@ masterdb2/          MasterDB + TechTool unified app (live)
   vendor/           sql-wasm.js + sql-wasm.wasm (self-contained)
 
 techtool2/          TechTool field screens (loaded by masterdb2/app.js)
-  screens/          tt-schedule, tt-test, tt-inbox, tt-new-visit, tt-settings
+  screens/          tt-schedule, tt-test, tt-new-visit, tt-settings
 
 lead-finder/        Noise-hazard lead discovery tool (separate Supabase project)
   config.js         API keys (gitignored — see config.example.js)

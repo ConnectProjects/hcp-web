@@ -1,158 +1,126 @@
 /**
- * masterdb2/screens/import.js — packet import workflow
+ * masterdb2/screens/import.js — exception-only review
  *
- * Flow: tech select → inbox list → preview (with decisions) → commit → result
- *
- * The screen mounts into whatever container the router provides and manages its
- * own internal state. No unmount cleanup needed (no timers / subscriptions).
+ * Clean packets are imported in the background by db/background-sync.js.
+ * This screen shows only the visits that could not be imported automatically,
+ * then runs the existing preview → decisions → commit → result flow.
  */
 
-import { query, listInbox, readPacket }                from '../db/db.js'
-import { previewImport, commitImport, autoImportClean } from '../db/import-packet.js'
+import { query, readPacket }                   from '../db/db.js'
+import { previewImport, commitImport }         from '../db/import-packet.js'
+import { getLastResult, subscribe, refreshNow } from '../db/background-sync.js'
 
 export function mount(container, { navigate, session }) {
   // ── Module state ──────────────────────────────────────────────────────────
-  let _techs     = []
-  let _tech      = null      // selected tech row
-  let _files     = []        // inbox file entries
-  let _filename  = null      // selected filename
-  let _packet    = null      // parsed JSON
-  let _preview   = null      // previewImport result
-  let _decisions = null      // { locationId?, employees: {} }
-  let _locOpts   = []        // locations for location picker (when unknown)
-  let _result    = null      // commitImport result or Error
+  let _folders    = new Map()   // tech name → folder name
+  let _techFolder = null
+  let _filename   = null
+  let _packet     = null
+  let _preview    = null
+  let _decisions  = null        // { locationId?, employees: {} }
+  let _locOpts    = []
+  let _result     = null
+  let _mode       = 'list'      // list | preview | result
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   try {
-    _techs = query(
-      `SELECT * FROM techs WHERE active = 1 AND folder_name IS NOT NULL ORDER BY name`
-    )
+    query(`SELECT name, folder_name FROM techs WHERE active = 1 AND folder_name IS NOT NULL`)
+      .forEach(t => _folders.set(t.name, t.folder_name))
   } catch (e) {
     renderError(e.message)
     return
   }
 
-  renderTechSelect()
+  renderQueue(getLastResult())
+  const unsubscribe = subscribe(result => {
+    if (_mode === 'list') renderQueue(result)
+  })
+  return { unmount: unsubscribe }
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
   function renderError(msg) {
     container.innerHTML = `
-      <div class="screen-header-row"><h1>Import</h1></div>
+      <div class="screen-header-row"><h1>Needs Review</h1></div>
       <div class="screen-body">
         <div class="error-banner"><strong>Error:</strong> ${esc(msg)}</div>
       </div>
     `
   }
 
-  function renderTechSelect() {
-    const opts = _techs.map(t =>
-      `<option value="${esc(t.folder_name)}">${esc(t.name)}</option>`
-    ).join('')
+  function renderQueue(result) {
+    _mode = 'list'
+    const items = (result?.results ?? []).filter(r => r.skipped || !r.ok)
+    const checked = result?.at ? fmtTs(result.at) : null
 
-    const noTechsWarning = !_techs.length
-      ? `<div class="warning-banner" style="margin-bottom:1rem">
-           No active technicians with a folder name configured.
-           Add techs in Settings before using manual review.
-         </div>`
-      : ''
-
-    const techSel = _techs.length
-      ? `<select class="form-select" id="tech-sel">
-           <option value="">Select a technician…</option>
-           ${opts}
-         </select>`
-      : ''
-
-    container.innerHTML = `
-      <div class="screen-header-row">
-        <h1>Import</h1>
-        ${techSel}
-      </div>
-      <div class="screen-body">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem">
-          <p style="margin:0;color:var(--clr-subtle)">
-            Auto-import scans all techs&apos; inboxes and commits every clean packet.
-            Packets needing manual attention are left behind.
-          </p>
-          <button class="btn btn-primary" id="auto-all-btn">Auto-import all →</button>
-        </div>
-        ${noTechsWarning}
-        <div id="inbox-area"></div>
-      </div>
-    `
-
-    container.querySelector('#tech-sel')?.addEventListener('change', async e => {
-      const folder = e.target.value
-      _tech = _techs.find(t => t.folder_name === folder) ?? null
-      if (!_tech) return
-      await loadInbox()
-    })
-
-    container.querySelector('#auto-all-btn').addEventListener('click', runAutoAll)
-  }
-
-  async function loadInbox() {
-    const area = container.querySelector('#inbox-area')
-    area.innerHTML = `<div class="spinner"></div>`
-    try {
-      const entries = await listInbox(_tech.folder_name)
-      _files = entries.filter(f => f.kind === 'file' && f.name.endsWith('.json'))
-    } catch (e) {
-      area.innerHTML = `<div class="error-banner"><strong>Error reading inbox:</strong> ${esc(e.message)}</div>`
-      return
-    }
-    renderInbox()
-  }
-
-  function renderInbox() {
-    const area = container.querySelector('#inbox-area')
-    if (!_files.length) {
-      area.innerHTML = `<div class="table-card"><div class="table-empty">Inbox is empty for ${esc(_tech.name)}.</div></div>`
-      return
-    }
-
-    const rows = _files.map(f => `
-      <tr class="clickable" data-name="${esc(f.name)}">
-        <td><strong>${esc(f.name)}</strong></td>
-        <td style="color:var(--clr-subtle)">${f.lastModified ? fmtTs(f.lastModified) : '—'}</td>
-        <td style="text-align:right;color:var(--clr-subtle)">${f.size != null ? fmtSize(f.size) : ''}</td>
+    const rows = items.map((r, i) => `
+      <tr>
+        <td style="font-size:0.8125rem">${esc(r.company ?? '—')}</td>
+        <td style="font-size:0.8125rem">${esc(r.tech ?? '—')}</td>
+        <td style="font-size:0.8125rem">${esc(r.visitDate ?? '—')}</td>
+        <td style="font-size:0.8125rem">${esc(r.reason ?? 'Import failed')}</td>
+        <td><button class="btn btn-secondary btn-sm" data-review-index="${i}">Review</button></td>
       </tr>
     `).join('')
 
-    area.innerHTML = `
-      <div class="section-head">
-        <h2>${esc(_tech.name)} — inbox (${_files.length})</h2>
-      </div>
-      <div class="table-card">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>File</th><th>Modified</th><th style="text-align:right">Size</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
+    container.innerHTML = `
+      <div class="screen-header-row"><h1>Needs Review</h1></div>
+      <div class="screen-body">
+        <p style="margin:0 0 1rem;color:var(--clr-subtle)">
+          Completed visits import automatically. These need a decision before they can be saved.
+          ${checked ? `Last checked ${esc(checked)}.` : ''}
+        </p>
+        ${result?.error ? `<div class="warning-banner" style="margin-bottom:1rem">
+          <strong>Auto-import is having trouble:</strong> ${esc(result.error)}
+          <button class="btn btn-secondary btn-sm" id="retry-btn" style="margin-left:0.5rem">Retry</button>
+        </div>` : ''}
+        <div id="inbox-area">
+          ${items.length ? `
+            <div class="table-card">
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Company</th><th>Tech</th><th>Visit</th><th>Why</th><th></th></tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+            </div>` : `
+            <div class="table-card"><div class="table-empty">
+              No visits need review right now.
+            </div></div>`}
         </div>
       </div>
     `
 
-    area.querySelectorAll('tr.clickable').forEach(tr =>
-      tr.addEventListener('click', () => loadPreview(tr.dataset.name))
+    container.querySelector('#retry-btn')?.addEventListener('click', () => refreshNow())
+    container.querySelectorAll('[data-review-index]').forEach(btn =>
+      btn.addEventListener('click', () => {
+        const item = items[Number(btn.dataset.reviewIndex)]
+        const folder = _folders.get(item?.tech)
+        if (!folder) {
+          renderError(`No OneDrive folder is configured for ${item?.tech ?? 'that tech'}.`)
+          return
+        }
+        _techFolder = folder
+        loadPreview(item.filename)
+      })
     )
   }
 
   async function loadPreview(filename) {
+    _mode = 'preview'
     _filename = filename
     const area = container.querySelector('#inbox-area')
     area.innerHTML = `<div class="spinner"></div><p class="status-text">Analysing ${esc(filename)}…</p>`
 
     try {
-      _packet  = await readPacket(_tech.folder_name, filename)
+      _packet  = await readPacket(_techFolder, filename)
       _preview = previewImport(_packet)
     } catch (e) {
       area.innerHTML = `
-        <button class="back-link" id="back-inbox">&larr; Back to inbox</button>
+        <button class="back-link" id="back-inbox">&larr; Back to review list</button>
         <div class="error-banner" style="margin:1rem 0"><strong>Preview failed:</strong> ${esc(e.message)}</div>
       `
-      area.querySelector('#back-inbox').addEventListener('click', renderInbox)
+      area.querySelector('#back-inbox').addEventListener('click', () => renderQueue(getLastResult()))
       return
     }
 
@@ -335,8 +303,8 @@ export function mount(container, { navigate, session }) {
     `
 
     // ── Events ──
-    area.querySelector('#back-inbox').addEventListener('click', renderInbox)
-    area.querySelector('#cancel-btn').addEventListener('click', renderInbox)
+    area.querySelector('#back-inbox').addEventListener('click', () => renderQueue(getLastResult()))
+    area.querySelector('#cancel-btn').addEventListener('click', () => renderQueue(getLastResult()))
 
     area.querySelector('#loc-picker')?.addEventListener('change', e => {
       const val = Number(e.target.value)
@@ -365,7 +333,7 @@ export function mount(container, { navigate, session }) {
     area.innerHTML = `<div class="spinner"></div><p class="status-text">Importing…</p>`
     try {
       _result = await commitImport(_packet, _decisions, session.writerName, {
-        techFolder: _tech.folder_name,
+        techFolder: _techFolder,
         filename:   _filename,
       })
       renderResult()
@@ -381,97 +349,8 @@ export function mount(container, { navigate, session }) {
     }
   }
 
-  async function runAutoAll() {
-    const area = container.querySelector('#inbox-area')
-    area.innerHTML = `<div class="spinner"></div><p class="status-text">Scanning all inboxes…</p>`
-
-    let outcome
-    try {
-      outcome = await autoImportClean(_techs, session.writerName)
-    } catch (e) {
-      const msg = e?.message || e?.toString() || 'Unknown error'
-      area.innerHTML = `<div class="error-banner"><strong>Auto-import failed:</strong> ${esc(msg)}</div>`
-      return
-    }
-
-    const { results } = outcome
-    const imported = results.filter(r => r.ok)
-    const skipped  = results.filter(r => r.skipped)
-    const failed   = results.filter(r => !r.ok && !r.skipped)
-
-    const importedRows = imported.map(r =>
-      `<tr>
-        <td>${esc(r.tech)}</td>
-        <td style="font-size:0.8125rem;color:var(--clr-subtle)">${esc(r.filename)}</td>
-        <td style="text-align:right">${r.imported}</td>
-        <td style="text-align:right">${r.newPersons}</td>
-        <td style="text-align:right;color:var(--clr-subtle)">${r.duplicates}</td>
-      </tr>`
-    ).join('')
-
-    const skippedRows = skipped.map(r =>
-      `<tr>
-        <td>${esc(r.tech)}</td>
-        <td style="font-size:0.8125rem">${esc(r.filename)}</td>
-        <td colspan="3" style="color:var(--clr-subtle);font-size:0.8125rem">${esc(r.reason)}</td>
-      </tr>`
-    ).join('')
-
-    const failedRows = failed.map(r =>
-      `<tr>
-        <td>${esc(r.tech)}</td>
-        <td style="font-size:0.8125rem">${esc(r.filename)}</td>
-        <td colspan="3" style="color:var(--clr-danger);font-size:0.8125rem">${esc(r.reason)}</td>
-      </tr>`
-    ).join('')
-
-    const thead = `<thead><tr><th>Tech</th><th>File</th><th style="text-align:right">Tests</th><th style="text-align:right">New</th><th style="text-align:right">Dups</th></tr></thead>`
-
-    area.innerHTML = `
-      ${imported.length
-        ? `<div class="success-banner" style="margin-bottom:1rem">
-             <strong>${imported.length} packet${imported.length !== 1 ? 's' : ''} imported</strong>
-             — ${imported.reduce((s, r) => s + r.imported, 0)} tests,
-             ${imported.reduce((s, r) => s + r.newPersons, 0)} new workers
-           </div>
-           <div class="table-card" style="margin-bottom:1rem">
-             <div class="table-wrap">
-               <table class="data-table">${thead}<tbody>${importedRows}</tbody></table>
-             </div>
-           </div>`
-        : `<div class="warning-banner" style="margin-bottom:1rem">No clean packets found to auto-import. Use manual review below.</div>`}
-
-      ${skipped.length
-        ? `<div class="section-head"><h3>Needs review (${skipped.length})</h3></div>
-           <div class="table-card" style="margin-bottom:1rem">
-             <div class="table-wrap">
-               <table class="data-table">${thead}<tbody>${skippedRows}</tbody></table>
-             </div>
-           </div>`
-        : ''}
-
-      ${failed.length
-        ? `<div class="section-head"><h3 style="color:var(--clr-danger)">Errors (${failed.length})</h3></div>
-           <div class="table-card" style="margin-bottom:1rem">
-             <div class="table-wrap">
-               <table class="data-table">${thead}<tbody>${failedRows}</tbody></table>
-             </div>
-           </div>`
-        : ''}
-
-      <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-        ${skipped.length || failed.length
-          ? `<button class="btn btn-secondary" id="review-btn">Review remaining manually</button>`
-          : ''}
-        <button class="btn btn-secondary" id="done-btn">Done</button>
-      </div>
-    `
-
-    area.querySelector('#review-btn')?.addEventListener('click', renderTechSelect)
-    area.querySelector('#done-btn')?.addEventListener('click', () => navigate('dashboard'))
-  }
-
   function renderResult() {
+    _mode = 'result'
     const r    = _result
     const area = container.querySelector('#inbox-area')
     area.innerHTML = `
@@ -481,8 +360,8 @@ export function mount(container, { navigate, session }) {
         &mdash; ${r.newPersons} new worker${r.newPersons !== 1 ? 's' : ''} created
         &mdash; ${r.duplicates} duplicate${r.duplicates !== 1 ? 's' : ''} skipped.
       </div>
-      ${r.backupFile ? `<p style="font-size:0.8rem;color:var(--clr-subtle);margin-bottom:1rem">Pre-import snapshot: ${esc(r.backupFile)}</p>` : ''}
-      ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">Packet stays in inbox (archive step failed: ${esc(r.archiveWarning)}). Data was saved — safe to delete the inbox file manually.</div>` : ''}
+      ${r.backupFile ? `<p style="font-size:0.8rem;color:var(--clr-subtle);margin-bottom:1rem">A recovery snapshot was saved before this import.</p>` : ''}
+      ${r.archiveWarning ? `<div class="warning-banner" style="margin-bottom:1rem">Results were saved, but cleanup of the completed visit failed (${esc(r.archiveWarning)}). No action needed right now.</div>` : ''}
       ${r.wsbcCsv ? `
         <div class="warning-banner" style="margin-bottom:1rem;border-color:var(--clr-warning,#f59e0b)">
           <strong>WorkSafeBC submission required</strong><br>
@@ -506,7 +385,8 @@ export function mount(container, { navigate, session }) {
     }
     area.querySelector('#another-btn').addEventListener('click', () => {
       _filename = null; _packet = null; _preview = null; _decisions = null; _result = null
-      loadInbox()
+      refreshNow()
+      renderQueue(getLastResult())
     })
     area.querySelector('#companies-btn').addEventListener('click', () => navigate('companies'))
   }
@@ -537,10 +417,4 @@ function fmtDate(d) {
 
 function fmtTs(ts) {
   try { return new Date(ts).toLocaleString('en-CA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) } catch { return '' }
-}
-
-function fmtSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

@@ -69,10 +69,9 @@ export function mount(container, { navigate, locationId, companyId, session }) {
             <td>${esc(p.tech_name ?? '—')}</td>
             <td>${statusBadge(p.status)}</td>
             <td style="text-align:right">${p.test_count}</td>
-            <td style="color:var(--clr-subtle);font-size:0.8rem">${esc(p.filename ?? '')}</td>
           </tr>
         `).join('')
-      : `<tr><td colspan="5" class="table-empty">No packets on record.</td></tr>`
+      : `<tr><td colspan="4" class="table-empty">No visits on record.</td></tr>`
 
     const techOpts = techs.map(t =>
       `<option value="${t.tech_id}">${esc(t.name)}</option>`
@@ -109,7 +108,7 @@ export function mount(container, { navigate, locationId, companyId, session }) {
         `}
 
         <div class="section-head" style="margin-top:0.5rem">
-          <h2>Generate Packet</h2>
+          <h2>Assign Visit</h2>
         </div>
         ${genStatus ? `<div class="${genStatus.ok ? 'success-banner' : 'error-banner'}" style="margin-bottom:0.75rem">${genStatus.message}</div>` : ''}
         <div class="info-card" style="margin-bottom:1.5rem">
@@ -131,7 +130,7 @@ export function mount(container, { navigate, locationId, companyId, session }) {
                   <input type="text" class="search-input" id="gen-notes"
                          placeholder="Optional" style="width:100%">
                 </div>
-                <button class="btn btn-primary" id="gen-btn">Generate &amp; Write to Outbox</button>
+                <button class="btn btn-primary" id="gen-btn">Assign Visit</button>
                 <span id="gen-err" style="color:var(--clr-error-text);font-size:0.875rem;align-self:center"></span>
               </div>`
           }
@@ -164,7 +163,7 @@ export function mount(container, { navigate, locationId, companyId, session }) {
             <table class="data-table">
               <thead><tr>
                 <th>Date</th><th>Tech</th><th>Status</th>
-                <th style="text-align:right">Tests</th><th>File</th>
+                <th style="text-align:right">Tests</th>
               </tr></thead>
               <tbody>${packetRows}</tbody>
             </table>
@@ -309,7 +308,7 @@ export function mount(container, { navigate, locationId, companyId, session }) {
         stickyNotes:      notes,
       })
     } catch (e) {
-      genStatus = { ok: false, message: `Packet build failed: ${esc(e.message)}` }
+      genStatus = { ok: false, message: `Could not prepare the visit: ${esc(e.message)}` }
       render(); return
     }
 
@@ -326,7 +325,7 @@ export function mount(container, { navigate, locationId, companyId, session }) {
         [packet.packet_id, loc.company_id, locationId, techId, date, filename, session?.writerName ?? 'admin']
       )
       await save(session?.writerName ?? 'admin')
-      genStatus = { ok: true, message: `Packet written → ${esc(tech.name)}/outbox/${esc(filename)} (${roster.length} workers)` }
+      genStatus = { ok: true, message: `Visit assigned to ${esc(tech.name)} for ${esc(date)} (${roster.length} workers).` }
     } catch (e) {
       genStatus = { ok: false, message: `Write failed: ${esc(e.message)}` }
     }

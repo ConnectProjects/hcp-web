@@ -5,7 +5,7 @@
  * causes browsers to install the new SW and re-fetch all cached assets.
  */
 
-const VERSION = 'hcp-v8'
+const VERSION = 'hcp-v9'
 const CACHE   = `hcp-${VERSION}`
 
 const ASSETS = [
@@ -38,7 +38,6 @@ const ASSETS = [
 
   // TechTool screens
   '/hcp-web/techtool2/screens/tt-schedule.js',
-  '/hcp-web/techtool2/screens/tt-inbox.js',
   '/hcp-web/techtool2/screens/tt-test.js',
   '/hcp-web/techtool2/screens/tt-new-visit.js',
   '/hcp-web/techtool2/screens/tt-settings.js',
@@ -49,6 +48,7 @@ const ASSETS = [
   '/hcp-web/masterdb2/db/schema.js',
   '/hcp-web/masterdb2/db/workers.js',
   '/hcp-web/masterdb2/db/import-packet.js',
+  '/hcp-web/masterdb2/db/background-sync.js',
   '/hcp-web/masterdb2/db/wsbc-import.js',
   '/hcp-web/masterdb2/db/wsbc-export.js',
 

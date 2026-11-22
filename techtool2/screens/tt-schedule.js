@@ -1,18 +1,15 @@
 /**
  * techtool2/screens/tt-schedule.js — TechTool month-view schedule
  *
- * Shows this tech's scheduled visits as chips on a calendar.
- * Two layers are merged on each day:
- *   • DB layer  — packets in the `packets` table assigned to this tech
- *   • File layer — JSON files currently in the tech's OneDrive outbox
+ * Shows this tech's visits as chips on a calendar. The list refreshes itself
+ * in the background while the tab is visible, and on visibility change.
  *
  * Chip state:
- *   Scheduled (DB only, no file yet) — gray outlined chip, informational only
- *   Not started (file in outbox, 0 tested) — gray filled chip
- *   In progress (some tested) — blue chip
- *   Complete (all tested/skipped) — green chip
+ *   Scheduled  — assigned but not yet available on this device
+ *   Ready      — ready to test
+ *   In progress / Complete / Sent / Received
  *
- * Clicking any chip with an available file navigates to tt-test.
+ * Clicking an available visit navigates to tt-test.
  */
 
 import { query, listTechPackets, readTechPacket, listInbox, readPacket } from '../../masterdb2/db/db.js'
@@ -52,6 +49,9 @@ export function mount(container, { navigate, session }) {
   let _fileCache   = null
   let _loadingFiles = false
   let _fileErr      = null
+  let _lastChecked  = null
+  let _timer        = null
+  let _onVisible    = null
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +96,7 @@ export function mount(container, { navigate, session }) {
       } catch { /* inbox folder may not exist yet */ }
 
       _fileCache    = cache
+      _lastChecked  = Date.now()
       _loadingFiles = false
     } catch (e) {
       _fileErr      = e.message
@@ -109,7 +110,7 @@ export function mount(container, { navigate, session }) {
   function render() {
     if (techErr || !techRow) {
       container.innerHTML = `
-        <div class="screen-header-row"><h1>Schedule</h1></div>
+        <div class="screen-header-row"><h1>Visits</h1></div>
         <div class="screen-body">
           <div class="warning-banner">
             No technician record found for your account.
@@ -187,14 +188,15 @@ export function mount(container, { navigate, session }) {
     const calHtml = buildCalendar(year, month, byDay)
 
     const loadingBadge = _loadingFiles
-      ? `<span style="font-size:0.8125rem;color:var(--clr-subtle)">Loading files…</span>`
+      ? `<span style="font-size:0.8125rem;color:var(--clr-subtle)">Updating…</span>`
       : _fileErr
-        ? `<span style="font-size:0.8125rem;color:var(--clr-danger)">File error: ${esc(_fileErr)}</span>`
-        : `<button class="btn btn-secondary btn-sm" id="refresh-btn">↺ Refresh</button>`
+        ? `<span style="font-size:0.8125rem;color:var(--clr-danger)">Could not update. </span>
+           <button class="btn btn-secondary btn-sm" id="refresh-btn">Retry</button>`
+        : `<span style="font-size:0.8125rem;color:var(--clr-subtle)">Updated ${fmtClock(_lastChecked)}</span>`
 
     container.innerHTML = `
       <div class="screen-header-row">
-        <h1>Schedule</h1>
+        <h1>Visits</h1>
         <span class="screen-subtitle">${esc(session.user?.name ?? '')}</span>
         <div style="margin-left:auto;display:flex;align-items:center;gap:0.75rem">
           ${loadingBadge}
@@ -216,7 +218,7 @@ export function mount(container, { navigate, session }) {
         </div>
 
         <div style="display:flex;gap:1rem;margin-top:0.875rem;flex-wrap:wrap;padding-bottom:1rem;font-size:0.8125rem;color:var(--clr-subtle)">
-          ${legend('cal-chip-scheduled',  'Scheduled (no file yet)')}
+          ${legend('cal-chip-scheduled',  'Scheduled')}
           ${legend('cal-chip-not-started','Ready to test')}
           ${legend('cal-chip-progress',   'In progress')}
           ${legend('cal-chip-complete',   'Complete')}
@@ -341,18 +343,18 @@ export function mount(container, { navigate, session }) {
         <div style="font-size:0.75rem;color:var(--clr-subtle);margin-bottom:0.625rem">Visit detail</div>
         ${rows}
         ${hasFile
-          ? `<button class="btn btn-primary" id="open-file-btn" style="margin-top:1rem;width:100%">Open packet →</button>`
+          ? `<button class="btn btn-primary" id="open-file-btn" style="margin-top:1rem;width:100%">Open visit →</button>`
           : ev.status === 'submitted'
             ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 Submitted — your LC will import this when they&apos;re back in the office.
+                 Results sent to your office.
                </div>`
             : ev.status === 'imported'
             ? `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 Imported into MasterDB. Results are on file.
+                 Your office has these results.
                </div>`
             : `<div style="margin-top:0.75rem;font-size:0.875rem;color:var(--clr-subtle)">
-                 This packet hasn&apos;t been pushed to your OneDrive folder yet.
-                 Check back later or ask your LC.
+                 Waiting for this visit to arrive on your device.
+                 Check back in a moment or ask your LC.
                </div>`}
       </div>`
   }
@@ -388,12 +390,33 @@ export function mount(container, { navigate, session }) {
   }
 
   loadFiles()
+
+  // Automatic refresh while the tab is open — no manual Sync button.
+  _timer = setInterval(() => {
+    if (!detail && document.visibilityState === 'visible') loadFiles()
+  }, 60_000)
+  _onVisible = () => {
+    if (!detail && document.visibilityState === 'visible') loadFiles()
+  }
+  document.addEventListener('visibilitychange', _onVisible)
+
+  return {
+    unmount() {
+      if (_timer) clearInterval(_timer)
+      if (_onVisible) document.removeEventListener('visibilitychange', _onVisible)
+    },
+  }
 }
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function statusLabel(s) {
-  return { scheduled: 'Scheduled', 'not-started': 'Ready', progress: 'In progress', complete: 'Complete', submitted: 'Submitted', imported: 'Imported' }[s] ?? s
+  return { scheduled: 'Scheduled', 'not-started': 'Ready', progress: 'In progress', complete: 'Complete', submitted: 'Sent', imported: 'Received' }[s] ?? s
+}
+
+function fmtClock(ts) {
+  if (!ts) return 'just now'
+  try { return new Date(ts).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' }) } catch { return 'just now' }
 }
 
 function monthName(year, month) {
