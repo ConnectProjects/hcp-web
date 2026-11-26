@@ -1637,14 +1637,18 @@ function boolToYN(val) {
 }
 
 function wsbcHpdNoReason(val) {
-  return {
-    'Not Comfortable':   'NOCOMFORT',
-    "Can't Communicate": 'NOCOMMUN',
-    'Blocks Sounds':     'NOHEARING',
-    'Not that noisy':    'NONOISE',
-    'Wrong Size':        'NOSIZE',
-    'Other':             'OTHER',
-  }[val] ?? ''
+  // Accept both HCP-Web's existing labels and the verified HTS select values.
+  // Unknown answers are not silently converted to OTHER.
+  const s = String(val ?? '').trim().toLowerCase()
+  const codes = ['nocomfort', 'nocommun', 'nohearing', 'nonoise', 'nosize', 'other']
+  if (codes.includes(s)) return s.toUpperCase()
+  if (s === 'not comfortable') return 'NOCOMFORT'
+  if (s === "can't communicate" || s === 'cannot communicate') return 'NOCOMMUN'
+  if (s === 'blocks sounds' || s === 'blocks sounds i want to hear') return 'NOHEARING'
+  if (s === 'not that noisy' || s === "it's not that noisy") return 'NONOISE'
+  if (s === 'wrong size') return 'NOSIZE'
+  if (s === 'other') return 'OTHER'
+  return ''
 }
 
 function wsbcNoiseHours(v) {
@@ -1652,7 +1656,7 @@ function wsbcNoiseHours(v) {
   const s = String(v).toLowerCase()
   if (s === '1' || s.startsWith('less') || s.startsWith('< 2')) return '1'
   if (s === '2' || s.includes('2-4') || s.includes('2–4'))      return '2'
-  if (s === '3' || s.startsWith('over') || s.startsWith('> 4')) return '3'
+  if (s === '3' || s.startsWith('over') || s.startsWith('more') || s.startsWith('> 4') || s.startsWith('>4')) return '3'
   return ''
 }
 
